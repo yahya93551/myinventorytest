@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Sidebar from "../components/Sidebar";
-import Inventory from "../components/inventory/Inventory";
+import Inventory from "./inventory/Inventory";
 import Dashboard from "../components/Dashboard";
 import Categories from "../components/Categories";
 import SalesPage from "./sales/page";
@@ -45,7 +45,10 @@ export default function Page() {
         )}
 
         {page === "categories" && (
-          <Categories categories={inventory.categories} />
+          <Categories
+            categories={inventory.categories}
+            addCategory={inventory.addCategory} // ✅ FIXED
+          />
         )}
 
       </div>

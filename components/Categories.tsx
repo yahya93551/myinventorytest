@@ -2,13 +2,25 @@
 
 import { useState } from "react";
 
-export default function Categories({ categories, setCategories }: any) {
+type Props = {
+  categories: string[];
+  addCategory: (category: string) => Promise<boolean>;
+};
+
+export default function Categories({ categories, addCategory }: Props) {
   const [name, setName] = useState("");
 
-  const add = () => {
-    if (!name) return;
-    setCategories([...categories, name]);
-    setName("");
+  const add = async () => {
+    const value = name.trim();
+    if (!value) return;
+
+    const success = await addCategory(value);
+
+    if (success) {
+      setName("");
+    } else {
+      alert("Category already exists");
+    }
   };
 
   return (
@@ -22,12 +34,16 @@ export default function Categories({ categories, setCategories }: any) {
           onChange={e => setName(e.target.value)}
           placeholder="New category"
         />
-        <button onClick={add} className="btn-primary">Add</button>
+        <button onClick={add} className="btn-primary">
+          Add
+        </button>
       </div>
 
       <ul className="mt-6 space-y-2">
         {categories.map((c: string) => (
-          <li key={c} className="bg-white/10 p-3 rounded-xl">{c}</li>
+          <li key={c} className="bg-white/10 p-3 rounded-xl">
+            {c}
+          </li>
         ))}
       </ul>
 

@@ -5,6 +5,10 @@ import { Product } from "../../types";
 import ProductTable from "./ProductTable";
 import SellModal from "./SellModal";
 
+import AddProductForm from "./components/AddProductForm";
+import RestockModal from "./components/RestockModal";
+import EditProductModal from "./components/EditProductModal";
+
 type InventoryProps = {
   products: Product[];
   categories: string[];
@@ -21,20 +25,21 @@ type InventoryProps = {
   confirmSell: () => void;
 };
 
-export default function Inventory({
-  products,
-  categories,
-  addProduct,
-  updateProduct,
-  deleteProduct,
-  restockProduct,
-  sellItem,
-  sellQty,
-  setSellQty,
-  setSellItem,
-  openSell,
-  confirmSell,
-}: InventoryProps) {
+export default function Inventory(props: InventoryProps) {
+  const {
+    products,
+    categories,
+    addProduct,
+    updateProduct,
+    deleteProduct,
+    restockProduct,
+    sellItem,
+    sellQty,
+    setSellQty,
+    setSellItem,
+    openSell,
+    confirmSell,
+  } = props;
 
   const [name, setName] = useState("");
   const [category, setCategory] = useState(categories?.[0] ?? "");
@@ -42,10 +47,6 @@ export default function Inventory({
   const [stock, setStock] = useState(0);
 
   const [editItem, setEditItem] = useState<Product | null>(null);
-  const [editName, setEditName] = useState("");
-  const [editCategory, setEditCategory] = useState("");
-  const [editPrice, setEditPrice] = useState(0);
-  const [editStock, setEditStock] = useState(0);
 
   const [restockItem, setRestockItem] = useState<Product | null>(null);
   const [restockAmount, setRestockAmount] = useState(1);
@@ -56,17 +57,8 @@ export default function Inventory({
     }
   }, [categories]);
 
-  useEffect(() => {
-    if (editItem) {
-      setEditName(editItem.name);
-      setEditCategory(editItem.category);
-      setEditPrice(editItem.price);
-      setEditStock(editItem.stock);
-    }
-  }, [editItem]);
-
   const addProductHandler = async () => {
-    if (!name.trim() || !category || price <= 0 || stock < 0) return;
+    if (!name.trim() || price <= 0 || stock < 0) return;
 
     const success = await addProduct({
       name: name.trim(),
@@ -77,22 +69,13 @@ export default function Inventory({
 
     if (success) {
       setName("");
-      setCategory(categories?.[0] ?? "");
       setPrice(0);
       setStock(0);
     }
   };
 
-  const saveEdit = async () => {
-    if (!editItem) return;
-
-    await updateProduct(editItem.id, {
-      name: editName,
-      category: editCategory,
-      price: editPrice,
-      stock: editStock,
-    });
-
+  const saveEdit = async (data: Product) => {
+    await updateProduct(data.id, data);
     setEditItem(null);
   };
 
@@ -120,9 +103,24 @@ export default function Inventory({
   };
 
   return (
-    <div>
-      <h2 className="text-3xl mb-4">Inventory</h2>
+    <div className="space-y-6">
+      <h2 className="text-3xl font-bold">Inventory</h2>
 
+      {/* ADD PRODUCT */}
+      <AddProductForm
+        name={name}
+        setName={setName}
+        category={category}
+        setCategory={setCategory}
+        price={price}
+        setPrice={setPrice}
+        stock={stock}
+        setStock={setStock}
+        categories={categories}
+        addProductHandler={addProductHandler}
+      />
+
+      {/* TABLE */}
       <ProductTable
         products={products}
         openSell={openSell}
@@ -131,6 +129,7 @@ export default function Inventory({
         onDelete={deleteProductHandler}
       />
 
+      {/* SELL MODAL */}
       <SellModal
         sellItem={sellItem}
         sellQty={sellQty}
@@ -140,20 +139,20 @@ export default function Inventory({
       />
 
       {/* EDIT MODAL */}
-      {editItem && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center">
-          <div className="bg-slate-900 p-6 rounded-2xl w-[400px] text-white">
-            <h2 className="text-xl mb-4">Edit Product</h2>
+      <EditProductModal
+        editItem={editItem}
+        setEditItem={setEditItem}
+        saveEdit={saveEdit}
+      />
 
-            <input value={editName} onChange={e => setEditName(e.target.value)} />
-            <input value={editPrice} onChange={e => setEditPrice(Number(e.target.value))} />
-
-            <button onClick={saveEdit}>Save</button>
-            <button onClick={() => setEditItem(null)}>Cancel</button>
-          </div>
-        </div>
-      )}
-
+      {/* RESTOCK MODAL */}
+      <RestockModal
+        restockItem={restockItem}
+        restockAmount={restockAmount}
+        setRestockAmount={setRestockAmount}
+        setRestockItem={setRestockItem}
+        saveRestock={saveRestock}
+      />
     </div>
   );
 }

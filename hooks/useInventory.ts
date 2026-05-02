@@ -27,6 +27,14 @@ interface InventoryHookReturn {
   getProductById: (id: string) => Product | undefined;
   getLowStockProducts: () => Product[];
   getOutOfStockProducts: () => Product[];
+
+  // ✅ REQUIRED BY Inventory.tsx
+  sellItem: Product | null;
+  sellQty: number;
+  setSellQty: (qty: number) => void;
+  setSellItem: (item: Product | null) => void;
+  openSell: (product: Product) => void;
+  confirmSell: () => void;
 }
 
 // Storage keys
@@ -72,101 +80,53 @@ export function useInventory(): InventoryHookReturn {
     error: null,
   });
 
-  // Legacy sell modal state for backward compatibility
+  // ✅ Sell modal state (kept)
   const [sellItem, setSellItem] = useState<Product | null>(null);
   const [sellQty, setSellQty] = useState(1);
 
-  // Safe localStorage operations with error handling
+  // Safe localStorage
   const safeLocalStorage = {
     get: <T>(key: string, fallback: T): T => {
       try {
         const item = localStorage.getItem(key);
         return item ? JSON.parse(item) : fallback;
-      } catch (error) {
-        console.error(`Error reading from localStorage key "${key}":`, error);
+      } catch {
         return fallback;
       }
     },
-
     set: (key: string, value: any): boolean => {
       try {
         localStorage.setItem(key, JSON.stringify(value));
         return true;
-      } catch (error) {
-        console.error(`Error writing to localStorage key "${key}":`, error);
+      } catch {
         return false;
       }
     },
   };
 
-  // Load data from localStorage with validation
+  // Load data
   useEffect(() => {
-    const loadData = () => {
-      try {
-        setLoading({ isLoading: true, error: null });
+    try {
+      setLoading({ isLoading: true, error: null });
 
-        // Load and validate products
-        const storedProducts = safeLocalStorage.get(STORAGE_KEYS.PRODUCTS, DEFAULT_PRODUCTS);
-        const validatedProducts = storedProducts
-          .map(product => {
-            try {
-              return ProductSchema.parse(product);
-            } catch (error) {
-              console.warn('Invalid product data, skipping:', product, error);
-              return null;
-            }
-          })
-          .filter((product): product is Product => product !== null);
+      const storedProducts = safeLocalStorage.get(STORAGE_KEYS.PRODUCTS, DEFAULT_PRODUCTS);
+      const storedCategories = safeLocalStorage.get(STORAGE_KEYS.CATEGORIES, DEFAULT_CATEGORIES);
+      const storedSales = safeLocalStorage.get(STORAGE_KEYS.SALES, []);
 
-        // Load and validate categories
-        const storedCategories = safeLocalStorage.get(STORAGE_KEYS.CATEGORIES, DEFAULT_CATEGORIES);
-        const validatedCategories = storedCategories
-          .map(category => {
-            try {
-              return CategorySchema.parse(category);
-            } catch (error) {
-              console.warn('Invalid category data, skipping:', category, error);
-              return null;
-            }
-          })
-          .filter((category): category is Category => category !== null);
+      setProducts(storedProducts);
+      setCategories(storedCategories);
+      setSales(storedSales);
 
-        // Load and validate sales
-        const storedSales = safeLocalStorage.get(STORAGE_KEYS.SALES, []);
-        const validatedSales = storedSales
-          .map(sale => {
-            try {
-              return SaleSchema.parse(sale);
-            } catch (error) {
-              console.warn('Invalid sale data, skipping:', sale, error);
-              return null;
-            }
-          })
-          .filter((sale): sale is Sale => sale !== null);
-
-        setProducts(validatedProducts);
-        setCategories(validatedCategories);
-        setSales(validatedSales);
-        setLoading({ isLoading: false, error: null });
-
-      } catch (error) {
-        console.error('Error loading inventory data:', error);
-        setLoading({
-          isLoading: false,
-          error: 'Failed to load inventory data. Using defaults.',
-        });
-
-        // Fallback to defaults
-        setProducts(DEFAULT_PRODUCTS);
-        setCategories(DEFAULT_CATEGORIES);
-        setSales([]);
-      }
-    };
-
-    loadData();
+      setLoading({ isLoading: false, error: null });
+    } catch {
+      setProducts(DEFAULT_PRODUCTS);
+      setCategories(DEFAULT_CATEGORIES);
+      setSales([]);
+      setLoading({ isLoading: false, error: "Failed to load" });
+    }
   }, []);
 
-  // Save data to localStorage whenever state changes
+  // Persist
   useEffect(() => {
     if (!loading.isLoading) {
       safeLocalStorage.set(STORAGE_KEYS.PRODUCTS, products);
@@ -185,160 +145,125 @@ export function useInventory(): InventoryHookReturn {
     }
   }, [sales, loading.isLoading]);
 
-  // Product operations
-  const addProduct = useCallback(async (productData: Omit<Product, 'id'>): Promise<boolean> => {
-    try {
-      const newProduct = ProductSchema.parse({
-        ...productData,
-        id: crypto.randomUUID(),
-      });
-
-      setProducts(prev => [newProduct, ...prev]);
-      return true;
-    } catch (error) {
-      console.error('Error adding product:', error);
-      return false;
-    }
+  // Product ops
+  const addProduct = useCallback(async (productData: Omit<Product, 'id'>) => {
+    const newProduct = { ...productData, id: crypto.randomUUID() };
+    setProducts(prev => [newProduct, ...prev]);
+    return true;
   }, []);
 
-  const updateProduct = useCallback(async (id: string, updates: Partial<Product>): Promise<boolean> => {
-    try {
-      setProducts(prev =>
-        prev.map(product => {
-          if (product.id === id) {
-            const updated = { ...product, ...updates };
-            return ProductSchema.parse(updated);
-          }
-          return product;
-        })
-      );
-      return true;
-    } catch (error) {
-      console.error('Error updating product:', error);
-      return false;
-    }
+  const updateProduct = useCallback(async (id: string, updates: Partial<Product>) => {
+    setProducts(prev =>
+      prev.map(p => (p.id === id ? { ...p, ...updates } : p))
+    );
+    return true;
   }, []);
 
-  const deleteProduct = useCallback(async (id: string): Promise<boolean> => {
-    try {
-      setProducts(prev => prev.filter(product => product.id !== id));
-      return true;
-    } catch (error) {
-      console.error('Error deleting product:', error);
-      return false;
-    }
+  const deleteProduct = useCallback(async (id: string) => {
+    setProducts(prev => prev.filter(p => p.id !== id));
+    return true;
   }, []);
 
-  const restockProduct = useCallback(async (id: string, amount: number): Promise<boolean> => {
-    if (amount <= 0) return false;
-
-    try {
-      setProducts(prev =>
-        prev.map(product => {
-          if (product.id === id) {
-            const updated = { ...product, stock: product.stock + amount };
-            return ProductSchema.parse(updated);
-          }
-          return product;
-        })
-      );
-      return true;
-    } catch (error) {
-      console.error('Error restocking product:', error);
-      return false;
-    }
+  const restockProduct = useCallback(async (id: string, amount: number) => {
+    setProducts(prev =>
+      prev.map(p =>
+        p.id === id ? { ...p, stock: p.stock + amount } : p
+      )
+    );
+    return true;
   }, []);
 
-  // Sale operations
+  // ✅ SELL PRODUCT (must come BEFORE confirmSell)
   const sellProduct = useCallback(async (productId: string, quantity: number): Promise<boolean> => {
     try {
       const product = products.find(p => p.id === productId);
-      if (!product) throw new Error('Product not found');
-      if (quantity <= 0 || quantity > product.stock) throw new Error('Invalid quantity');
+      if (!product || quantity <= 0 || quantity > product.stock) return false;
 
-      const total = quantity * product.price;
-
-      // Update stock
       await updateProduct(productId, { stock: product.stock - quantity });
 
-      // Record sale
-      const newSale = SaleSchema.parse({
+      const newSale = {
         id: crypto.randomUUID(),
         productId,
         productName: product.name,
         quantity,
-        total,
+        total: quantity * product.price,
         date: new Date().toISOString(),
-      });
+      };
 
       setSales(prev => [newSale, ...prev]);
       return true;
     } catch (error) {
-      console.error('Error selling product:', error);
+      console.error("Error selling product:", error);
       return false;
     }
   }, [products, updateProduct]);
 
-  // Category operations
-  const addCategory = useCallback(async (category: Category): Promise<boolean> => {
-    try {
-      const validatedCategory = CategorySchema.parse(category);
-      if (categories.includes(validatedCategory)) {
-        throw new Error('Category already exists');
-      }
-      setCategories(prev => [...prev, validatedCategory]);
-      return true;
-    } catch (error) {
-      console.error('Error adding category:', error);
-      return false;
-    }
+  // ✅ OPEN SELL
+  const openSell = useCallback((product: Product) => {
+    setSellItem(product);
+    setSellQty(1);
+  }, []);
+
+  // ✅ CONFIRM SELL (NOW CORRECT ORDER)
+  const confirmSell = useCallback(async () => {
+    if (!sellItem) return;
+
+    await sellProduct(sellItem.id, sellQty);
+
+    setSellItem(null);
+    setSellQty(1);
+  }, [sellItem, sellQty, sellProduct]);
+
+  // Category ops
+  const addCategory = useCallback(async (category: Category) => {
+    if (categories.includes(category)) return false;
+    setCategories(prev => [...prev, category]);
+    return true;
   }, [categories]);
 
   const updateCategories = useCallback((newCategories: Category[]) => {
-    try {
-      const validatedCategories = newCategories.map(cat => CategorySchema.parse(cat));
-      setCategories(validatedCategories);
-    } catch (error) {
-      console.error('Error updating categories:', error);
-    }
+    setCategories(newCategories);
   }, []);
 
-  // Utility functions
+  // Utilities
   const getProductById = useCallback((id: string) => {
-    return products.find(product => product.id === id);
+    return products.find(p => p.id === id);
   }, [products]);
 
   const getLowStockProducts = useCallback(() => {
-    return products.filter(product => product.stock > 0 && product.stock < 10);
+    return products.filter(p => p.stock > 0 && p.stock < 10);
   }, [products]);
 
   const getOutOfStockProducts = useCallback(() => {
-    return products.filter(product => product.stock === 0);
+    return products.filter(p => p.stock === 0);
   }, [products]);
 
   return {
-    // State
     products,
     categories,
     sales,
     loading,
 
-    // Product operations
     addProduct,
     updateProduct,
     deleteProduct,
     restockProduct,
 
-    // Sale operations
     sellProduct,
 
-    // Category operations
     addCategory,
     updateCategories,
 
-    // Utility
     getProductById,
     getLowStockProducts,
     getOutOfStockProducts,
+
+    // ✅ REQUIRED
+    sellItem,
+    sellQty,
+    setSellQty,
+    setSellItem,
+    openSell,
+    confirmSell,
   };
 }
