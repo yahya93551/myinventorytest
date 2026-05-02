@@ -47,7 +47,7 @@ export default function Sidebar({
   );
 
   return (
-    <div className={`${collapsed ? 'w-16' : 'w-64'} min-h-screen p-4 bg-slate-950/95 backdrop-blur-xl border-r border-white/10 flex flex-col transition-all duration-300`}>
+    <div className={`${collapsed ? 'w-16' : 'w-full lg:w-64'} p-4 bg-slate-950/95 backdrop-blur-xl border-r border-white/10 flex flex-col transition-all duration-300`}>
       
       {/* COLLAPSE TOGGLE */}
       <div className="mb-6 flex justify-end">

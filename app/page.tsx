@@ -18,7 +18,7 @@ export default function Page() {
     : "bg-slate-100 text-slate-950";
 
   return (
-    <div className={`flex min-h-screen flex-col md:flex-row ${theme}`}>
+    <div className={`flex min-h-screen items-start flex-col lg:flex-row ${theme}`}>
 
       <Sidebar
         page={page}
@@ -27,7 +27,7 @@ export default function Page() {
         setDark={setDark}
       />
 
-      <div className="flex-1 p-4 sm:p-6">
+      <div className="flex-1 flex-shrink-0 p-4 sm:p-6">
 
         {page === "dashboard" && (
           <Dashboard
