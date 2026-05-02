@@ -41,7 +41,7 @@ export default function Page() {
         )}
 
         {page === "sales" && (
-          <SalesPage sales={inventory.sales} />
+          <SalesPage />
         )}
 
         {page === "categories" && (

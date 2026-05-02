@@ -1,12 +1,9 @@
 "use client";
 
-import { Sale } from "../../types";
+import { useInventory } from "../../hooks/useInventory";
 
-type Props = {
-  sales: Sale[];
-};
-
-export default function SalesPage({ sales }: Props) {
+export default function SalesPage() {
+  const { sales } = useInventory();
   const total = sales.reduce((a, s) => a + s.total, 0);
 
   return (
