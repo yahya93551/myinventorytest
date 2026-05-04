@@ -16,6 +16,7 @@ export function useInventory() {
   const [sellItem, setSellItem] = useState<Product | null>(null);
   const [sellQty, setSellQty] = useState(1);
 
+  // ================= FETCH =================
   const fetchData = useCallback(async () => {
     setLoading({ isLoading: true, error: null });
 
@@ -34,7 +35,7 @@ export function useInventory() {
     fetchData();
   }, [fetchData]);
 
-  // ✅ FIXED TYPES
+  // ================= ADD PRODUCT =================
   const addProduct = useCallback(async (product: Omit<Product, "id">): Promise<boolean> => {
     const user = (await supabase.auth.getUser()).data.user;
 
@@ -47,7 +48,7 @@ export function useInventory() {
     return !error;
   }, [fetchData]);
 
-  // ✅ FIXED TYPES
+  // ================= UPDATE =================
   const updateProduct = useCallback(async (id: string, updates: Partial<Product>): Promise<boolean> => {
     const { error } = await supabase
       .from("products")
@@ -58,7 +59,7 @@ export function useInventory() {
     return !error;
   }, [fetchData]);
 
-  // ✅ FIXED TYPES
+  // ================= DELETE =================
   const deleteProduct = useCallback(async (id: string): Promise<boolean> => {
     const { error } = await supabase
       .from("products")
@@ -69,7 +70,7 @@ export function useInventory() {
     return !error;
   }, [fetchData]);
 
-  // ✅ FIXED TYPES
+  // ================= RESTOCK =================
   const restockProduct = useCallback(async (id: string, amount: number): Promise<boolean> => {
     const product = products.find((p) => p.id === id);
     if (!product) return false;
@@ -83,18 +84,21 @@ export function useInventory() {
     return !error;
   }, [products, fetchData]);
 
-  // ✅ FIXED TYPES
+  // ================= SELL =================
   const sellProduct = useCallback(async (productId: string, quantity: number): Promise<boolean> => {
     const product = products.find((p) => p.id === productId);
     if (!product) return false;
+    if (quantity > product.stock) return false; // prevent negative stock
 
     const user = (await supabase.auth.getUser()).data.user;
 
+    // Update stock
     const { error: updateError } = await supabase
       .from("products")
       .update({ stock: product.stock - quantity })
       .eq("id", productId);
 
+    // Insert sale (without 'date' – Supabase auto-fills created_at)
     const { error: saleError } = await supabase.from("sales").insert({
       product_id: productId,
       product_name: product.name,
@@ -108,23 +112,34 @@ export function useInventory() {
       return true;
     }
 
+    // If sale insertion failed, roll back stock update
+    if (saleError) {
+      await supabase
+        .from("products")
+        .update({ stock: product.stock })
+        .eq("id", productId);
+    }
+
     return false;
   }, [products, fetchData]);
 
+  // ================= SELL FLOW =================
   const openSell = (product: Product) => {
     setSellItem(product);
     setSellQty(1);
   };
 
-  const confirmSell = async () => {
-    if (!sellItem) return;
-
-    await sellProduct(sellItem.id, sellQty);
-
-    setSellItem(null);
-    setSellQty(1);
+  const confirmSell = async (): Promise<boolean> => {
+    if (!sellItem) return false;
+    const success = await sellProduct(sellItem.id, sellQty);
+    if (success) {
+      setSellItem(null);
+      setSellQty(1);
+    }
+    return success;
   };
 
+  // ================= CATEGORY =================
   const addCategory = useCallback(async (name: Category): Promise<boolean> => {
     const user = (await supabase.auth.getUser()).data.user;
 
@@ -141,6 +156,7 @@ export function useInventory() {
     setCategories(newCategories);
   };
 
+  // ================= HELPERS =================
   const getProductById = (id: string) =>
     products.find((p) => p.id === id);
 
@@ -174,6 +190,6 @@ export function useInventory() {
     setSellQty,
     setSellItem,
     openSell,
-    confirmSell,
+    confirmSell,   // returns boolean
   };
 }

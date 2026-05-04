@@ -29,7 +29,7 @@ type InventoryProps = {
 
 export default function Inventory(props: InventoryProps) {
   const {
-    products,
+    products: initialProducts,
     categories,
     updateProduct,
     deleteProduct,
@@ -41,6 +41,13 @@ export default function Inventory(props: InventoryProps) {
     openSell,
     confirmSell,
   } = props;
+
+  // 🔥 LOCAL PRODUCTS STATE (auto refresh)
+  const [products, setProducts] = useState(initialProducts);
+
+  useEffect(() => {
+    setProducts(initialProducts);
+  }, [initialProducts]);
 
   const [name, setName] = useState("");
   const [category, setCategory] = useState(categories?.[0] ?? "");
@@ -68,11 +75,10 @@ export default function Inventory(props: InventoryProps) {
   }, [categories]);
 
   // =====================================================
-  // ✅ FIXED API FUNCTION (REAL SUPABASE AUTH)
+  // ✅ API FUNCTION
   // =====================================================
   const addProductAPI = async (product: Omit<Product, "id">) => {
     try {
-      // ✅ REAL USER (NO FAKE API ROUTES)
       const {
         data: { user },
       } = await supabase.auth.getUser();
@@ -109,7 +115,7 @@ export default function Inventory(props: InventoryProps) {
         return false;
       }
 
-      return true;
+      return data.data; // 🔥 return inserted product
     } catch (err) {
       console.error(err);
       showMessage("error", "Network error");
@@ -136,17 +142,21 @@ export default function Inventory(props: InventoryProps) {
       return;
     }
 
-    const success = await addProductAPI({
+    const newProduct = await addProductAPI({
       name: name.trim(),
       category,
       price,
       stock,
     });
 
-    if (success) {
+    if (newProduct) {
+      // 🔥 INSTANT TABLE UPDATE
+      setProducts((prev) => [newProduct, ...prev]);
+
       setName("");
       setPrice(0);
       setStock(0);
+
       showMessage("success", "Product added successfully");
     }
   };
@@ -176,6 +186,8 @@ export default function Inventory(props: InventoryProps) {
       const success = await deleteProduct(id);
 
       if (success) {
+        // 🔥 REMOVE FROM UI
+        setProducts((prev) => prev.filter((p) => p.id !== id));
         showMessage("success", "Product deleted successfully");
       } else {
         showMessage("error", "Failed to delete product");
@@ -249,7 +261,7 @@ export default function Inventory(props: InventoryProps) {
       <section>
         <div className="rounded-2xl overflow-auto max-h-[65vh] bg-white/5">
           <ProductTable
-            products={products}
+            products={products} // 🔥 USE LOCAL STATE
             openSell={openSell}
             onEdit={setEditItem}
             onRestock={openRestockModal}

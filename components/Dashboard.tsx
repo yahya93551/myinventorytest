@@ -1,13 +1,24 @@
 ﻿//app/components/Dashboard.tsx
-import { Product, Sale } from "../types";
+import { useInventory } from "../hooks/useInventory";
 import StatsCards from "./StatsCards";
 
-type DashboardProps = {
-  products: Product[];
-  sales: Sale[];
-};
+export default function Dashboard() {
+  // 🔥 Directly use the live hook – always up‑to‑date
+  const { products, sales } = useInventory();
 
-export default function Dashboard({ products, sales }: DashboardProps) {
+  // Helper: safely extract a valid Date object from a sale (handles both 'date' and 'created_at')
+  const getSaleDate = (sale: any): Date | null => {
+    const raw = sale.date || sale.created_at;
+    if (!raw) return null;
+    const d = new Date(raw);
+    return isNaN(d.getTime()) ? null : d;
+  };
+
+  // Helper: get display product name (handles both 'productName' and 'product_name')
+  const getProductName = (sale: any): string => {
+    return sale.productName || sale.product_name || "Unknown";
+  };
+
   const total = products.length;
   const value = products.reduce((a, p) => a + p.price * p.stock, 0);
   const low = products.filter((p) => p.stock < 10 && p.stock > 0).length;
@@ -16,9 +27,13 @@ export default function Dashboard({ products, sales }: DashboardProps) {
   const revenue = sales.reduce((acc, sale) => acc + sale.total, 0);
   const orders = sales.length;
   const averageSale = orders ? (revenue / orders).toFixed(2) : "0.00";
-  const lastSaleDate = sales[0]?.date
-    ? new Date(sales[0].date).toLocaleDateString()
-    : "No sales yet";
+
+  // Last sale date – safely
+  let lastSaleDate = "No sales yet";
+  if (sales.length > 0) {
+    const lastDate = getSaleDate(sales[0]);
+    lastSaleDate = lastDate ? lastDate.toLocaleDateString() : "Invalid date";
+  }
 
   const topProducts = [...products]
     .sort((a, b) => b.stock - a.stock)
@@ -71,20 +86,25 @@ export default function Dashboard({ products, sales }: DashboardProps) {
             <p className="text-gray-300">No sales have been recorded yet.</p>
           ) : (
             <div className="space-y-3">
-              {sales.slice(0, 5).map((sale) => (
-                <div key={sale.id} className="rounded-2xl bg-black/20 p-4">
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <p className="font-semibold">{sale.productName}</p>
-                      <p className="text-sm text-gray-400">{sale.quantity} units</p>
+              {sales.slice(0, 5).map((sale) => {
+                const saleDate = getSaleDate(sale);
+                return (
+                  <div key={sale.id} className="rounded-2xl bg-black/20 p-4">
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <p className="font-semibold">{getProductName(sale)}</p>
+                        <p className="text-sm text-gray-400">
+                          {sale.quantity} units
+                        </p>
+                      </div>
+                      <p className="text-lg font-bold">${sale.total}</p>
                     </div>
-                    <p className="text-lg font-bold">${sale.total}</p>
+                    <p className="text-sm text-gray-400 mt-2">
+                      {saleDate ? saleDate.toLocaleString() : "No date"}
+                    </p>
                   </div>
-                  <p className="text-sm text-gray-400 mt-2">
-                    {new Date(sale.date).toLocaleString()}
-                  </p>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
