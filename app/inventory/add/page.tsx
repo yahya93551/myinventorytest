@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import AddProductForm from "../components/AddProductForm";
 import { supabase } from "@/lib/supabase";
 
@@ -15,6 +16,7 @@ type Product = {
 
 export default function AddPage() {
   const [categories, setCategories] = useState<string[]>([]);
+  const [loadingCategories, setLoadingCategories] = useState(true);
 
   const [name, setName] = useState("");
   const [category, setCategory] = useState("");
@@ -27,8 +29,17 @@ export default function AddPage() {
   // ================= CATEGORIES =================
   useEffect(() => {
     const fetchCategories = async () => {
-      const { data } = await supabase.from("categories").select("name");
-      setCategories(data?.map((c: any) => c.name) || []);
+      setLoadingCategories(true);
+
+      const { data, error } = await supabase.from("categories").select("name");
+      if (error) {
+        setMessage("Failed to load categories: " + error.message);
+        setCategories([]);
+      } else {
+        setCategories(data?.map((c: any) => c.name) || []);
+      }
+
+      setLoadingCategories(false);
     };
 
     fetchCategories();
@@ -41,19 +52,18 @@ export default function AddPage() {
   }, [categories]);
 
   // ================= ADD PRODUCT =================
+  const router = useRouter();
+
   const addProduct = async (product: Omit<Product, "id">) => {
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      const token = session?.access_token;
-
-      if (!token) {
-        setMessage("❌ Not authenticated");
+      const { data, error: authError } = await supabase.auth.getSession();
+      if (authError || !data.session?.access_token) {
+        setMessage("❌ Session expired. Please log in again.");
+        router.push("/login");
         return false;
       }
 
+      const token = data.session.access_token;
       const res = await fetch("/api/products", {
         method: "POST",
         headers: {
@@ -63,15 +73,15 @@ export default function AddPage() {
         body: JSON.stringify(product),
       });
 
-      const data = await res.json();
-
+      const dataResponse = await res.json();
       if (!res.ok) {
-        setMessage("❌ " + (data.error || "Failed"));
+        setMessage("❌ " + (dataResponse.error || "Failed to add product"));
         return false;
       }
 
       return true;
-    } catch {
+    } catch (error) {
+      console.error(error);
       setMessage("❌ Network error");
       return false;
     }
@@ -129,6 +139,7 @@ export default function AddPage() {
         stock={stock}
         setStock={setStock}
         categories={categories}
+        loadingCategories={loadingCategories}
         addProductHandler={addProductHandler}
       />
 

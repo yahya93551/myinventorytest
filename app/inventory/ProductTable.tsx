@@ -7,12 +7,14 @@ export default function ProductTable({
   onEdit,
   onRestock,
   onDelete,
+  loading = false,
 }: {
   products?: Product[];
   openSell: (product: Product) => void;
   onEdit?: (product: Product) => void;
   onRestock?: (product: Product) => void;
   onDelete?: (id: string) => void;
+  loading?: boolean;
 }) {
   return (
     <div className="w-full max-h-[70vh] overflow-auto rounded-2xl bg-white/10">
@@ -30,7 +32,16 @@ export default function ProductTable({
         </thead>
 
         <tbody>
-          {products.length === 0 ? (
+          {loading ? (
+            <tr>
+              <td colSpan={5} className="p-8 text-center text-gray-400">
+                <div className="inline-flex items-center gap-2">
+                  <span className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                  Loading products...
+                </div>
+              </td>
+            </tr>
+          ) : products.length === 0 ? (
             <tr>
               <td colSpan={5} className="p-6 text-center text-gray-400">
                 No inventory items found.

@@ -11,6 +11,7 @@ type Props = {
   stock: number;
   setStock: (v: number) => void;
   categories: string[];
+  loadingCategories?: boolean;
   addProductHandler: () => void;
 };
 
@@ -24,6 +25,7 @@ export default function AddProductForm({
   stock,
   setStock,
   categories,
+  loadingCategories = false,
   addProductHandler,
 }: Props) {
   return (
@@ -50,8 +52,11 @@ export default function AddProductForm({
             className="input text-white bg-slate-800"
             value={category}
             onChange={(e) => setCategory(e.target.value)}
+            disabled={loadingCategories}
           >
-            {(categories || []).length === 0 ? (
+            {loadingCategories ? (
+              <option>Loading categories...</option>
+            ) : (categories || []).length === 0 ? (
               <option className="text-black">No categories</option>
             ) : (
               (categories || []).map((c) => (

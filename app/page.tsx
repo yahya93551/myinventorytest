@@ -26,8 +26,8 @@ export default function Page() {
   // ================= AUTH PROTECTION =================
   useEffect(() => {
     const checkUser = async () => {
-      const { data } = await supabase.auth.getUser();
-      if (!data.user) {
+      const { data, error } = await supabase.auth.getUser();
+      if (error || !data.user) {
         router.push("/login");
       }
     };
@@ -63,13 +63,15 @@ export default function Page() {
 
         {/* SALES */}
         {page === "sales" && (
-          <SalesPage />
+          <SalesPage sales={inventory.sales} loading={inventory.loading} />
         )}
 
         {/* CATEGORIES */}
         {page === "categories" && (
           <Categories
             categories={inventory.categories}
+            loading={inventory.loading.isLoading}
+            error={inventory.loading.error}
             addCategory={inventory.addCategory}
           />
         )}

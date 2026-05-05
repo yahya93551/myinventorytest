@@ -1,7 +1,7 @@
 "use client";
 
-import { useInventory } from "../../hooks/useInventory";
 import { useMemo, useState } from "react";
+import { Sale, LoadingState } from "../../types";
 
 import {
   LineChart,
@@ -12,9 +12,12 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
-export default function SalesPage() {
-  const { sales } = useInventory();
+type SalesPageProps = {
+  sales: Sale[];
+  loading: LoadingState;
+};
 
+export default function SalesPage({ sales, loading }: SalesPageProps) {
   const [filterDate, setFilterDate] = useState("");
 
   // ================= SAFE DATE (supports both 'date' and 'created_at') =================
@@ -88,6 +91,12 @@ export default function SalesPage() {
       {/* TITLE */}
       <h2 className="text-3xl font-bold">Sales Dashboard</h2>
 
+      {loading.error && (
+        <div className="rounded-xl bg-red-500/10 p-4 text-sm text-red-100">
+          {loading.error}
+        </div>
+      )}
+
       {/* FILTER */}
       <div className="flex gap-4 items-center">
         <label className="text-sm text-gray-300">Filter by date:</label>
@@ -125,7 +134,16 @@ export default function SalesPage() {
             </tr>
           </thead>
           <tbody>
-            {filteredSales.length === 0 ? (
+            {loading.isLoading ? (
+              <tr>
+                <td colSpan={4} className="p-8 text-center text-gray-400">
+                  <div className="inline-flex items-center gap-2">
+                    <span className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                    Fetching sales...
+                  </div>
+                </td>
+              </tr>
+            ) : filteredSales.length === 0 ? (
               <tr>
                 <td colSpan={4} className="p-4 text-center text-gray-400">
                   No sales found
@@ -148,7 +166,9 @@ export default function SalesPage() {
       {/* DAILY SUMMARY */}
       <div className="bg-white/5 p-4 rounded-2xl">
         <h3 className="text-lg mb-3">Daily Revenue</h3>
-        {Object.keys(dailySummary).length === 0 ? (
+        {loading.isLoading ? (
+          <p className="text-gray-400">Loading summary...</p>
+        ) : Object.keys(dailySummary).length === 0 ? (
           <p className="text-gray-400">No data</p>
         ) : (
           <ul className="space-y-1 text-sm">
@@ -167,16 +187,22 @@ export default function SalesPage() {
       {/* CHART */}
       <div className="bg-white/5 p-4 rounded-2xl max-w-full">
         <h3 className="text-lg mb-3">Revenue Chart</h3>
-        <div className="w-full h-72">
-          <ResponsiveContainer>
-            <LineChart data={chartData}>
-              <XAxis dataKey="date" />
-              <YAxis />
-              <Tooltip />
-              <Line type="monotone" dataKey="total" />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
+        {loading.isLoading ? (
+          <div className="h-72 flex items-center justify-center text-gray-400">
+            Loading chart...
+          </div>
+        ) : (
+          <div className="w-full h-72">
+            <ResponsiveContainer>
+              <LineChart data={chartData}>
+                <XAxis dataKey="date" />
+                <YAxis />
+                <Tooltip />
+                <Line type="monotone" dataKey="total" />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
       </div>
     </div>
   );

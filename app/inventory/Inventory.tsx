@@ -14,6 +14,10 @@ import { supabase } from "@/lib/supabase";
 type InventoryProps = {
   products: Product[];
   categories: string[];
+  loading: {
+    isLoading: boolean;
+    error: string | null;
+  };
 
   updateProduct: (id: string, updates: Partial<Product>) => Promise<boolean>;
   deleteProduct: (id: string) => Promise<boolean>;
@@ -31,6 +35,7 @@ export default function Inventory(props: InventoryProps) {
   const {
     products: initialProducts,
     categories,
+    loading,
     updateProduct,
     deleteProduct,
     restockProduct,
@@ -226,6 +231,21 @@ export default function Inventory(props: InventoryProps) {
   return (
     <div className="w-full space-y-8 px-2 sm:px-4 lg:px-6">
 
+      {loading.isLoading && (
+        <div className="p-3 rounded-xl text-sm font-medium bg-sky-500/10 text-sky-200">
+          <span className="inline-flex items-center gap-2">
+            <span className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+            Loading inventory...
+          </span>
+        </div>
+      )}
+
+      {loading.error && (
+        <div className="p-3 rounded-xl text-sm font-medium bg-red-500/10 text-red-300">
+          Error loading inventory: {loading.error}
+        </div>
+      )}
+
       {/* MESSAGE */}
       {message && (
         <div
@@ -262,6 +282,7 @@ export default function Inventory(props: InventoryProps) {
         <div className="rounded-2xl overflow-auto max-h-[65vh] bg-white/5">
           <ProductTable
             products={products} // 🔥 USE LOCAL STATE
+            loading={loading.isLoading}
             openSell={openSell}
             onEdit={setEditItem}
             onRestock={openRestockModal}
