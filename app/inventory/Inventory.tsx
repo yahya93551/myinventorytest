@@ -1,9 +1,10 @@
 ﻿"use client";
 
 import { useEffect, useState } from "react";
-import { Product } from "../../types";
+import { Product, BulkSaleItem, ProductForm } from "../../types";
 import ProductTable from "./ProductTable";
 import SellModal from "./SellModal";
+import BulkSellModal from "./BulkSellModal";
 
 import AddProductForm from "./components/AddProductForm";
 import RestockModal from "./components/RestockModal";
@@ -29,11 +30,13 @@ type InventoryProps = {
   setSellItem: (item: Product | null) => void;
   openSell: (product: Product) => void;
   confirmSell: () => void;
+  sellProducts: (items: BulkSaleItem[]) => Promise<boolean>;
+  addProduct: (product: ProductForm) => Promise<boolean>;
 };
 
 export default function Inventory(props: InventoryProps) {
   const {
-    products: initialProducts,
+    products,
     categories,
     loading,
     updateProduct,
@@ -45,14 +48,9 @@ export default function Inventory(props: InventoryProps) {
     setSellItem,
     openSell,
     confirmSell,
+    sellProducts,
+    addProduct,
   } = props;
-
-  // 🔥 LOCAL PRODUCTS STATE (auto refresh)
-  const [products, setProducts] = useState(initialProducts);
-
-  useEffect(() => {
-    setProducts(initialProducts);
-  }, [initialProducts]);
 
   const [name, setName] = useState("");
   const [category, setCategory] = useState(categories?.[0] ?? "");
@@ -62,6 +60,7 @@ export default function Inventory(props: InventoryProps) {
   const [editItem, setEditItem] = useState<Product | null>(null);
   const [restockItem, setRestockItem] = useState<Product | null>(null);
   const [restockAmount, setRestockAmount] = useState(1);
+  const [bulkSellOpen, setBulkSellOpen] = useState(false);
 
   const [message, setMessage] = useState<{
     type: "success" | "error";
@@ -82,55 +81,6 @@ export default function Inventory(props: InventoryProps) {
   // =====================================================
   // ✅ API FUNCTION
   // =====================================================
-  const addProductAPI = async (product: Omit<Product, "id">) => {
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        showMessage("error", "You must be logged in");
-        return false;
-      }
-
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      const token = session?.access_token;
-
-      if (!token) {
-        showMessage("error", "Session expired. Please login again");
-        return false;
-      }
-
-      const res = await fetch("/api/products", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(product),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        showMessage("error", data.error || "Failed to add product");
-        return false;
-      }
-
-      return data.data; // 🔥 return inserted product
-    } catch (err) {
-      console.error(err);
-      showMessage("error", "Network error");
-      return false;
-    }
-  };
-
-  // =====================================================
-  // ADD PRODUCT
-  // =====================================================
   const addProductHandler = async () => {
     if (!name.trim()) {
       showMessage("error", "Product name is required");
@@ -147,22 +97,20 @@ export default function Inventory(props: InventoryProps) {
       return;
     }
 
-    const newProduct = await addProductAPI({
+    const success = await addProduct({
       name: name.trim(),
       category,
       price,
       stock,
     });
 
-    if (newProduct) {
-      // 🔥 INSTANT TABLE UPDATE
-      setProducts((prev) => [newProduct, ...prev]);
-
+    if (success) {
       setName("");
       setPrice(0);
       setStock(0);
-
       showMessage("success", "Product added successfully");
+    } else {
+      showMessage("error", "Failed to add product");
     }
   };
 
@@ -187,16 +135,17 @@ export default function Inventory(props: InventoryProps) {
     const product = products.find((p) => p.id === id);
     if (!product) return;
 
-    if (confirm(`Delete ${product.name}?`)) {
-      const success = await deleteProduct(id);
+    const confirmed = confirm(
+      `Delete ${product.name}? This will delete only your own product.`
+    );
+    if (!confirmed) return;
 
-      if (success) {
-        // 🔥 REMOVE FROM UI
-        setProducts((prev) => prev.filter((p) => p.id !== id));
-        showMessage("success", "Product deleted successfully");
-      } else {
-        showMessage("error", "Failed to delete product");
-      }
+    const success = await deleteProduct(id);
+
+    if (success) {
+      showMessage("success", "Product deleted successfully");
+    } else {
+      showMessage("error", "Failed to delete product. Only your own products can be removed.");
     }
   };
 
@@ -259,7 +208,15 @@ export default function Inventory(props: InventoryProps) {
         </div>
       )}
 
-      <h2 className="text-2xl sm:text-3xl font-bold">Inventory</h2>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-2xl sm:text-3xl font-bold">Inventory</h2>
+        <button
+          onClick={() => setBulkSellOpen(true)}
+          className="rounded-2xl bg-slate-800 px-4 py-2 text-sm text-white hover:bg-slate-700"
+        >
+          Sell multiple items
+        </button>
+      </div>
 
       {/* ADD PRODUCT */}
       <section>
@@ -281,7 +238,7 @@ export default function Inventory(props: InventoryProps) {
       <section>
         <div className="rounded-2xl overflow-auto max-h-[65vh] bg-white/5">
           <ProductTable
-            products={products} // 🔥 USE LOCAL STATE
+            products={products}
             loading={loading.isLoading}
             openSell={openSell}
             onEdit={setEditItem}
@@ -300,8 +257,17 @@ export default function Inventory(props: InventoryProps) {
         confirmSell={confirmSell}
       />
 
+      <BulkSellModal
+        isOpen={bulkSellOpen}
+        products={products}
+        onClose={() => setBulkSellOpen(false)}
+        onConfirm={sellProducts}
+        showMessage={showMessage}
+      />
+
       <EditProductModal
         editItem={editItem}
+        categories={categories}
         setEditItem={setEditItem}
         saveEdit={saveEdit}
       />

@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import Sidebar from "@/components/Sidebar";
-import Inventory from "./Inventory";
+import Categories from "@/components/Categories";
 import { useInventory } from "@/hooks/useInventory";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 
-export default function InventoryPage() {
+export default function CategoriesPage() {
   const inventory = useInventory();
   const [dark, setDark] = useState(true);
   const router = useRouter();
@@ -31,7 +31,14 @@ export default function InventoryPage() {
     <div className={`flex min-h-screen items-start flex-col lg:flex-row ${theme}`}>
       <Sidebar dark={dark} setDark={setDark} />
       <div className="flex-1 p-4 sm:p-6">
-        <Inventory {...inventory} />
+        <Categories
+          categories={inventory.categories}
+          loading={inventory.loading.isLoading}
+          error={inventory.loading.error}
+          addCategory={inventory.addCategory}
+          updateCategory={inventory.updateCategory}
+          deleteCategory={inventory.deleteCategory}
+        />
       </div>
     </div>
   );

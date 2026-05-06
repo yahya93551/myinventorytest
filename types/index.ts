@@ -8,6 +8,7 @@ export const ProductSchema = z.object({
   category: z.string().min(1, 'Category is required'),
   price: z.number().positive('Price must be positive').max(999999, 'Price too high'),
   stock: z.number().int().min(0, 'Stock cannot be negative'),
+  user_id: z.string().uuid().optional(),
 });
 
 export const SaleSchema = z.object({
@@ -29,6 +30,10 @@ export type Category = z.infer<typeof CategorySchema>;
 // Form types (for partial updates)
 export type ProductForm = Omit<Product, 'id'>;
 export type SaleForm = Omit<Sale, 'id' | 'date'>;
+export type BulkSaleItem = {
+  productId: string;
+  quantity: number;
+};
 
 // API Response types
 export interface ApiResponse<T> {

@@ -19,39 +19,20 @@ import {
 } from "lucide-react";
 
 type Props = {
-  page: string;
-  setPage: (page: string) => void;
   dark: boolean;
   setDark: (value: boolean) => void;
 };
 
-export default function Sidebar({
-  page,
-  setPage,
-  dark,
-  setDark,
-}: Props) {
+export default function Sidebar({ dark, setDark }: Props) {
   const pathname = usePathname();
 
   const [collapsed, setCollapsed] = useState(false);
   const [open, setOpen] = useState(false);
 
-  const handleClick = (name: string) => {
-    setPage(name);
-    setOpen(false);
-  };
-
-  const link = (name: string, label: string, icon: React.ReactNode) => (
-    <button
-      onClick={() => handleClick(name)}
-      className={`w-full text-left px-2 py-3 rounded-xl transition flex items-center gap-3 ${
-        page === name ? "bg-white/20" : "hover:bg-white/10"
-      }`}
-    >
-      {icon}
-      {!collapsed && <span>{label}</span>}
-    </button>
-  );
+  const navClass = (active: boolean) =>
+    `w-full text-left px-2 py-3 rounded-xl transition flex items-center gap-3 ${
+      active ? "bg-white/20" : "hover:bg-white/10"
+    }`;
 
   return (
     <>
@@ -108,34 +89,55 @@ export default function Sidebar({
 
         {/* NAV */}
         <div className="flex-1 flex flex-col gap-2">
-          {link("dashboard", "Dashboard", <LayoutDashboard size={20} />)}
-          {link("inventory", "Inventory", <Package size={20} />)}
+          <Link
+            href="/"
+            onClick={() => setOpen(false)}
+            className={navClass(pathname === "/")}
+          >
+            <LayoutDashboard size={20} />
+            {!collapsed && <span>Dashboard</span>}
+          </Link>
 
-          {/* ✅ FIXED: REAL ROUTE */}
+          <Link
+            href="/inventory"
+            onClick={() => setOpen(false)}
+            className={navClass(pathname?.startsWith("/inventory") === true)}
+          >
+            <Package size={20} />
+            {!collapsed && <span>Inventory</span>}
+          </Link>
+
           <Link
             href="/inventory/add"
             onClick={() => setOpen(false)}
-            className={`px-2 py-3 rounded-xl flex items-center gap-3 ${
-              pathname === "/inventory/add"
-                ? "bg-white/20"
-                : "hover:bg-white/10"
-            }`}
+            className={navClass(pathname === "/inventory/add")}
           >
             <Plus size={20} />
             {!collapsed && <span>Add Product</span>}
           </Link>
 
-          {link("categories", "Categories", <Tag size={20} />)}
-          {link("sales", "Sales", <ShoppingCart size={20} />)}
+          <Link
+            href="/categories"
+            onClick={() => setOpen(false)}
+            className={navClass(pathname === "/categories")}
+          >
+            <Tag size={20} />
+            {!collapsed && <span>Categories</span>}
+          </Link>
+
+          <Link
+            href="/sales"
+            onClick={() => setOpen(false)}
+            className={navClass(pathname === "/sales")}
+          >
+            <ShoppingCart size={20} />
+            {!collapsed && <span>Sales</span>}
+          </Link>
 
           <Link
             href="/reports"
             onClick={() => setOpen(false)}
-            className={`px-2 py-3 rounded-xl flex items-center gap-3 ${
-              pathname === "/reports"
-                ? "bg-white/20"
-                : "hover:bg-white/10"
-            }`}
+            className={navClass(pathname === "/reports")}
           >
             <FileText size={20} />
             {!collapsed && <span>Reports</span>}

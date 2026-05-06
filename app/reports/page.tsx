@@ -1,11 +1,11 @@
-//app/layout.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { Sale } from "../../types";
 import Sidebar from "@/components/Sidebar";
-import * as XLSX from "xlsx";
+import { jsPDF } from "jspdf";
 import {
   Download,
   DollarSign,
@@ -15,7 +15,6 @@ import {
 } from "lucide-react";
 
 export default function ReportsPage() {
-  const [page, setPage] = useState("reports");
   const [dark, setDark] = useState(true);
   const [sales, setSales] = useState<Sale[]>([]);
   const [filter, setFilter] = useState<"7d" | "30d" | "all">("all");
@@ -80,7 +79,7 @@ export default function ReportsPage() {
     if (filteredSales.length === 0) return "No sales yet";
     const latest = filteredSales[0];
     const saleDate = getSaleDate(latest);
-    return saleDate ? saleDate.toLocaleString() : "Invalid date";
+    return saleDate ? saleDate.toLocaleString('en-US', { timeZone: 'Africa/Mogadishu' }) : "Invalid date";
   }, [filteredSales]);
 
   // Top product
@@ -120,23 +119,48 @@ export default function ReportsPage() {
     return map;
   }, [filteredSales]);
 
-  // Excel export (uses the original raw date for sorting, but displays formatted)
-  const downloadExcel = () => {
-    const data = filteredSales.map((sale) => {
+  const downloadPdf = () => {
+    const doc = new jsPDF({ unit: "pt", format: "letter" });
+    const margin = 40;
+    const lineHeight = 18;
+    let y = 60;
+
+    doc.setFontSize(18);
+    doc.text("Sales Report", margin, y);
+    y += lineHeight * 1.5;
+
+    doc.setFontSize(11);
+    doc.text("Sale ID", margin, y);
+    doc.text("Product", margin + 80, y);
+    doc.text("Qty", margin + 260, y);
+    doc.text("Total", margin + 320, y);
+    doc.text("Date", margin + 400, y);
+    y += lineHeight;
+
+    filteredSales.forEach((sale, index) => {
       const saleDate = getSaleDate(sale);
-      return {
-        "Sale ID": sale.id,
-        Product: sale.productName || sale.productName || "Unknown",
-        Quantity: sale.quantity,
-        Total: Number(sale.total || 0),
-        Date: saleDate ? saleDate.toLocaleString() : "No date",
-      };
+      const row = [
+        String(sale.id ?? ""),
+        sale.productName || sale.productName || "Unknown",
+        String(sale.quantity ?? ""),
+        `$${Number(sale.total || 0).toFixed(2)}`,
+        saleDate ? saleDate.toLocaleString('en-US', { timeZone: 'Africa/Mogadishu' }) : "No date",
+      ];
+
+      if (y > 740) {
+        doc.addPage();
+        y = 60;
+      }
+
+      doc.text(row[0], margin, y);
+      doc.text(row[1], margin + 80, y, { maxWidth: 160 });
+      doc.text(row[2], margin + 260, y);
+      doc.text(row[3], margin + 320, y);
+      doc.text(row[4], margin + 400, y, { maxWidth: 180 });
+      y += lineHeight;
     });
 
-    const worksheet = XLSX.utils.json_to_sheet(data);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Sales Report");
-    XLSX.writeFile(workbook, "sales-report.xlsx");
+    doc.save("sales-report.pdf");
   };
 
   const theme = dark
@@ -145,7 +169,7 @@ export default function ReportsPage() {
 
   return (
     <div className={`flex min-h-screen items-start flex-col lg:flex-row ${theme}`}>
-      <Sidebar page={page} setPage={setPage} dark={dark} setDark={setDark} />
+      <Sidebar dark={dark} setDark={setDark} />
 
       <div className="flex-1 p-4 sm:p-6">
         <div className="min-h-screen px-4 py-6 sm:px-6 lg:px-8 text-slate-100">
@@ -153,6 +177,14 @@ export default function ReportsPage() {
             {/* HEADER */}
             <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
               <div>
+                <div className="flex items-center gap-3 mb-3">
+                  <Link
+                    href="/"
+                    className="rounded-full bg-slate-900 px-3 py-1 text-sm text-cyan-400 hover:bg-slate-800"
+                  >
+                    ← Back to Dashboard
+                  </Link>
+                </div>
                 <h2 className="text-3xl font-semibold">Reports</h2>
                 {/* FILTER BUTTONS */}
                 <div className="flex gap-2 mt-3">
@@ -179,11 +211,11 @@ export default function ReportsPage() {
 
               {/* EXPORT BUTTON */}
               <button
-                onClick={downloadExcel}
+                onClick={downloadPdf}
                 className="rounded-2xl bg-cyan-500 px-6 py-3 font-semibold text-slate-950 flex items-center gap-2"
               >
                 <Download size={20} />
-                Download Excel
+                Download PDF
               </button>
             </div>
 
@@ -277,7 +309,7 @@ export default function ReportsPage() {
                           <td>{sale.productName || sale.productName || "Unknown"}</td>
                           <td>{sale.quantity}</td>
                           <td>${Number(sale.total || 0)}</td>
-                          <td>{saleDate ? saleDate.toLocaleString() : "No date"}</td>
+                          <td>{saleDate ? saleDate.toLocaleString('en-US', { timeZone: 'Africa/Mogadishu' }) : "No date"}</td>
                         </tr>
                       );
                     })

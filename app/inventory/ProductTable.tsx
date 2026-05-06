@@ -59,11 +59,12 @@ export default function ProductTable({
                 <td className="p-3 flex flex-wrap gap-2">
 
                   <button
-                    onClick={() => openSell(p)}
-                    className="text-green-400 flex items-center gap-1"
+                    onClick={() => p.stock > 0 && openSell(p)}
+                    className={`flex items-center gap-1 ${p.stock === 0 ? "text-gray-500 cursor-not-allowed" : "text-green-400"}`}
+                    disabled={p.stock === 0}
                   >
                     <ShoppingCart size={16} />
-                    Sell
+                    {p.stock === 0 ? "Out of stock" : "Sell"}
                   </button>
 
                   <button

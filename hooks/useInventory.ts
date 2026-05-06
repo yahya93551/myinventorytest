@@ -2,7 +2,24 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { Product, Sale, Category, LoadingState } from "../types";
+import {
+  BulkSaleItem,
+  Product,
+  ProductForm,
+  Sale,
+  Category,
+  LoadingState,
+  ProductSchema,
+  CategorySchema,
+} from "../types";
+
+const ProductFormSchema = ProductSchema.omit({ id: true, user_id: true });
+const ProductUpdateSchema = ProductSchema.partial().omit({ id: true, user_id: true }).refine(
+  (data) => Object.keys(data).length > 0,
+  {
+    message: "At least one field must be provided for update",
+  }
+);
 
 export function useInventory() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -51,124 +68,298 @@ export function useInventory() {
     fetchData();
   }, [fetchData]);
 
-  // ================= ADD PRODUCT =================
-  const addProduct = useCallback(async (product: Omit<Product, "id">): Promise<boolean> => {
+  const formatZodError = (issues: { message: string }[]) =>
+    issues.map((issue) => issue.message).join(", ");
+
+  const authUser = useCallback(async () => {
     const { data: userData, error: authError } = await supabase.auth.getUser();
     const user = userData?.user;
 
     if (authError || !user) {
       setLoading({ isLoading: false, error: "Authentication required" });
+      return null;
+    }
+
+    return user;
+  }, []);
+
+  const handleMutationError = useCallback(
+    (error: string) => {
+      setLoading({ isLoading: false, error });
       return false;
-    }
+    },
+    []
+  );
 
-    const { error } = await supabase.from("products").insert({
-      ...product,
-      user_id: user.id,
-    });
+  // ================= ADD PRODUCT =================
+  const addProduct = useCallback(
+    async (product: ProductForm): Promise<boolean> => {
+      const parseResult = ProductFormSchema.safeParse(product);
+      if (!parseResult.success) {
+        return handleMutationError(formatZodError(parseResult.error.issues));
+      }
 
-    if (!error) {
-      await fetchData();
-      return true;
-    }
+      const user = await authUser();
+      if (!user) return false;
 
-    setLoading({ isLoading: false, error: error.message });
-    return false;
-  }, [fetchData]);
+      const { error } = await supabase.from("products").insert({
+        ...product,
+        user_id: user.id,
+      });
+
+      if (!error) {
+        await fetchData();
+        return true;
+      }
+
+      return handleMutationError(error.message);
+    },
+    [authUser, fetchData, handleMutationError]
+  );
 
   // ================= UPDATE =================
-  const updateProduct = useCallback(async (id: string, updates: Partial<Product>): Promise<boolean> => {
-    const { error } = await supabase
-      .from("products")
-      .update(updates)
-      .eq("id", id);
+  const updateProduct = useCallback(
+    async (id: string, updates: Partial<ProductForm>): Promise<boolean> => {
+      if (Object.keys(updates).length === 0) {
+        return handleMutationError("No changes provided");
+      }
 
-    if (!error) await fetchData();
-    return !error;
-  }, [fetchData]);
+      const parseResult = ProductUpdateSchema.safeParse(updates);
+      if (!parseResult.success) {
+        return handleMutationError(formatZodError(parseResult.error.issues));
+      }
+
+      const user = await authUser();
+      if (!user) return false;
+
+      const { data: product, error: productError } = await supabase
+        .from("products")
+        .select("user_id")
+        .eq("id", id)
+        .single();
+
+      if (productError || !product) {
+        return handleMutationError("Product not found");
+      }
+
+      if (product.user_id !== user.id) {
+        return handleMutationError("You can only edit products you own");
+      }
+
+      const { error } = await supabase
+        .from("products")
+        .update(updates)
+        .eq("id", id)
+        .eq("user_id", user.id);
+
+      if (!error) {
+        await fetchData();
+        return true;
+      }
+
+      return handleMutationError(error.message);
+    },
+    [authUser, fetchData, handleMutationError]
+  );
 
   // ================= DELETE =================
-  const deleteProduct = useCallback(async (id: string): Promise<boolean> => {
-    const { error } = await supabase
-      .from("products")
-      .delete()
-      .eq("id", id);
+  const deleteProduct = useCallback(
+    async (id: string): Promise<boolean> => {
+      const user = await authUser();
+      if (!user) return false;
 
-    if (!error) await fetchData();
-    return !error;
-  }, [fetchData]);
+      const { data: product, error: productError } = await supabase
+        .from("products")
+        .select("user_id")
+        .eq("id", id)
+        .single();
+
+      if (productError || !product) {
+        return handleMutationError("Product not found");
+      }
+
+      if (product.user_id !== user.id) {
+        return handleMutationError("You can only delete products you own");
+      }
+
+      const { error } = await supabase
+        .from("products")
+        .delete()
+        .eq("id", id)
+        .eq("user_id", user.id);
+
+      if (!error) {
+        await fetchData();
+        return true;
+      }
+
+      return handleMutationError(error.message);
+    },
+    [authUser, fetchData, handleMutationError]
+  );
 
   // ================= RESTOCK =================
-  const restockProduct = useCallback(async (id: string, amount: number): Promise<boolean> => {
-    const product = products.find((p) => p.id === id);
-    if (!product) {
-      setLoading({ isLoading: false, error: "Product not found" });
-      return false;
-    }
+  const restockProduct = useCallback(
+    async (id: string, amount: number): Promise<boolean> => {
+      if (amount <= 0) {
+        return handleMutationError("Restock amount must be greater than zero");
+      }
 
-    const { error } = await supabase
-      .from("products")
-      .update({ stock: product.stock + amount })
-      .eq("id", id);
+      const product = products.find((p) => p.id === id);
+      if (!product) {
+        return handleMutationError("Product not found");
+      }
 
-    if (!error) {
-      await fetchData();
-      return true;
-    }
+      const user = await authUser();
+      if (!user) return false;
 
-    setLoading({ isLoading: false, error: error.message });
-    return false;
-  }, [products, fetchData]);
+      const { data, error } = await supabase
+        .from("products")
+        .update({ stock: product.stock + amount })
+        .eq("id", id)
+        .select();
+
+      if (!error && data?.length) {
+        await fetchData();
+        return true;
+      }
+
+      return handleMutationError(error?.message || "Failed to update stock");
+    },
+    [products, authUser, fetchData, handleMutationError]
+  );
 
   // ================= SELL =================
-  const sellProduct = useCallback(async (productId: string, quantity: number): Promise<boolean> => {
-    const product = products.find((p) => p.id === productId);
-    if (!product) {
-      setLoading({ isLoading: false, error: "Product not found" });
-      return false;
-    }
+  const sellProduct = useCallback(
+    async (productId: string, quantity: number): Promise<boolean> => {
+      if (quantity <= 0) {
+        return handleMutationError("Sale quantity must be at least 1");
+      }
 
-    if (quantity > product.stock) {
-      setLoading({ isLoading: false, error: "Sale quantity exceeds available stock" });
-      return false;
-    }
+      const product = products.find((p) => p.id === productId);
+      if (!product) {
+        return handleMutationError("Product not found");
+      }
 
-    const { data: userData, error: authError } = await supabase.auth.getUser();
-    const user = userData?.user;
-    if (authError || !user) {
-      setLoading({ isLoading: false, error: "Authentication required" });
-      return false;
-    }
+      const user = await authUser();
+      if (!user) return false;
 
-    const { error: updateError } = await supabase
-      .from("products")
-      .update({ stock: product.stock - quantity })
-      .eq("id", productId);
-
-    if (updateError) {
-      setLoading({ isLoading: false, error: updateError.message });
-      return false;
-    }
-
-    const { error: saleError } = await supabase.from("sales").insert({
-      product_id: productId,
-      product_name: product.name,
-      quantity,
-      total: quantity * product.price,
-      user_id: user.id,
-    });
-
-    if (saleError) {
-      await supabase
+      const { data: updatedProducts, error: updateError } = await supabase
         .from("products")
-        .update({ stock: product.stock })
-        .eq("id", productId);
-      setLoading({ isLoading: false, error: saleError.message });
-      return false;
-    }
+        .update({ stock: product.stock - quantity })
+        .eq("id", productId)
+        .gte("stock", quantity)
+        .select();
 
-    await fetchData();
-    return true;
-  }, [products, fetchData]);
+      if (updateError) {
+        return handleMutationError(updateError.message);
+      }
+
+      if (!updatedProducts?.length) {
+        return handleMutationError("Insufficient stock for this sale");
+      }
+
+      const { error: saleError } = await supabase.from("sales").insert({
+        product_id: productId,
+        product_name: product.name,
+        quantity,
+        total: quantity * product.price,
+        user_id: user.id,
+      });
+
+      if (saleError) {
+        await supabase
+          .from("products")
+          .update({ stock: product.stock })
+          .eq("id", productId);
+        return handleMutationError(saleError.message);
+      }
+
+      await fetchData();
+      return true;
+    },
+    [products, authUser, fetchData, handleMutationError]
+  );
+
+  const sellProducts = useCallback(
+    async (items: BulkSaleItem[]): Promise<boolean> => {
+      const normalizedItems = items.reduce((acc, item) => {
+        const existing = acc.find((entry) => entry.productId === item.productId);
+        if (existing) {
+          existing.quantity += item.quantity;
+        } else {
+          acc.push({ ...item });
+        }
+        return acc;
+      }, [] as BulkSaleItem[]);
+
+      if (normalizedItems.length === 0) {
+        return handleMutationError("No items selected for sale");
+      }
+
+      const user = await authUser();
+      if (!user) return false;
+
+      const rollbackStack: Array<{ id: string; stock: number }> = [];
+
+      for (const item of normalizedItems) {
+        if (item.quantity <= 0) {
+          return handleMutationError("Sale quantities must be greater than zero");
+        }
+
+        const product = products.find((p) => p.id === item.productId);
+        if (!product) {
+          return handleMutationError(`Product not found: ${item.productId}`);
+        }
+
+        const { data: updatedProducts, error: updateError } = await supabase
+          .from("products")
+          .update({ stock: product.stock - item.quantity })
+          .eq("id", item.productId)
+          .gte("stock", item.quantity)
+          .select();
+
+        if (updateError) {
+          for (const rollback of rollbackStack) {
+            await supabase.from("products").update({ stock: rollback.stock }).eq("id", rollback.id);
+          }
+          return handleMutationError(updateError.message);
+        }
+
+        if (!updatedProducts?.length) {
+          for (const rollback of rollbackStack) {
+            await supabase.from("products").update({ stock: rollback.stock }).eq("id", rollback.id);
+          }
+          return handleMutationError(`Insufficient stock for ${product.name}`);
+        }
+
+        rollbackStack.push({ id: product.id, stock: product.stock });
+      }
+
+      const salesRows = normalizedItems.map((item) => {
+        const product = products.find((p) => p.id === item.productId)!;
+        return {
+          product_id: item.productId,
+          product_name: product.name,
+          quantity: item.quantity,
+          total: item.quantity * product.price,
+          user_id: user.id,
+        };
+      });
+
+      const { error: saleError } = await supabase.from("sales").insert(salesRows);
+      if (saleError) {
+        for (const rollback of rollbackStack) {
+          await supabase.from("products").update({ stock: rollback.stock }).eq("id", rollback.id);
+        }
+        return handleMutationError(saleError.message);
+      }
+
+      await fetchData();
+      return true;
+    },
+    [products, authUser, fetchData, handleMutationError]
+  );
 
   // ================= SELL FLOW =================
   const openSell = (product: Product) => {
@@ -187,28 +378,89 @@ export function useInventory() {
   };
 
   // ================= CATEGORY =================
-  const addCategory = useCallback(async (name: Category): Promise<boolean> => {
-    const { data: userData, error: authError } = await supabase.auth.getUser();
-    const user = userData?.user;
+  const addCategory = useCallback(
+    async (name: Category): Promise<boolean> => {
+      const parseResult = CategorySchema.safeParse(name);
+      if (!parseResult.success) {
+        return handleMutationError(formatZodError(parseResult.error.issues));
+      }
 
-    if (authError || !user) {
-      setLoading({ isLoading: false, error: "Authentication required" });
-      return false;
-    }
+      if (categories.includes(name)) {
+        return handleMutationError("Category already exists");
+      }
 
-    const { error } = await supabase.from("categories").insert({
-      name,
-      user_id: user.id,
-    });
+      const user = await authUser();
+      if (!user) return false;
 
-    if (!error) {
-      await fetchData();
-      return true;
-    }
+      const { error } = await supabase.from("categories").insert({
+        name,
+        user_id: user.id,
+      });
 
-    setLoading({ isLoading: false, error: error.message });
-    return false;
-  }, [fetchData]);
+      if (!error) {
+        await fetchData();
+        return true;
+      }
+
+      return handleMutationError(error.message);
+    },
+    [authUser, categories, fetchData, handleMutationError]
+  );
+
+  const updateCategory = useCallback(
+    async (oldName: Category, newName: Category): Promise<boolean> => {
+      const parseResult = CategorySchema.safeParse(newName);
+      if (!parseResult.success) {
+        return handleMutationError(formatZodError(parseResult.error.issues));
+      }
+
+      if (oldName === newName) {
+        return true;
+      }
+
+      if (categories.includes(newName)) {
+        return handleMutationError("Category already exists");
+      }
+
+      const user = await authUser();
+      if (!user) return false;
+
+      const { error } = await supabase
+        .from("categories")
+        .update({ name: newName })
+        .eq("name", oldName)
+        .eq("user_id", user.id);
+
+      if (!error) {
+        await fetchData();
+        return true;
+      }
+
+      return handleMutationError(error.message);
+    },
+    [authUser, categories, fetchData, handleMutationError]
+  );
+
+  const deleteCategory = useCallback(
+    async (name: Category): Promise<boolean> => {
+      const user = await authUser();
+      if (!user) return false;
+
+      const { error } = await supabase
+        .from("categories")
+        .delete()
+        .eq("name", name)
+        .eq("user_id", user.id);
+
+      if (!error) {
+        await fetchData();
+        return true;
+      }
+
+      return handleMutationError(error.message);
+    },
+    [authUser, fetchData, handleMutationError]
+  );
 
   const updateCategories = (newCategories: Category[]) => {
     setCategories(newCategories);
@@ -235,8 +487,11 @@ export function useInventory() {
     deleteProduct,
     restockProduct,
     sellProduct,
+    sellProducts,
 
     addCategory,
+    updateCategory,
+    deleteCategory,
     updateCategories,
 
     getProductById,
