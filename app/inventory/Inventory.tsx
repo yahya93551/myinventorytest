@@ -244,9 +244,8 @@ export default function Inventory(props: InventoryProps) {
           setPrice={setPrice}
           stock={stock}
           setStock={setStock}
-          notes={note}
-          setNotes={setNote}
           categories={categories}
+          loadingCategories={false}
           addProductHandler={addProductHandler}
         />
       </section>
