@@ -1,12 +1,2 @@
-[build]
-  command = "npm run build"
-  publish = ".next"
-
-# Enable Next.js runtime for SSR
-[functions]
-  node_bundler = "esbuild"
-
-[[redirects]]
-  from = "/*"
-  to = "/.netlify/functions/___netlify-handler"
-  status = 200
+[[plugins]]
+  package = "@netlify/plugin-nextjs"

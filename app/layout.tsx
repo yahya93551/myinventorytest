@@ -15,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Luxury Inventory",
-  description: "Inventory and sales reporting dashboard for the Luxury Inventory app",
+  title: "My Inventory",
+  description: "Inventory and sales reporting dashboard for the My Inventory app",
 };
 
 export default function RootLayout({
