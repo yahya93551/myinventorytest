@@ -1,15 +1,56 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { Product } from "@/types";
-import { Package, AlertTriangle, XCircle, DollarSign } from "lucide-react";
+import { Package, DollarSign } from "lucide-react";
 
-export default function StatsCards({ products }: { products: Product[] }) {
+type StatsCard = {
+  title: string;
+  value: string | number;
+  icon: ReactNode;
+};
+
+export default function StatsCards({ products, visibleFieldNames }: { products: Product[]; visibleFieldNames?: string[] }) {
   const total = products.length;
-  const low = products.filter(p => p.stock < 10 && p.stock > 0).length;
-  const out = products.filter(p => p.stock === 0).length;
   const totalCost = products.reduce((acc, p) => acc + (p.cost_price ?? 0) * p.stock, 0);
   const totalSellValue = products.reduce((acc, p) => acc + p.price * p.stock, 0);
   const potentialProfit = Math.max(0, totalSellValue - totalCost);
+
+  const showCost = visibleFieldNames ? visibleFieldNames.includes("cost_price") : true;
+  const showSell = visibleFieldNames ? visibleFieldNames.includes("price") : true;
+  const showProfit = showCost && showSell;
+
+  const cards: StatsCard[] = [
+    {
+      title: "Total Products",
+      value: total,
+      icon: <Package size={24} />,
+    },
+  ];
+
+  if (showCost) {
+    cards.push({
+      title: "Inventory Cost",
+      value: `$${totalCost.toFixed(2)}`,
+      icon: <DollarSign size={24} />,
+    });
+  }
+
+  if (showSell) {
+    cards.push({
+      title: "Inventory Sell Value",
+      value: `$${totalSellValue.toFixed(2)}`,
+      icon: <DollarSign size={24} />,
+    });
+  }
+
+  if (showProfit) {
+    cards.push({
+      title: "Potential Profit",
+      value: `$${potentialProfit.toFixed(2)}`,
+      icon: <DollarSign size={24} />,
+    });
+  }
 
   const Card = ({ title, value, icon }: any) => (
     <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-5 shadow-lg flex items-center gap-4">
@@ -25,10 +66,9 @@ export default function StatsCards({ products }: { products: Product[] }) {
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-      <Card title="Total Products" value={total} icon={<Package size={24} />} />
-      <Card title="Inventory Cost" value={`$${totalCost.toFixed(2)}`} icon={<DollarSign size={24} />} />
-      <Card title="Inventory Sell Value" value={`$${totalSellValue.toFixed(2)}`} icon={<DollarSign size={24} />} />
-      <Card title="Potential Profit" value={`$${potentialProfit.toFixed(2)}`} icon={<DollarSign size={24} />} />
+      {cards.map((card) => (
+        <Card key={card.title} title={card.title} value={card.value} icon={card.icon} />
+      ))}
     </div>
   );
 }

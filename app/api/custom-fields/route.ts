@@ -3,13 +3,6 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getServerTenantContext, jsonError, jsonSuccess } from "@/lib/api";
 
 const CUSTOM_FIELDS_TABLE_NAME = "custom_fields";
-const SYSTEM_FIELDS = [
-  { field_name: "name", display_name: "Name", field_type: "text" },
-  { field_name: "category", display_name: "Category", field_type: "text" },
-  { field_name: "cost_price", display_name: "Cost Price", field_type: "currency" },
-  { field_name: "price", display_name: "Sell Price", field_type: "currency" },
-  { field_name: "stock", display_name: "Stock", field_type: "number" },
-];
 
 function getErrorMessage(error: unknown) {
   if (!error) {
@@ -64,27 +57,31 @@ function handleCustomFieldsSchemaError(error: unknown) {
 }
 
 async function initializeSystemFieldsForTenant(tenantId: string, userId: string) {
-  const { data: existing, error: existingError } = await supabaseAdmin
-    .from(CUSTOM_FIELDS_TABLE_NAME)
-    .select("id")
-    .eq("tenant_id", tenantId)
-    .eq("is_system", true);
+  try {
+    // Try using the SQL function first
+    const { error } = await supabaseAdmin.rpc('initialize_system_fields', {
+      target_tenant_id: tenantId,
+      creator_user_id: userId,
+    });
 
-  if (existingError) {
-    if (isMissingColumnError(existingError, "is_system")) {
-      console.warn("Skipping system field initialization because is_system column is missing.");
-      return;
+    if (!error) {
+      return; // Success
     }
-    console.error("Error checking system fields:", existingError);
-    return;
+
+    // If RPC fails, fall back to direct insertion
+    console.warn("RPC initialize_system_fields failed, using direct insertion:", error);
+  } catch (e) {
+    console.warn("RPC initialize_system_fields not available, using direct insertion:", e);
   }
 
-  if (existing && existing.length > 0) {
-    return; // Already initialized
-  }
-
-  // Insert system fields
-  const systemFieldsToInsert = SYSTEM_FIELDS.map((field, index) => ({
+  // Fallback: Direct insertion
+  const systemFieldsToInsert = [
+    { field_name: "name", display_name: "Name", field_type: "text" },
+    { field_name: "category", display_name: "Category", field_type: "text" },
+    { field_name: "cost_price", display_name: "Cost Price", field_type: "currency" },
+    { field_name: "price", display_name: "Sell Price", field_type: "currency" },
+    { field_name: "stock", display_name: "Stock", field_type: "number" },
+  ].map((field, index) => ({
     tenant_id: tenantId,
     field_name: field.field_name,
     display_name: field.display_name,
@@ -98,10 +95,10 @@ async function initializeSystemFieldsForTenant(tenantId: string, userId: string)
 
   const { error: insertError } = await supabaseAdmin
     .from(CUSTOM_FIELDS_TABLE_NAME)
-    .insert(systemFieldsToInsert);
+    .upsert(systemFieldsToInsert, { onConflict: "tenant_id,field_name", ignoreDuplicates: true });
 
   if (insertError) {
-    console.error("Error initializing system fields:", insertError);
+    console.error("Error initializing system fields via direct insertion:", insertError);
   }
 }
 
@@ -130,6 +127,7 @@ export async function GET(req: Request) {
     .from(CUSTOM_FIELDS_TABLE_NAME)
     .select("*")
     .eq("tenant_id", tenantContext.tenantId)
+    .eq("is_system", false)
     .order("field_order", { ascending: true });
 
   if (error) {

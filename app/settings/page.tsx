@@ -6,6 +6,7 @@ import Sidebar from "@/components/Sidebar";
 import { useRequireAuth, logout } from "@/hooks/useRequireAuth";
 import { BusinessSettingsForm } from "@/components/BusinessSettingsForm";
 import { CustomFieldsManager } from "@/components/CustomFieldsManager";
+import { StandardFieldManager } from "@/components/StandardFieldManager";
 import { supabase } from "@/lib/supabase";
 
 export default function SettingsPage() {
@@ -19,7 +20,7 @@ export default function SettingsPage() {
   const [subUserMessage, setSubUserMessage] = useState<string>("");
   const [setupError, setSetupError] = useState<string>("");
   const [subUserLoading, setSubUserLoading] = useState(false);
-  const [activeSection, setActiveSection] = useState<"owner" | "system" | "subuser" | "business" | "customfields">("owner");
+  const [activeSection, setActiveSection] = useState<"owner" | "system" | "subuser" | "business" | "customfields" | "standardfields">("owner");
   const [businessType, setBusinessType] = useState<string>("custom");
   const router = useRouter();
 
@@ -171,6 +172,7 @@ export default function SettingsPage() {
             {[
               { id: "owner", label: "Owner Settings" },
               { id: "business", label: "Business Type" },
+              { id: "standardfields", label: "Standard Fields" },
               { id: "customfields", label: "Custom Fields" },
               { id: "system", label: "System Controls" },
               { id: "subuser", label: "Create Sub-user" },
@@ -180,7 +182,7 @@ export default function SettingsPage() {
                 <button
                   key={tab.id}
                   type="button"
-                  onClick={() => setActiveSection(tab.id as "owner" | "system" | "subuser" | "business" | "customfields")}
+                  onClick={() => setActiveSection(tab.id as "owner" | "system" | "subuser" | "business" | "customfields" | "standardfields")}
                   className={`rounded-full px-4 py-2 text-sm font-semibold transition ${selected ? "bg-cyan-500 text-slate-950" : "border border-white/10 bg-slate-900/80 text-slate-100 hover:bg-slate-800"}`}
                 >
                   {tab.label}
@@ -350,6 +352,19 @@ CREATE TABLE IF NOT EXISTS tenant_members (
           {activeSection === "business" && (
             <section className="rounded-3xl border border-white/10 bg-white/5 p-6">
               <BusinessSettingsForm onBusinessTypeChange={setBusinessType} />
+            </section>
+          )}
+
+          {activeSection === "standardfields" && (
+            <section className="rounded-3xl border border-white/10 bg-white/5 p-6">
+              {tenantRole !== "owner" ? (
+                <div className="rounded-3xl border border-yellow-400/30 bg-yellow-500/10 p-6 text-yellow-100">
+                  <p className="font-semibold">Owner access required</p>
+                  <p className="mt-2 text-sm text-yellow-100/80">Only the tenant owner can manage standard fields. Your current role is <span className="font-medium">{tenantRole || "Member"}</span>.</p>
+                </div>
+              ) : (
+                <StandardFieldManager businessType={businessType} />
+              )}
             </section>
           )}
 

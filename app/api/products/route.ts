@@ -2,16 +2,35 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getServerTenantContext, jsonError, jsonSuccess } from "@/lib/api";
 
+const missingColumnRegex = /Could not find the '(.+?)' column of 'products'/;
+
+function parseMissingColumns(error: { message?: string } | null) {
+  if (!error?.message) return [];
+  const match = error.message.match(missingColumnRegex);
+  return match ? [match[1]] : [];
+}
+
+function stripMissingColumns<T extends Record<string, any>>(payload: T, missingColumns: string[]) {
+  const cleaned = { ...payload };
+  for (const column of missingColumns) {
+    if (column in cleaned) {
+      delete cleaned[column];
+    }
+  }
+  return cleaned;
+}
+
 const ProductCreateSchema = z.object({
   name: z.string().trim().min(1, "Product name is required"),
   category: z.string().trim().min(1, "Category is required"),
-  cost_price: z.number().nonnegative("Cost price cannot be negative"),
-  price: z.number().nonnegative("Price must be 0 or greater"),
+  cost_price: z.coerce.number().nonnegative("Cost price cannot be negative").default(0),
+  price: z.coerce.number().nonnegative("Price must be 0 or greater").default(0),
   stock: z
-    .number()
+    .coerce.number()
     .int("Stock must be an integer")
-    .nonnegative("Stock cannot be negative"),
-  custom_data: z.record(z.any()).optional(),
+    .nonnegative("Stock cannot be negative")
+    .default(0),
+  custom_data: z.record(z.string(), z.unknown()).optional(),
 });
 
 const ProductUpdateSchema = ProductCreateSchema.partial().refine(
@@ -56,32 +75,60 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const tenantContext = await getServerTenantContext(req);
-  if ("error" in tenantContext) {
-    return jsonError(tenantContext.error, tenantContext.status);
-  }
-
-  if (!["owner", "accountant"].includes(tenantContext.role)) {
-    return jsonError("Only owners or accountants can create products", 403);
-  }
-
-  let payload: unknown;
   try {
-    payload = await req.json();
-  } catch {
-    return jsonError("Invalid JSON payload", 400);
-  }
+    // Phase 1: Context & Authorization
+    const tenantContext = await getServerTenantContext(req);
+    if ("error" in tenantContext) {
+      return jsonError(tenantContext.error, tenantContext.status);
+    }
 
-  const parseResult = ProductCreateSchema.safeParse(payload);
-  if (!parseResult.success) {
-    return jsonError(parseResult.error.issues.map((issue) => issue.message).join(", "), 422);
-  }
+    if (!["owner", "accountant"].includes(tenantContext.role)) {
+      return jsonError("Only owners or accountants can create products", 403);
+    }
 
-  const { name, category, cost_price, price, stock, custom_data } = parseResult.data;
+    // Phase 2: Parse Request Body
+    let payload: unknown;
+    try {
+      payload = await req.json();
+    } catch (err) {
+      console.error("[POST /api/products] JSON parse error:", err);
+      return jsonError("Invalid JSON payload", 400);
+    }
 
-  const { data: insertedProduct, error: insertError } = await supabaseAdmin
-    .from("products")
-    .insert({
+    // Phase 3: Validate Schema
+    const parseResult = ProductCreateSchema.safeParse(payload);
+    if (!parseResult.success) {
+      const errorMessages = parseResult.error.issues.map((issue) => issue.message).join(", ");
+      console.warn("[POST /api/products] Validation failed:", errorMessages, "Payload:", JSON.stringify(payload));
+      return jsonError(errorMessages, 422);
+    }
+
+    const { name, category, cost_price, price, stock, custom_data } = parseResult.data;
+
+    // Phase 4: Type Safety Check (before DB insert)
+    if (typeof name !== "string" || !name.trim()) {
+      console.error("[POST /api/products] Type check failed: name is not a valid string");
+      return jsonError("Product name must be a non-empty string", 400);
+    }
+    if (typeof category !== "string" || !category.trim()) {
+      console.error("[POST /api/products] Type check failed: category is not a valid string");
+      return jsonError("Category must be a non-empty string", 400);
+    }
+    if (typeof cost_price !== "number" || cost_price < 0) {
+      console.error("[POST /api/products] Type check failed: cost_price is invalid", { cost_price, type: typeof cost_price });
+      return jsonError("Cost price must be a non-negative number", 400);
+    }
+    if (typeof price !== "number" || price < 0) {
+      console.error("[POST /api/products] Type check failed: price is invalid", { price, type: typeof price });
+      return jsonError("Price must be a non-negative number", 400);
+    }
+    if (typeof stock !== "number" || !Number.isInteger(stock) || stock < 0) {
+      console.error("[POST /api/products] Type check failed: stock is invalid", { stock, type: typeof stock });
+      return jsonError("Stock must be a non-negative integer", 400);
+    }
+
+    // Phase 5: Database Insert
+    const productPayload = {
       name,
       category,
       cost_price,
@@ -91,15 +138,73 @@ export async function POST(req: Request) {
       tenant_id: tenantContext.tenantId,
       user_id: tenantContext.userId,
       created_by: tenantContext.userId,
-    })
-    .select()
-    .single();
+    };
 
-  if (insertError || !insertedProduct) {
-    return jsonError(insertError?.message || "Failed to add product", 500);
+    console.log("[POST /api/products] Inserting product:", productPayload);
+
+    let { data: insertedProduct, error: insertError } = await supabaseAdmin
+      .from("products")
+      .insert(productPayload)
+      .select()
+      .single();
+
+    if (insertError) {
+      console.error("[POST /api/products] Database insert error:", {
+        message: insertError.message,
+        code: insertError.code,
+        details: insertError.details,
+        hint: insertError.hint,
+      });
+
+      const missingColumns = parseMissingColumns(insertError);
+      if (missingColumns.length > 0) {
+        console.warn("[POST /api/products] Dropping missing columns and retrying insert:", missingColumns);
+        const fallbackPayload = stripMissingColumns(productPayload, missingColumns);
+
+        const fallbackResult = await supabaseAdmin
+          .from("products")
+          .insert(fallbackPayload)
+          .select()
+          .single();
+
+        if (!fallbackResult.error && fallbackResult.data) {
+          console.log("[POST /api/products] Product inserted successfully after schema fallback:", { id: fallbackResult.data.id });
+          return jsonSuccess(fallbackResult.data, 201);
+        }
+
+        console.error("[POST /api/products] Fallback insert failed:", {
+          message: fallbackResult.error?.message,
+          code: fallbackResult.error?.code,
+          details: fallbackResult.error?.details,
+          hint: fallbackResult.error?.hint,
+        });
+        return jsonError(
+          `Database fallback error: ${fallbackResult.error?.message || "Unknown database error"}`,
+          500
+        );
+      }
+
+      return jsonError(
+        `Database error: ${insertError.message || "Unknown database error"}`,
+        500
+      );
+    }
+
+    if (!insertedProduct) {
+      console.error("[POST /api/products] Database insert returned no data");
+      return jsonError("Failed to retrieve inserted product", 500);
+    }
+
+    console.log("[POST /api/products] Product inserted successfully:", { id: insertedProduct.id });
+    return jsonSuccess(insertedProduct, 201);
+  } catch (err) {
+    // Phase 6: Catch-All for Unexpected Errors
+    console.error("[POST /api/products] Unexpected error:", err instanceof Error ? err.message : String(err), err);
+    return jsonError(
+      `Unexpected error: ${err instanceof Error ? err.message : "Unknown error"}`,
+      500
+    );
   }
-
-  return jsonSuccess(insertedProduct, 201);
 }
 
 export async function PATCH(req: Request) {
@@ -147,6 +252,34 @@ export async function PATCH(req: Request) {
     .eq("tenant_id", tenantContext.tenantId);
 
   if (error) {
+    const missingColumns = parseMissingColumns(error);
+    if (missingColumns.length > 0) {
+      const fallbackUpdates = stripMissingColumns(updates, missingColumns);
+      if (Object.keys(fallbackUpdates).length === 0) {
+        console.warn("[PATCH /api/products] Update contains only missing columns, no supported fields to update:", missingColumns);
+        return jsonSuccess({ id, updates: {} });
+      }
+
+      const { error: fallbackError } = await supabaseAdmin
+        .from("products")
+        .update(fallbackUpdates)
+        .eq("id", id)
+        .eq("tenant_id", tenantContext.tenantId);
+
+      if (fallbackError) {
+        console.error("[PATCH /api/products] Fallback update failed:", {
+          message: fallbackError.message,
+          code: fallbackError.code,
+          details: fallbackError.details,
+          hint: fallbackError.hint,
+        });
+        return jsonError(`Database error: ${fallbackError.message || "Unknown database error"}`, 500);
+      }
+
+      console.log("[PATCH /api/products] Update succeeded after dropping missing columns:", { id, updates: fallbackUpdates });
+      return jsonSuccess({ id, updates: fallbackUpdates });
+    }
+
     return jsonError(error.message, 500);
   }
 

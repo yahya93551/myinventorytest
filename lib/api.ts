@@ -1,3 +1,4 @@
+import type { User } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
@@ -31,7 +32,9 @@ export function getBearerToken(req: Request) {
   return authHeader.replace("Bearer ", "").trim();
 }
 
-export async function getAuthenticatedUser(req: Request) {
+export async function getAuthenticatedUser(
+  req: Request
+): Promise<{ user: User } | { error: string; status: number }> {
   const token = getBearerToken(req);
   if (!token) {
     return { error: "Missing authorization token", status: 401 };

@@ -1,11 +1,19 @@
 ﻿//app/components/Dashboard.tsx
 "use client";
 import { useInventory } from "../hooks/useInventory";
+import { useCustomFields } from "../hooks/useCustomFields";
 import StatsCards from "./StatsCards";
+import { getVisibleSystemFieldNames } from "@/lib/customFields";
 
 export default function Dashboard() {
-  // 🔥 Directly use the live hook – always up‑to‑date
+  // 🔥 Directly use the live hook – always up‑to-date
   const { products, sales } = useInventory();
+  const customFieldsQuery = useCustomFields();
+  const customFields = customFieldsQuery.data || [];
+  const visibleSystemFieldNames = getVisibleSystemFieldNames(customFields);
+  const costPriceVisible = visibleSystemFieldNames.includes("cost_price");
+  const priceVisible = visibleSystemFieldNames.includes("price");
+  const profitVisible = costPriceVisible && priceVisible;
 
   // Helper: safely extract a valid Date object from a sale (handles both 'date' and 'created_at')
   const getSaleDate = (sale: any): Date | null => {
@@ -24,12 +32,7 @@ export default function Dashboard() {
   const totalCost = products.reduce((a, p) => a + (p.cost_price ?? 0) * p.stock, 0);
   const totalSellValue = products.reduce((a, p) => a + p.price * p.stock, 0);
   const totalProfit = Math.max(0, totalSellValue - totalCost);
-  const low = products.filter((p) => p.stock < 10 && p.stock > 0).length;
-  const out = products.filter((p) => p.stock === 0).length;
   const categoryCount = new Set(products.map((p) => p.category)).size;
-  const revenue = sales.reduce((acc, sale) => acc + sale.total, 0);
-  const orders = sales.length;
-  const averageSale = orders ? (revenue / orders).toFixed(2) : "0.00";
 
   // Last sale date – safely
   let lastSaleDate = "No sales yet";
@@ -58,24 +61,30 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <StatsCards products={products} />
+      <StatsCards products={products} visibleFieldNames={visibleSystemFieldNames} />
 
       <div className="mt-6 grid gap-4 xl:grid-cols-2">
         <div className="rounded-3xl bg-white/10 p-6 shadow-lg shadow-black/10">
           <h3 className="text-xl font-semibold mb-4">Cash Flow</h3>
           <div className="grid gap-3 sm:grid-cols-2">
-                <div className="rounded-2xl bg-black/20 p-4">
-              <p className="text-sm text-gray-400">Total Cost Value</p>
-              <p className="text-2xl font-bold">${totalCost.toFixed(2)}</p>
-            </div>
-            <div className="rounded-2xl bg-black/20 p-4">
-              <p className="text-sm text-gray-400">Inventory Sell Value</p>
-              <p className="text-2xl font-bold">${totalSellValue.toFixed(2)}</p>
-            </div>
-            <div className="rounded-2xl bg-black/20 p-4">
-              <p className="text-sm text-gray-400">Potential Profit</p>
-              <p className="text-2xl font-bold">${totalProfit.toFixed(2)}</p>
-            </div>
+            {costPriceVisible && (
+              <div className="rounded-2xl bg-black/20 p-4">
+                <p className="text-sm text-gray-400">Total Cost Value</p>
+                <p className="text-2xl font-bold">${totalCost.toFixed(2)}</p>
+              </div>
+            )}
+            {priceVisible && (
+              <div className="rounded-2xl bg-black/20 p-4">
+                <p className="text-sm text-gray-400">Inventory Sell Value</p>
+                <p className="text-2xl font-bold">${totalSellValue.toFixed(2)}</p>
+              </div>
+            )}
+            {profitVisible && (
+              <div className="rounded-2xl bg-black/20 p-4">
+                <p className="text-sm text-gray-400">Potential Profit</p>
+                <p className="text-2xl font-bold">${totalProfit.toFixed(2)}</p>
+              </div>
+            )}
             <div className="rounded-2xl bg-black/20 p-4">
               <p className="text-sm text-gray-400">Last Sale</p>
               <p className="text-2xl font-bold">{lastSaleDate}</p>

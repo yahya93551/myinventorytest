@@ -2,8 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { supabase } from "@/lib/supabase";
-import { getTenantContext } from "@/lib/tenant";
+import { apiGet } from "@/lib/apiClient";
 import { Sale } from "../../types";
 import Sidebar from "@/components/Sidebar";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
@@ -33,22 +32,9 @@ export default function ReportsPage() {
       setError(null);
 
       try {
-        const tenant = await getTenantContext();
+        const response = await apiGet<Sale[]>("/api/sales?limit=500");
 
-        const { data, error } = await supabase
-          .from("sales")
-          .select(
-            "id, product_id, product_name, quantity, total, created_at, user_id"
-          )
-          .eq("tenant_id", tenant.tenant_id)
-          .order("created_at", { ascending: false })
-          .limit(500);
-
-        if (error) {
-          throw error;
-        }
-
-        const mapped: Sale[] = (data || []).map(
+        const mapped: Sale[] = (response.data || []).map(
           (sale: any) => ({
             ...sale,
             productName:

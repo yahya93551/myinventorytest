@@ -9,6 +9,7 @@ import BulkSellModal from "./BulkSellModal";
 import AddProductForm from "./components/AddProductForm";
 import RestockModal from "./components/RestockModal";
 import EditProductModal from "./components/EditProductModal";
+import { getVisibleSystemFieldNames } from "@/lib/customFields";
 
 
 type InventoryProps = {
@@ -76,11 +77,17 @@ export default function Inventory(props: InventoryProps) {
   const [restockItem, setRestockItem] = useState<Product | null>(null);
   const [restockAmount, setRestockAmount] = useState(1);
   const [bulkSellOpen, setBulkSellOpen] = useState(false);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
   const [message, setMessage] = useState<{
     type: "success" | "error";
     text: string;
   } | null>(null);
+
+  const visibleStandardFieldNames = getVisibleSystemFieldNames(customFields);
+  const totalProducts = products.length;
+  const lowStockCount = products.filter((product) => product.stock > 0 && product.stock < 5).length;
+  const outOfStockCount = products.filter((product) => product.stock === 0).length;
 
   const showMessage = (type: "success" | "error", text: string) => {
     setMessage({ type, text });
@@ -102,17 +109,21 @@ export default function Inventory(props: InventoryProps) {
       return;
     }
 
-    if (costPrice < 0) {
+    const costPriceVisible = visibleStandardFieldNames.includes("cost_price");
+    const priceVisible = visibleStandardFieldNames.includes("price");
+    const stockVisible = visibleStandardFieldNames.includes("stock");
+
+    if (costPriceVisible && costPrice < 0) {
       showMessage("error", "Cost price cannot be negative");
       return;
     }
 
-    if (price <= 0) {
+    if (priceVisible && price <= 0) {
       showMessage("error", "Sell price must be greater than 0");
       return;
     }
 
-    if (stock < 0) {
+    if (stockVisible && stock < 0) {
       showMessage("error", "Stock cannot be negative");
       return;
     }
@@ -133,6 +144,7 @@ export default function Inventory(props: InventoryProps) {
       setStock(0);
       setCustomData({});
       showMessage("success", "Product added successfully");
+      setIsAddModalOpen(false);
     } else {
       showMessage("error", "Failed to add product");
     }
@@ -232,37 +244,87 @@ export default function Inventory(props: InventoryProps) {
         </div>
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-2xl sm:text-3xl font-bold">Inventory</h2>
-        <button
-          onClick={() => setBulkSellOpen(true)}
-          className="rounded-2xl bg-slate-800 px-4 py-2 text-sm text-white hover:bg-slate-700"
-        >
-          Sell multiple items
-        </button>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <h2 className="text-3xl sm:text-4xl font-bold">Inventory</h2>
+          <p className="mt-2 text-sm text-slate-400">
+            Manage products, stock, and sales from one dashboard.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setIsAddModalOpen(true)}
+            className="rounded-2xl bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-400"
+          >
+            + Add Product
+          </button>
+          <button
+            onClick={() => setBulkSellOpen(true)}
+            className="rounded-2xl bg-slate-800 px-4 py-2 text-sm text-white hover:bg-slate-700"
+          >
+            Sell multiple items
+          </button>
+        </div>
       </div>
 
-      {/* ADD PRODUCT */}
-      <section>
-        <AddProductForm
-          name={name}
-          setName={setName}
-          category={category}
-          setCategory={setCategory}
-          costPrice={costPrice}
-          setCostPrice={setCostPrice}
-          price={price}
-          setPrice={setPrice}
-          stock={stock}
-          setStock={setStock}
-          categories={categories}
-          loadingCategories={false}
-          customFields={customFields}
-          customData={customData}
-          setCustomData={setCustomData}
-          addProductHandler={addProductHandler}
-        />
-      </section>
+      <div className="grid gap-3 py-4 md:grid-cols-3">
+        <div className="rounded-3xl border border-white/10 bg-slate-900 p-5">
+          <p className="text-sm uppercase tracking-[0.16em] text-slate-400">Products</p>
+          <p className="mt-3 text-3xl font-semibold">{totalProducts}</p>
+          <p className="mt-2 text-sm text-slate-400">Total inventory items.</p>
+        </div>
+        <div className="rounded-3xl border border-white/10 bg-slate-900 p-5">
+          <p className="text-sm uppercase tracking-[0.16em] text-slate-400">Low stock</p>
+          <p className="mt-3 text-3xl font-semibold">{lowStockCount}</p>
+          <p className="mt-2 text-sm text-slate-400">Products below threshold.</p>
+        </div>
+        <div className="rounded-3xl border border-white/10 bg-slate-900 p-5">
+          <p className="text-sm uppercase tracking-[0.16em] text-slate-400">Out of stock</p>
+          <p className="mt-3 text-3xl font-semibold">{outOfStockCount}</p>
+          <p className="mt-2 text-sm text-slate-400">Need restocking now.</p>
+        </div>
+      </div>
+
+      {isAddModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/90 p-4">
+          <div className="w-full max-w-4xl rounded-3xl border border-white/10 bg-slate-950 p-6 shadow-2xl">
+            <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h3 className="text-xl font-semibold">Add Product</h3>
+                <p className="mt-1 text-sm text-slate-400">Create a new product without leaving the page.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAddModalOpen(false)}
+                className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white hover:bg-white/10"
+              >
+                Close
+              </button>
+            </div>
+
+            <AddProductForm
+              name={name}
+              setName={setName}
+              category={category}
+              setCategory={setCategory}
+              costPrice={costPrice}
+              setCostPrice={setCostPrice}
+              price={price}
+              setPrice={setPrice}
+              stock={stock}
+              setStock={setStock}
+              categories={categories}
+              loadingCategories={false}
+              customFields={customFields}
+              customData={customData}
+              setCustomData={setCustomData}
+              addProductHandler={addProductHandler}
+            />
+          </div>
+        </div>
+      )}
 
       {/* TABLE */}
       <section>

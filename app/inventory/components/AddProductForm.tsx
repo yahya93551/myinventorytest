@@ -3,6 +3,9 @@
 
 import { CustomField } from "../../../types";
 import { CustomFieldInput } from "@/components/CustomFieldInput";
+import {
+  getVisibleSystemFields,
+} from "@/lib/customFields";
 
 type Props = {
   name: string;
@@ -41,12 +44,101 @@ export default function AddProductForm({
   setCustomData,
   addProductHandler,
 }: Props) {
+  const visibleStandardFields = getVisibleSystemFields(customFields);
+
   const handleCustomFieldChange = (fieldName: string, value: any) => {
     if (!setCustomData) return;
     setCustomData({
       ...customData,
       [fieldName]: value,
     });
+  };
+
+  const renderStandardField = (field: CustomField) => {
+    switch (field.field_name) {
+      case "name":
+        return (
+          <div key={field.id}>
+            <label className="text-sm text-gray-300">{field.display_name}</label>
+            <input
+              className="input"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required={field.is_required}
+            />
+          </div>
+        );
+      case "category":
+        return (
+          <div key={field.id}>
+            <label className="text-sm text-gray-300">{field.display_name}</label>
+            <select
+              className="input text-white bg-slate-800"
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              disabled={loadingCategories}
+              required={field.is_required}
+            >
+              {loadingCategories ? (
+                <option>Loading categories...</option>
+              ) : categories.length === 0 ? (
+                <option className="text-black">No categories</option>
+              ) : (
+                categories.map((c, index) => (
+                  <option key={`${c}-${index}`} value={c} className="text-black">
+                    {c}
+                  </option>
+                ))
+              )}
+            </select>
+          </div>
+        );
+      case "cost_price":
+        return (
+          <div key={field.id}>
+            <label className="text-sm text-gray-300">{field.display_name} ($)</label>
+            <input
+              className="input"
+              type="number"
+              min={0}
+              step="0.01"
+              value={costPrice}
+              onChange={(e) => setCostPrice(Number(e.target.value))}
+              required={field.is_required}
+            />
+          </div>
+        );
+      case "price":
+        return (
+          <div key={field.id}>
+            <label className="text-sm text-gray-300">{field.display_name} ($)</label>
+            <input
+              className="input"
+              type="number"
+              min={0}
+              step="0.01"
+              value={price}
+              onChange={(e) => setPrice(Number(e.target.value))}
+              required={field.is_required}
+            />
+          </div>
+        );
+      case "stock":
+        return (
+          <div key={field.id}>
+            <label className="text-sm text-gray-300">{field.display_name}</label>
+            <input
+              className="input"
+              type="number"
+              value={stock}
+              onChange={(e) => setStock(Number(e.target.value))}
+              required={field.is_required}
+            />
+          </div>
+        );
+      default:
+        return null;
+    }
   };
 
   return (
@@ -56,79 +148,11 @@ export default function AddProductForm({
       </h3>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {/* Product Name */}
-        <div>
-          <label className="text-sm text-gray-300">Product Name</label>
-          <input
-            className="input"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-        </div>
-
-        {/* Category */}
-        <div>
-          <label className="text-sm text-gray-300">Category</label>
-          <select
-            className="input text-white bg-slate-800"
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            disabled={loadingCategories}
-          >
-            {loadingCategories ? (
-              <option>Loading categories...</option>
-            ) : (categories || []).length === 0 ? (
-              <option className="text-black">No categories</option>
-            ) : (
-              (categories || []).map((c, index) => (
-                <option key={`${c}-${index}`} value={c} className="text-black">
-                  {c}
-                </option>
-              ))
-            )}
-          </select>
-        </div>
-
-        {/* Cost Price */}
-        <div>
-          <label className="text-sm text-gray-300">Cost Price ($)</label>
-          <input
-            className="input"
-            type="number"
-            min={0}
-            step="0.01"
-            value={costPrice}
-            onChange={(e) => setCostPrice(Number(e.target.value))}
-          />
-        </div>
-
-        {/* Sell Price */}
-        <div>
-          <label className="text-sm text-gray-300">Sell Price ($)</label>
-          <input
-            className="input"
-            type="number"
-            min={0}
-            step="0.01"
-            value={price}
-            onChange={(e) => setPrice(Number(e.target.value))}
-          />
-        </div>
-
-        {/* Stock */}
-        <div>
-          <label className="text-sm text-gray-300">Stock Qty</label>
-          <input
-            className="input"
-            type="number"
-            value={stock}
-            onChange={(e) => setStock(Number(e.target.value))}
-          />
-        </div>
+        {visibleStandardFields.map(renderStandardField)}
 
         {/* Custom Fields */}
         {customFields
-          .filter((field) => !field.is_system)
+          .filter((field) => !field.is_system && field.is_visible)
           .map((field) => (
             <CustomFieldInput
               key={field.id}

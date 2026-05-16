@@ -193,56 +193,8 @@ export function CustomFieldsManager({ businessType }: CustomFieldsManagerProps) 
 
   return (
     <div className="space-y-6">
-      <div className="rounded-lg border border-slate-700 bg-slate-950 p-4">
-        <h4 className="text-sm font-semibold uppercase tracking-[0.12em] text-slate-400 mb-3">
-          Current Product Table Columns
-        </h4>
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="rounded-lg border border-slate-700 bg-slate-900 p-4">
-            <p className="text-xs uppercase tracking-[0.16em] text-slate-500 mb-3">Standard table fields</p>
-            {systemFields.length === 0 ? (
-              <p className="text-sm text-slate-500">No standard fields configured.</p>
-            ) : (
-              <ul className="space-y-2 text-sm text-slate-200">
-                {systemFields.map((field) => (
-                  <li key={field.id} className="flex items-center justify-between">
-                    <span className="font-medium">{field.display_name}</span>
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={field.is_visible}
-                        onChange={(e) => updateVisibilityMutation.mutate({ id: field.id, is_visible: e.target.checked })}
-                        className="w-4 h-4 rounded border border-slate-600 bg-slate-700 cursor-pointer"
-                      />
-                      <span className="text-xs text-slate-400">Show</span>
-                    </label>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-
-          <div className="rounded-lg border border-slate-700 bg-slate-900 p-4">
-            <p className="text-xs uppercase tracking-[0.16em] text-slate-500 mb-3">Visible custom fields</p>
-            {visibleCustomFields.length === 0 ? (
-              <p className="text-sm text-slate-500">No visible custom fields yet.</p>
-            ) : (
-              <ul className="space-y-2 text-sm text-slate-200">
-                {visibleCustomFields.map((field) => (
-                  <li key={field.id} className="rounded px-2 py-1 bg-slate-800 border border-slate-700">
-                    <span className="font-medium">{field.display_name}</span>
-                    <span className="ml-2 text-slate-500">({field.field_name})</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
-      </div>
-
       <div className="border border-slate-700 rounded-lg p-4 bg-slate-900">
-        <h3 className="text-lg font-semibold text-white mb-4">Customize Your Product Table</h3>
+        <h3 className="text-lg font-semibold text-white mb-4">Manage Custom Fields</h3>
         <p className="text-slate-400 text-sm mb-6">
           Create custom fields for your {businessType || "business"}. These fields will appear in your product table and forms.
         </p>
@@ -266,7 +218,7 @@ export function CustomFieldsManager({ businessType }: CustomFieldsManagerProps) 
               </tr>
             </thead>
             <tbody>
-              {customFields
+              {customFieldRows
                 .slice()
                 .sort((a, b) => a.field_order - b.field_order)
                 .map((field) => (

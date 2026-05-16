@@ -74,18 +74,26 @@ export async function getTrendingProducts(tenantId: string, days: number = 7, li
 
   const { data, error } = await supabaseAdmin
     .from("sales")
-    .select("product_id, SUM(quantity) as total_sold")
+    .select("product_id, quantity")
     .eq("tenant_id", tenantId)
     .gte("created_at", startDate.toISOString())
-    .group_by("product_id")
-    .order("total_sold", { ascending: false })
-    .limit(limit);
+    .limit(1000);
 
   if (error) {
     throw new Error(`Failed to fetch trending products: ${error.message}`);
   }
 
-  return data || [];
+  const totals = new Map<string, number>();
+  for (const sale of data || []) {
+    const productId = (sale as any).product_id as string;
+    const quantity = Number((sale as any).quantity || 0);
+    totals.set(productId, (totals.get(productId) || 0) + quantity);
+  }
+
+  return Array.from(totals.entries())
+    .map(([product_id, total_sold]) => ({ product_id, total_sold }))
+    .sort((a, b) => b.total_sold - a.total_sold)
+    .slice(0, limit);
 }
 
 /**

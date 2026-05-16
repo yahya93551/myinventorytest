@@ -155,7 +155,6 @@ export async function bulkRecordSales(
         total: sale.total,
         tenant_id: tenantId,
         user_id: userId,
-        created_by: userId,
       };
     });
 

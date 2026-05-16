@@ -9,11 +9,13 @@ import AddProductForm from "../components/AddProductForm";
 import { apiGet, apiPost } from "@/lib/apiClient";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { useCustomFields } from "@/hooks/useCustomFields";
+import { getVisibleSystemFieldNames } from "@/lib/customFields";
 
 type Product = {
   id?: string;
   name: string;
   category: string;
+  cost_price: number;
   price: number;
   stock: number;
   custom_data?: Record<string, any>;
@@ -45,6 +47,7 @@ export default function AddPage() {
   const [dark, setDark] = useState(true);
   const customFieldsQuery = useCustomFields();
   const customFields = customFieldsQuery.data || [];
+  const visibleStandardFieldNames = getVisibleSystemFieldNames(customFields);
 
   // ================= LOAD CATEGORIES =================
   useEffect(() => {
@@ -104,13 +107,11 @@ export default function AddPage() {
     async () => {
       if (isSubmitting) return;
 
-      if (
-        !name.trim() ||
-        !category.trim() ||
-        costPrice < 0 ||
-        price <= 0 ||
-        stock < 0
-      ) {
+      const costPriceVisible = visibleStandardFieldNames.includes("cost_price");
+      const priceVisible = visibleStandardFieldNames.includes("price");
+      const stockVisible = visibleStandardFieldNames.includes("stock");
+
+      if (!name.trim() || !category.trim() || (costPriceVisible && costPrice < 0) || (priceVisible && price <= 0) || (stockVisible && stock < 0)) {
         setMessage(
           "⚠️ Fill all fields correctly"
         );

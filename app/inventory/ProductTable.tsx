@@ -1,5 +1,6 @@
 import { ProductWithCustomData, CustomField } from "../../types";
 import { ShoppingCart, Plus, Edit, Trash2 } from "lucide-react";
+import { getVisibleTableFields } from "@/lib/customFields";
 
 export default function ProductTable({
   products = [],
@@ -18,10 +19,7 @@ export default function ProductTable({
   onDelete?: (id: string) => void;
   loading?: boolean;
 }) {
-  // All visible fields (system and custom) sorted by order
-  const allVisibleFields = customFields
-    .filter((f) => f.is_visible)
-    .sort((a, b) => a.field_order - b.field_order);
+  const allVisibleFields = getVisibleTableFields(customFields);
 
   // Calculate total columns
   const totalCols = allVisibleFields.length + 1; // +1 for actions
@@ -134,12 +132,12 @@ export default function ProductTable({
 
                 <td className="p-3 flex flex-wrap gap-2">
                   <button
-                    onClick={() => (p.stock > 0 || !allVisibleFields.some(f => f.field_name === 'stock')) && openSell(p)}
+                    onClick={() => p.stock > 0 && openSell(p)}
                     className={`flex items-center gap-1 text-xs ${
-                      (allVisibleFields.some(f => f.field_name === 'stock') ? p.stock : 1) === 0 ? "text-gray-500 cursor-not-allowed" : "text-green-400 hover:text-green-300"
+                      p.stock === 0 ? "text-gray-500 cursor-not-allowed" : "text-green-400 hover:text-green-300"
                     } transition`}
-                    disabled={(allVisibleFields.some(f => f.field_name === 'stock') ? p.stock : 1) === 0}
-                    title={(allVisibleFields.some(f => f.field_name === 'stock') ? p.stock : 1) === 0 ? "Out of stock" : "Record a sale"}
+                    disabled={p.stock === 0}
+                    title={p.stock === 0 ? "Out of stock" : "Record a sale"}
                   >
                     <ShoppingCart size={14} />
                     Sell

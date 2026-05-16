@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Product, CustomField } from "../../../types";
 import { CustomFieldInput } from "@/components/CustomFieldInput";
+import { getVisibleSystemFields } from "@/lib/customFields";
 
 type Props = {
   editItem: Product | null;
@@ -24,6 +25,8 @@ export default function EditProductModal({
   const [stock, setStock] = useState(0);
   const [customData, setCustomData] = useState<Record<string, any>>({});
   const [error, setError] = useState<string | null>(null);
+
+  const visibleStandardFields = getVisibleSystemFields(customFields);
 
   useEffect(() => {
     if (!editItem) return;
@@ -56,17 +59,21 @@ export default function EditProductModal({
       return;
     }
 
-    if (costPrice < 0) {
+    const costPriceVisible = visibleStandardFields.some((field) => field.field_name === "cost_price");
+    const priceVisible = visibleStandardFields.some((field) => field.field_name === "price");
+    const stockVisible = visibleStandardFields.some((field) => field.field_name === "stock");
+
+    if (costPriceVisible && costPrice < 0) {
       setError("Cost price cannot be negative.");
       return;
     }
 
-    if (price <= 0) {
+    if (priceVisible && price <= 0) {
       setError("Sell price must be greater than 0.");
       return;
     }
 
-    if (stock < 0) {
+    if (stockVisible && stock < 0) {
       setError("Stock cannot be negative.");
       return;
     }
@@ -88,69 +95,90 @@ export default function EditProductModal({
         <h2 className="text-xl font-semibold mb-4">Edit Product</h2>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <label className="block text-sm text-gray-300">
-            Name
-            <input
-              className="mt-2 block w-full rounded bg-slate-900 p-2 text-white border border-white/10"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </label>
-
-          <label className="block text-sm text-gray-300">
-            Category
-            <select
-              className="mt-2 block w-full rounded bg-slate-900 p-2 text-white border border-white/10"
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-            >
-              {categories.map((cat, index) => (
-                <option key={`${cat}-${index}`} value={cat}>
-                  {cat}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="block text-sm text-gray-300">
-            Cost Price
-            <input
-              className="mt-2 block w-full rounded bg-slate-900 p-2 text-white border border-white/10"
-              type="number"
-              min={0}
-              step="0.01"
-              value={costPrice}
-              onChange={(e) => setCostPrice(Number(e.target.value))}
-            />
-          </label>
-
-          <label className="block text-sm text-gray-300">
-            Sell Price
-            <input
-              className="mt-2 block w-full rounded bg-slate-900 p-2 text-white border border-white/10"
-              type="number"
-              min={0}
-              step="0.01"
-              value={price}
-              onChange={(e) => setPrice(Number(e.target.value))}
-            />
-          </label>
-
-          <label className="block text-sm text-gray-300">
-            Stock
-            <input
-              className="mt-2 block w-full rounded bg-slate-900 p-2 text-white border border-white/10"
-              type="number"
-              min={0}
-              step={1}
-              value={stock}
-              onChange={(e) => setStock(Number(e.target.value))}
-            />
-          </label>
+          {visibleStandardFields.map((field) => {
+            switch (field.field_name) {
+              case "name":
+                return (
+                  <label key={field.id} className="block text-sm text-gray-300">
+                    {field.display_name}
+                    <input
+                      className="mt-2 block w-full rounded bg-slate-900 p-2 text-white border border-white/10"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      required={field.is_required}
+                    />
+                  </label>
+                );
+              case "category":
+                return (
+                  <label key={field.id} className="block text-sm text-gray-300">
+                    {field.display_name}
+                    <select
+                      className="mt-2 block w-full rounded bg-slate-900 p-2 text-white border border-white/10"
+                      value={category}
+                      onChange={(e) => setCategory(e.target.value)}
+                      required={field.is_required}
+                    >
+                      {categories.map((cat, index) => (
+                        <option key={`${cat}-${index}`} value={cat}>
+                          {cat}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                );
+              case "cost_price":
+                return (
+                  <label key={field.id} className="block text-sm text-gray-300">
+                    {field.display_name}
+                    <input
+                      className="mt-2 block w-full rounded bg-slate-900 p-2 text-white border border-white/10"
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={costPrice}
+                      onChange={(e) => setCostPrice(Number(e.target.value))}
+                      required={field.is_required}
+                    />
+                  </label>
+                );
+              case "price":
+                return (
+                  <label key={field.id} className="block text-sm text-gray-300">
+                    {field.display_name}
+                    <input
+                      className="mt-2 block w-full rounded bg-slate-900 p-2 text-white border border-white/10"
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={price}
+                      onChange={(e) => setPrice(Number(e.target.value))}
+                      required={field.is_required}
+                    />
+                  </label>
+                );
+              case "stock":
+                return (
+                  <label key={field.id} className="block text-sm text-gray-300">
+                    {field.display_name}
+                    <input
+                      className="mt-2 block w-full rounded bg-slate-900 p-2 text-white border border-white/10"
+                      type="number"
+                      min={0}
+                      step={1}
+                      value={stock}
+                      onChange={(e) => setStock(Number(e.target.value))}
+                    />
+                  </label>
+                );
+              default:
+                return null;
+            }
+          })}
 
           {/* Custom Fields */}
           {customFields
-            .filter((field) => !field.is_system)
+            .filter((field) => !field.is_system && field.is_visible)
             .map((field) => (
               <CustomFieldInput
                 key={field.id}

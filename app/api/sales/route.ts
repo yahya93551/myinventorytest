@@ -82,6 +82,23 @@ export async function POST(req: Request) {
   const rollback: Array<{ id: string; stock: number }> = [];
   const productRows: Array<{ id: string; name: string; price: number; quantity: number }> = [];
 
+  const rollbackStock = async () => {
+    for (const rollbackItem of rollback) {
+      const { error: rollbackError } = await supabaseAdmin
+        .from("products")
+        .update({ stock: rollbackItem.stock })
+        .eq("id", rollbackItem.id)
+        .eq("tenant_id", tenantContext.tenantId);
+
+      if (rollbackError) {
+        console.error("Sales route: rollback stock failed", {
+          rollbackItem,
+          rollbackError,
+        });
+      }
+    }
+  };
+
   for (const item of normalized) {
     const { data: product, error: productError } = await supabaseAdmin
       .from("products")
@@ -91,10 +108,16 @@ export async function POST(req: Request) {
       .single();
 
     if (productError || !product) {
+      if (rollback.length > 0) {
+        await rollbackStock();
+      }
       return jsonError(productError?.message || "Product not found", 404);
     }
 
     if (product.stock < item.quantity) {
+      if (rollback.length > 0) {
+        await rollbackStock();
+      }
       return jsonError(`Insufficient stock for ${product.name}`, 400);
     }
 
@@ -107,6 +130,15 @@ export async function POST(req: Request) {
       .select();
 
     if (updateError || !updatedProducts?.length) {
+      console.error("Sales route: failed to reserve stock", {
+        productId: item.product_id,
+        tenantId: tenantContext.tenantId,
+        quantity: item.quantity,
+        updateError,
+      });
+      if (rollback.length > 0) {
+        await rollbackStock();
+      }
       return jsonError(updateError?.message || "Failed to reserve stock", 500);
     }
 
@@ -121,21 +153,37 @@ export async function POST(req: Request) {
     total: product.quantity * product.price,
     tenant_id: tenantContext.tenantId,
     user_id: tenantContext.userId,
-    created_by: tenantContext.userId,
   }));
 
-  const { data: inserted, error: insertError } = await supabaseAdmin
+  let { data: inserted, error: insertError } = await supabaseAdmin
     .from("sales")
     .insert(salesRows)
     .select("id, product_id, product_name, quantity, total, created_at, user_id");
 
   if (insertError || !inserted) {
-    for (const rollbackItem of rollback) {
-      await supabaseAdmin
-        .from("products")
-        .update({ stock: rollbackItem.stock })
-        .eq("id", rollbackItem.id);
+    console.error("Sales route: failed to insert sale rows", {
+      salesRows,
+      insertError,
+    });
+
+    const missingCreatedBy = insertError?.message?.includes("created_by") ||
+      insertError?.code === "PGRST204";
+
+    if (missingCreatedBy) {
+      console.warn("Sales route: retrying sale insert without created_by column");
+      const fallbackRows = salesRows.map(({ created_by, ...row }) => row);
+      const fallbackResult = await supabaseAdmin
+        .from("sales")
+        .insert(fallbackRows)
+        .select("id, product_id, product_name, quantity, total, created_at, user_id");
+
+      inserted = fallbackResult.data;
+      insertError = fallbackResult.error;
     }
+  }
+
+  if (insertError || !inserted) {
+    await rollbackStock();
     return jsonError(insertError?.message || "Failed to record sale", 500);
   }
 
