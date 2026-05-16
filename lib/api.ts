@@ -122,3 +122,42 @@ export async function getTenantIdForUser(userId: string) {
 
   return data?.tenant_id ?? userId; // Default to the user-owned tenant
 }
+
+/**
+ * Helper to log audit trail with request context
+ * Automatically extracts IP, user agent, etc.
+ */
+export async function logAudit(
+  tenantId: string,
+  performedBy: string,
+  action: string,
+  entity: string,
+  req: Request,
+  entityId?: string,
+  details?: Record<string, any>
+) {
+  try {
+    const { logAuditTrail, extractIPAddress, extractUserAgent } = await import(
+      "@/lib/audit"
+    );
+
+    await logAuditTrail(
+      {
+        tenantId,
+        performedBy,
+        action,
+        entity,
+        entityId,
+        details,
+        ipAddress: extractIPAddress(req),
+        userAgent: extractUserAgent(req),
+        httpMethod: req.method,
+        endpoint: new URL(req.url).pathname,
+      },
+      req
+    );
+  } catch (err) {
+    console.error("[API] Failed to log audit trail:", err);
+    // Don't fail the request if audit logging fails
+  }
+}

@@ -94,7 +94,7 @@ export default function Sidebar({ dark, setDark }: Props) {
           <Building2 size={24} className="text-cyan-400" />
           {!collapsed && (
             <div>
-              <h1 className="text-xl font-bold">Luxury Inventory</h1>
+              <h1 className="text-xl font-bold">My Inventory</h1>
               <p className="text-xs text-gray-400">ERP System</p>
             </div>
           )}

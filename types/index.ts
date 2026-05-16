@@ -118,3 +118,100 @@ export const CustomFieldSchema = z.object({
 });
 
 export type CustomFieldForm = z.infer<typeof CustomFieldSchema>;
+
+// ============= PHASE 2: 2FA/MFA TYPES =============
+
+export type MFAMethod = 'totp' | 'sms' | 'email';
+
+export interface MFASettings {
+  mfa_enabled: boolean;
+  mfa_method?: MFAMethod;
+  mfa_verified_at?: string;
+  mfa_attempts?: number;
+  mfa_last_attempt?: string;
+}
+
+export interface MFAEnrollmentData {
+  method: MFAMethod;
+  secret?: string; // For TOTP
+  qr_code?: string; // QR code for TOTP
+  backup_codes: string[]; // Backup codes for recovery
+}
+
+export interface MFAVerificationRequest {
+  code: string; // 6-digit code from authenticator
+  method: MFAMethod;
+  remember_device?: boolean;
+}
+
+export interface UserSession {
+  id: string;
+  user_id: string;
+  session_id: string;
+  ip_address?: string;
+  user_agent?: string;
+  created_at: string;
+  last_activity: string;
+  expires_at: string;
+  is_current?: boolean; // Frontend only
+}
+
+// ============= PHASE 2: GDPR/COMPLIANCE TYPES =============
+
+export type DataExportFormat = 'json' | 'csv';
+export type DataExportStatus = 'pending' | 'processing' | 'ready' | 'expired' | 'downloaded';
+
+export interface DataExportRequest {
+  id: string;
+  user_id: string;
+  export_token: string;
+  export_url?: string;
+  status: DataExportStatus;
+  data_format: DataExportFormat;
+  created_at: string;
+  expires_at: string;
+  downloaded_at?: string;
+}
+
+export type AccountDeletionStatus = 'pending' | 'confirmed' | 'processing' | 'completed';
+
+export interface AccountDeletionRequest {
+  id: string;
+  user_id: string;
+  deletion_token: string;
+  status: AccountDeletionStatus;
+  requested_at: string;
+  confirmed_at?: string;
+  completed_at?: string;
+  expires_at: string;
+}
+
+// ============= PHASE 2: PASSWORD RESET TYPES =============
+
+export interface PasswordResetRequest {
+  email: string;
+}
+
+export interface PasswordResetConfirm {
+  token: string;
+  password: string;
+  password_confirm: string;
+}
+
+export const PasswordSchema = z
+  .string()
+  .min(8, 'Password must be at least 8 characters')
+  .regex(/[A-Z]/, 'Password must include uppercase letter')
+  .regex(/[a-z]/, 'Password must include lowercase letter')
+  .regex(/[0-9]/, 'Password must include number')
+  .regex(/[^A-Za-z0-9]/, 'Password must include special character');
+
+export const ResetPasswordSchema = z.object({
+  password: PasswordSchema,
+  password_confirm: z.string(),
+}).refine(data => data.password === data.password_confirm, {
+  message: 'Passwords do not match',
+  path: ['password_confirm'],
+});
+
+export type ResetPasswordForm = z.infer<typeof ResetPasswordSchema>;

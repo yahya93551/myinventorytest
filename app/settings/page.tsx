@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
 import { useRequireAuth, logout } from "@/hooks/useRequireAuth";
@@ -166,6 +167,30 @@ export default function SettingsPage() {
           <div>
             <h1 className="text-3xl font-bold">Settings</h1>
             <p className="text-gray-400 mt-2">Manage your team, sub-users, and account settings.</p>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Link
+              href="/settings/mfa"
+              className="rounded-3xl border border-white/10 bg-slate-900/80 px-5 py-5 text-left text-sm text-slate-100 transition hover:border-cyan-500 hover:bg-slate-800"
+            >
+              <h3 className="font-semibold text-white">Security</h3>
+              <p className="mt-2 text-slate-300">Manage multi-factor authentication settings for your account.</p>
+            </Link>
+            <Link
+              href="/settings/gdpr"
+              className="rounded-3xl border border-white/10 bg-slate-900/80 px-5 py-5 text-left text-sm text-slate-100 transition hover:border-cyan-500 hover:bg-slate-800"
+            >
+              <h3 className="font-semibold text-white">Privacy</h3>
+              <p className="mt-2 text-slate-300">Request data exports and account deletion workflows for GDPR compliance.</p>
+            </Link>
+            <Link
+              href="/settings/sessions"
+              className="rounded-3xl border border-white/10 bg-slate-900/80 px-5 py-5 text-left text-sm text-slate-100 transition hover:border-cyan-500 hover:bg-slate-800"
+            >
+              <h3 className="font-semibold text-white">Sessions</h3>
+              <p className="mt-2 text-slate-300">Review and revoke active sessions across devices.</p>
+            </Link>
           </div>
 
           <div className="flex flex-wrap gap-3">

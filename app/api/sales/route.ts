@@ -171,7 +171,7 @@ export async function POST(req: Request) {
 
     if (missingCreatedBy) {
       console.warn("Sales route: retrying sale insert without created_by column");
-      const fallbackRows = salesRows.map(({ created_by, ...row }) => row);
+      const fallbackRows = salesRows;
       const fallbackResult = await supabaseAdmin
         .from("sales")
         .insert(fallbackRows)
