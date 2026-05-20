@@ -33,7 +33,18 @@ const ProductCreateSchema = z.object({
   custom_data: z.record(z.string(), z.unknown()).optional(),
 });
 
-const ProductUpdateSchema = ProductCreateSchema.partial().refine(
+const ProductUpdateSchema = z.object({
+  name: z.string().trim().min(1, "Product name is required").optional(),
+  category: z.string().trim().min(1, "Category is required").optional(),
+  cost_price: z.coerce.number().nonnegative("Cost price cannot be negative").optional(),
+  price: z.coerce.number().nonnegative("Price must be 0 or greater").optional(),
+  stock: z
+    .coerce.number()
+    .int("Stock must be an integer")
+    .nonnegative("Stock cannot be negative")
+    .optional(),
+  custom_data: z.record(z.string(), z.unknown()).optional(),
+}).refine(
   (data) => Object.keys(data).length > 0,
   {
     message: "At least one field must be provided for update",

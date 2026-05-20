@@ -4,15 +4,17 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
+import { useTheme } from "@/lib/theme-context";
 import { useRequireAuth, logout } from "@/hooks/useRequireAuth";
 import { BusinessSettingsForm } from "@/components/BusinessSettingsForm";
 import { CustomFieldsManager } from "@/components/CustomFieldsManager";
 import { StandardFieldManager } from "@/components/StandardFieldManager";
 import { supabase } from "@/lib/supabase";
+import { Shield, Lock, Monitor, User, Building2, ListChecks, Layers, PlusCircle, Settings2, ChevronRight } from "lucide-react";
 
 export default function SettingsPage() {
   const { user, loading } = useRequireAuth();
-  const [dark, setDark] = useState(true);
+  const { dark } = useTheme();
   const [tenantRole, setTenantRole] = useState<string>("");
   const [subUsers, setSubUsers] = useState<Array<{ user_id: string; user_email: string; role: string; active: boolean; created_at: string }>>([]);
   const [newSubUserEmail, setNewSubUserEmail] = useState("");
@@ -24,6 +26,36 @@ export default function SettingsPage() {
   const [activeSection, setActiveSection] = useState<"owner" | "system" | "subuser" | "business" | "customfields" | "standardfields">("owner");
   const [businessType, setBusinessType] = useState<string>("custom");
   const router = useRouter();
+
+  const quickActions = [
+    {
+      href: "/settings/mfa",
+      title: "Security",
+      description: "Manage multi-factor authentication settings for your account.",
+      icon: Shield,
+    },
+    {
+      href: "/settings/gdpr",
+      title: "Privacy",
+      description: "Request data exports and account deletion workflows for GDPR compliance.",
+      icon: Lock,
+    },
+    {
+      href: "/settings/sessions",
+      title: "Sessions",
+      description: "Review and revoke active sessions across devices.",
+      icon: Monitor,
+    },
+  ];
+
+  const settingTabs = [
+    { id: "owner", label: "Owner Settings", icon: User },
+    { id: "business", label: "Business Type", icon: Building2 },
+    { id: "standardfields", label: "Standard Fields", icon: ListChecks },
+    { id: "customfields", label: "Custom Fields", icon: Layers },
+    { id: "system", label: "System Controls", icon: Settings2 },
+    { id: "subuser", label: "Create Sub-user", icon: PlusCircle },
+  ];
 
   const handleLogout = async () => {
     try {
@@ -160,57 +192,52 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className={`flex min-h-screen items-start flex-col lg:flex-row ${dark ? "bg-slate-950 text-slate-100" : "bg-slate-100 text-slate-950"}`}>
-      <Sidebar dark={dark} setDark={setDark} />
-      <main className="flex-1 p-6">
-        <div className="mb-6 flex flex-col gap-4">
+    <div className={`flex min-h-screen items-start flex-col lg:flex-row ${dark ? "theme-dark" : "theme-light"}`}>
+      <Sidebar />
+      <main className="flex-1 p-6 lg:p-8">
+        <div className="mb-6 flex flex-col gap-5">
           <div>
             <h1 className="text-3xl font-bold">Settings</h1>
-            <p className="text-gray-400 mt-2">Manage your team, sub-users, and account settings.</p>
+            <p className="text-theme-secondary mt-2 max-w-2xl">Manage your team, sub-users, and account settings with a responsive, device-friendly interface.</p>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-3">
-            <Link
-              href="/settings/mfa"
-              className="rounded-3xl border border-white/10 bg-slate-900/80 px-5 py-5 text-left text-sm text-slate-100 transition hover:border-cyan-500 hover:bg-slate-800"
-            >
-              <h3 className="font-semibold text-white">Security</h3>
-              <p className="mt-2 text-slate-300">Manage multi-factor authentication settings for your account.</p>
-            </Link>
-            <Link
-              href="/settings/gdpr"
-              className="rounded-3xl border border-white/10 bg-slate-900/80 px-5 py-5 text-left text-sm text-slate-100 transition hover:border-cyan-500 hover:bg-slate-800"
-            >
-              <h3 className="font-semibold text-white">Privacy</h3>
-              <p className="mt-2 text-slate-300">Request data exports and account deletion workflows for GDPR compliance.</p>
-            </Link>
-            <Link
-              href="/settings/sessions"
-              className="rounded-3xl border border-white/10 bg-slate-900/80 px-5 py-5 text-left text-sm text-slate-100 transition hover:border-cyan-500 hover:bg-slate-800"
-            >
-              <h3 className="font-semibold text-white">Sessions</h3>
-              <p className="mt-2 text-slate-300">Review and revoke active sessions across devices.</p>
-            </Link>
+          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+            {quickActions.map((action) => {
+              const Icon = action.icon;
+              return (
+                <Link
+                  key={action.title}
+                  href={action.href}
+                  className="group rounded-3xl border border-theme bg-theme-card p-5 text-left text-sm text-theme-primary transition hover:border-cyan-500"
+                >
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="grid h-12 w-12 place-items-center rounded-2xl bg-theme-input text-cyan-300 transition group-hover:bg-cyan-500 group-hover:text-slate-950">
+                      <Icon size={22} />
+                    </span>
+                    <ChevronRight size={20} className="text-theme-muted transition group-hover:text-cyan-300" />
+                  </div>
+                  <h3 className="mt-5 text-lg font-semibold text-theme-primary">{action.title}</h3>
+                  <p className="mt-2 text-sm text-theme-secondary">{action.description}</p>
+                </Link>
+              );
+            })}
           </div>
 
-          <div className="flex flex-wrap gap-3">
-            {[
-              { id: "owner", label: "Owner Settings" },
-              { id: "business", label: "Business Type" },
-              { id: "standardfields", label: "Standard Fields" },
-              { id: "customfields", label: "Custom Fields" },
-              { id: "system", label: "System Controls" },
-              { id: "subuser", label: "Create Sub-user" },
-            ].map((tab) => {
+          <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+            {settingTabs.map((tab) => {
+              const Icon = tab.icon;
               const selected = activeSection === tab.id;
               return (
                 <button
                   key={tab.id}
                   type="button"
                   onClick={() => setActiveSection(tab.id as "owner" | "system" | "subuser" | "business" | "customfields" | "standardfields")}
-                  className={`rounded-full px-4 py-2 text-sm font-semibold transition ${selected ? "bg-cyan-500 text-slate-950" : "border border-white/10 bg-slate-900/80 text-slate-100 hover:bg-slate-800"}`}
+                  className={`group flex items-center gap-3 rounded-3xl border px-4 py-4 text-left text-sm font-semibold transition ${selected ? "border-transparent bg-cyan-500 text-slate-950 shadow-[0_10px_30px_-18px_rgba(6,182,212,0.8)]" : "border-theme bg-theme-card text-theme-secondary hover:border-white/30 hover:bg-theme-surface"}`}
                 >
-                  {tab.label}
+                  <span className={`grid h-11 w-11 place-items-center rounded-2xl border ${selected ? "border-transparent bg-slate-950 text-white" : "border-white/10 bg-theme-input text-cyan-300"}`}>
+                    <Icon size={18} />
+                  </span>
+                  <span>{tab.label}</span>
                 </button>
               );
             })}
@@ -245,21 +272,21 @@ CREATE TABLE IF NOT EXISTS tenant_members (
 
         <div className="mt-6 space-y-6">
           {activeSection === "owner" && (
-            <section className="rounded-3xl border border-white/10 bg-white/5 p-6">
-              <h2 className="text-2xl font-semibold">Owner Settings</h2>
-              <p className="text-sm text-gray-400">Your account and tenant-level controls.</p>
+            <section className="rounded-3xl border border-theme bg-theme-card p-6">
+              <h2 className="text-2xl font-semibold text-theme-primary">Owner Settings</h2>
+              <p className="text-sm text-theme-secondary">Your account and tenant-level controls.</p>
 
               <div className="mt-6 space-y-4">
                 <div>
-                  <p className="text-sm text-gray-400">Email</p>
+                  <p className="text-sm text-theme-secondary">Email</p>
                   <p className="text-lg font-medium">{user?.email || "Unknown"}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-400">Tenant Role</p>
+                  <p className="text-sm text-theme-secondary">Tenant Role</p>
                   <p className="text-lg font-medium">{tenantRole || "Member"}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-400">Joined</p>
+                  <p className="text-sm text-theme-secondary">Joined</p>
                   <p className="text-lg font-medium">{user?.created_at ? new Date(user.created_at).toLocaleString() : "N/A"}</p>
                 </div>
               </div>
@@ -274,31 +301,31 @@ CREATE TABLE IF NOT EXISTS tenant_members (
           )}
 
           {activeSection === "system" && (
-            <section className="rounded-3xl border border-white/10 bg-white/5 p-6">
-              <h2 className="text-2xl font-semibold">System Controls</h2>
-              <p className="text-sm text-gray-400">Quick links for inventory and sales configuration.</p>
+            <section className="rounded-3xl border border-theme bg-theme-card p-6">
+              <h2 className="text-2xl font-semibold text-theme-primary">System Controls</h2>
+              <p className="text-sm text-theme-secondary">Quick links for inventory and sales configuration.</p>
 
               <div className="mt-6 space-y-4">
-                <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
-                  <p className="text-sm text-gray-400">Inventory sharing</p>
-                  <p className="mt-1 text-sm text-white/80">Sub-user roles control who can sell and view inventory.</p>
+                <div className="rounded-2xl border border-theme bg-theme-input p-4">
+                  <p className="text-sm text-theme-secondary">Inventory sharing</p>
+                  <p className="mt-1 text-sm text-theme-muted">Sub-user roles control who can sell and view inventory.</p>
                 </div>
-                <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
-                  <p className="text-sm text-gray-400">Sales activity</p>
-                  <p className="mt-1 text-sm text-white/80">Use the reports page to review daily activity and revenue.</p>
+                <div className="rounded-2xl border border-theme bg-theme-input p-4">
+                  <p className="text-sm text-theme-secondary">Sales activity</p>
+                  <p className="mt-1 text-sm text-theme-muted">Use the reports page to review daily activity and revenue.</p>
                 </div>
-                <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
-                  <p className="text-sm text-gray-400">Team permissions</p>
-                  <p className="mt-1 text-sm text-white/80">Owners can create accountant and sales accounts from below.</p>
+                <div className="rounded-2xl border border-theme bg-theme-input p-4">
+                  <p className="text-sm text-theme-secondary">Team permissions</p>
+                  <p className="mt-1 text-sm text-theme-muted">Owners can create accountant and sales accounts from below.</p>
                 </div>
               </div>
             </section>
           )}
 
           {activeSection === "subuser" && (
-            <section className="rounded-3xl border border-white/10 bg-white/5 p-6">
-              <h2 className="text-2xl font-semibold">Create a Sub-user</h2>
-              <p className="text-sm text-gray-400">Use this form to add a new sales or accountant team member.</p>
+            <section className="rounded-3xl border border-theme bg-theme-card p-6">
+              <h2 className="text-2xl font-semibold text-theme-primary">Create a Sub-user</h2>
+              <p className="text-sm text-theme-secondary">Use this form to add a new sales or accountant team member.</p>
 
               {tenantRole !== "owner" ? (
                 <div className="mt-6 rounded-3xl border border-yellow-400/30 bg-yellow-500/10 p-6 text-yellow-100">
@@ -312,19 +339,19 @@ CREATE TABLE IF NOT EXISTS tenant_members (
                       value={newSubUserEmail}
                       onChange={(e) => setNewSubUserEmail(e.target.value)}
                       placeholder="Sub-user email"
-                      className="w-full rounded-2xl border border-white/10 bg-slate-900/80 px-4 py-3 text-white outline-none focus:border-cyan-400"
+                      className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
                     />
                     <input
                       type="password"
                       value={newSubUserPassword}
                       onChange={(e) => setNewSubUserPassword(e.target.value)}
                       placeholder="Password"
-                      className="w-full rounded-2xl border border-white/10 bg-slate-900/80 px-4 py-3 text-white outline-none focus:border-cyan-400"
+                      className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
                     />
                     <select
                       value={newSubUserRole}
                       onChange={(e) => setNewSubUserRole(e.target.value as "accountant" | "sales")}
-                      className="w-full rounded-2xl border border-white/10 bg-slate-900/80 px-4 py-3 text-white outline-none focus:border-cyan-400"
+                      className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
                     >
                       <option value="sales">Sales</option>
                       <option value="accountant">Accountant</option>
@@ -340,30 +367,30 @@ CREATE TABLE IF NOT EXISTS tenant_members (
                   </button>
 
                   {subUserMessage && (
-                    <p className="mt-4 text-sm text-white/80">{subUserMessage}</p>
+                    <p className="mt-4 text-sm text-theme-muted">{subUserMessage}</p>
                   )}
 
                   <div className="mt-8">
                     <h3 className="text-lg font-semibold">Team members</h3>
                     {subUserLoading && !subUsers.length ? (
-                      <p className="mt-3 text-sm text-gray-400">Loading sub-users...</p>
+                      <p className="mt-3 text-sm text-theme-secondary">Loading sub-users...</p>
                     ) : subUsers.length === 0 ? (
-                      <p className="mt-3 text-sm text-gray-400">No sub-users found.</p>
+                      <p className="mt-3 text-sm text-theme-secondary">No sub-users found.</p>
                     ) : (
                       <div className="mt-4 space-y-3">
                         {subUsers.map((member) => (
-                          <div key={member.user_id} className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+                          <div key={member.user_id} className="rounded-2xl border border-theme bg-theme-card p-4">
                             <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                               <div>
-                                <p className="text-sm text-gray-400">Email</p>
+                                <p className="text-sm text-theme-secondary">Email</p>
                                 <p className="font-medium">{member.user_email}</p>
                               </div>
                               <div>
-                                <p className="text-sm text-gray-400">Role</p>
+                                <p className="text-sm text-theme-secondary">Role</p>
                                 <p className="font-medium capitalize">{member.role}</p>
                               </div>
                             </div>
-                            <p className="mt-3 text-sm text-gray-500">Added: {new Date(member.created_at).toLocaleString()}</p>
+                            <p className="mt-3 text-sm text-theme-secondary">Added: {new Date(member.created_at).toLocaleString()}</p>
                           </div>
                         ))}
                       </div>
@@ -375,13 +402,13 @@ CREATE TABLE IF NOT EXISTS tenant_members (
           )}
 
           {activeSection === "business" && (
-            <section className="rounded-3xl border border-white/10 bg-white/5 p-6">
+            <section className="rounded-3xl border border-theme bg-theme-card p-6">
               <BusinessSettingsForm onBusinessTypeChange={setBusinessType} />
             </section>
           )}
 
           {activeSection === "standardfields" && (
-            <section className="rounded-3xl border border-white/10 bg-white/5 p-6">
+            <section className="rounded-3xl border border-theme bg-theme-card p-6">
               {tenantRole !== "owner" ? (
                 <div className="rounded-3xl border border-yellow-400/30 bg-yellow-500/10 p-6 text-yellow-100">
                   <p className="font-semibold">Owner access required</p>
@@ -394,7 +421,7 @@ CREATE TABLE IF NOT EXISTS tenant_members (
           )}
 
           {activeSection === "customfields" && (
-            <section className="rounded-3xl border border-white/10 bg-white/5 p-6">
+            <section className="rounded-3xl border border-theme bg-theme-card p-6">
               {tenantRole !== "owner" ? (
                 <div className="rounded-3xl border border-yellow-400/30 bg-yellow-500/10 p-6 text-yellow-100">
                   <p className="font-semibold">Owner access required</p>

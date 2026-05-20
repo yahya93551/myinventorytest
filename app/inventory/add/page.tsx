@@ -9,6 +9,7 @@ import AddProductForm from "../components/AddProductForm";
 import { apiGet, apiPost } from "@/lib/apiClient";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { useCustomFields } from "@/hooks/useCustomFields";
+import { useTheme } from "@/lib/theme-context";
 import { getVisibleSystemFieldNames } from "@/lib/customFields";
 
 type Product = {
@@ -23,6 +24,7 @@ type Product = {
 
 export default function AddPage() {
   const { loading } = useRequireAuth();
+  const { dark } = useTheme();
 
   const router = useRouter();
 
@@ -33,9 +35,9 @@ export default function AddPage() {
   const [name, setName] = useState("");
   const [category, setCategory] =
     useState("");
-  const [costPrice, setCostPrice] = useState(0);
-  const [price, setPrice] = useState(0);
-  const [stock, setStock] = useState(0);
+  const [costPrice, setCostPrice] = useState<number | "">("");
+  const [price, setPrice] = useState<number | "">("");
+  const [stock, setStock] = useState<number | "">("");
   const [customData, setCustomData] = useState<Record<string, any>>({});
 
   const [isSubmitting, setIsSubmitting] =
@@ -44,7 +46,6 @@ export default function AddPage() {
   const [message, setMessage] =
     useState("");
 
-  const [dark, setDark] = useState(true);
   const customFieldsQuery = useCustomFields();
   const customFields = customFieldsQuery.data || [];
   const visibleStandardFieldNames = getVisibleSystemFieldNames(customFields);
@@ -111,11 +112,12 @@ export default function AddPage() {
       const priceVisible = visibleStandardFieldNames.includes("price");
       const stockVisible = visibleStandardFieldNames.includes("stock");
 
-      if (!name.trim() || !category.trim() || (costPriceVisible && costPrice < 0) || (priceVisible && price <= 0) || (stockVisible && stock < 0)) {
-        setMessage(
-          "⚠️ Fill all fields correctly"
-        );
+      const parsedCostPrice = costPrice === "" ? 0 : costPrice;
+      const parsedPrice = price === "" ? 0 : price;
+      const parsedStock = stock === "" ? 0 : stock;
 
+      if (!name.trim() || !category.trim() || (costPriceVisible && parsedCostPrice < 0) || (priceVisible && parsedPrice <= 0) || (stockVisible && parsedStock < 0)) {
+        setMessage("⚠️ Fill all fields correctly");
         return;
       }
 
@@ -139,8 +141,9 @@ export default function AddPage() {
         );
 
         setName("");
-        setPrice(0);
-        setStock(0);
+        setPrice("");
+        setStock("");
+        setCostPrice("");
         setCustomData({});
 
         if (categories.length > 0) {
@@ -175,10 +178,7 @@ export default function AddPage() {
     <div
       className={`flex min-h-screen items-start flex-col lg:flex-row ${theme}`}
     >
-      <Sidebar
-        dark={dark}
-        setDark={setDark}
-      />
+      <Sidebar />
 
       <div className="flex-1 p-4 sm:p-6 overflow-x-hidden">
         {/* HEADER */}
@@ -195,7 +195,7 @@ export default function AddPage() {
               Add Product
             </h1>
 
-            <p className="text-gray-400 mt-2">
+            <p className="text-theme-secondary mt-2">
               Create new products
             </p>
           </div>
@@ -242,7 +242,7 @@ export default function AddPage() {
 
         {/* LOADING */}
         {isSubmitting && (
-          <div className="mt-4 flex items-center justify-center gap-2 text-gray-400">
+          <div className="mt-4 flex items-center justify-center gap-2 text-theme-secondary">
             <span className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
 
             <p>Adding product...</p>

@@ -1,7 +1,14 @@
 // app/api/auth/session/route.ts - Manage user sessions
 import { getServerTenantContext, jsonSuccess, jsonError } from '@/lib/api';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { extractIPAddress, extractUserAgent } from '@/lib/audit';
 import { NextRequest, NextResponse } from 'next/server';
+
+function isUserSessionsMissingError(error: unknown) {
+  if (!error || typeof error !== 'object') return false;
+  const message = (error as any).message;
+  return typeof message === 'string' && message.includes("Could not find the table 'public.user_sessions'");
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -17,6 +24,10 @@ export async function GET(req: NextRequest) {
       .order('last_activity', { ascending: false });
 
     if (error) {
+      if (isUserSessionsMissingError(error)) {
+        console.warn('[SESSION] user_sessions table missing. Session tracking disabled.');
+        return jsonSuccess({ sessions: [] });
+      }
       console.error('[SESSION] Failed to fetch sessions:', error);
       return jsonError('Failed to fetch sessions', 500);
     }
@@ -25,6 +36,69 @@ export async function GET(req: NextRequest) {
   } catch (err) {
     console.error('[SESSION] Error fetching sessions:', err);
     return jsonError('Failed to fetch session data', 500);
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const tenantContext = await getServerTenantContext(req as any);
+    if ('error' in tenantContext) {
+      return jsonError(tenantContext.error, tenantContext.status);
+    }
+
+    const payload = await req.json().catch(() => ({}));
+    const sessionId = typeof payload.session_id === 'string' ? payload.session_id.trim() : '';
+
+    if (!sessionId) {
+      return jsonError('Session ID is required to register a session', 400);
+    }
+
+    let expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    if (typeof payload.expires_at === 'string' && payload.expires_at) {
+      const parsed = new Date(payload.expires_at);
+      if (!Number.isNaN(parsed.getTime())) {
+        expiresAt = parsed.toISOString();
+      }
+    }
+
+    const ipAddress = extractIPAddress(req);
+    const userAgent = extractUserAgent(req);
+    const now = new Date().toISOString();
+
+    const { data, error } = await supabaseAdmin
+      .from('user_sessions')
+      .upsert(
+        {
+          user_id: tenantContext.userId,
+          session_id: sessionId,
+          ip_address: ipAddress,
+          user_agent: userAgent,
+          last_activity: now,
+          expires_at: expiresAt,
+        },
+        { onConflict: 'session_id' }
+      )
+      .select()
+      .single();
+
+    if (error) {
+      if (isUserSessionsMissingError(error)) {
+        console.warn('[SESSION] user_sessions table missing. Session tracking registration skipped.');
+        return jsonError('Session tracking is unavailable', 503);
+      }
+      console.error('[SESSION] Failed to register session:', error);
+      return jsonError(`Failed to register session: ${error.message || 'Unknown error'}`, 500);
+    }
+
+    if (!data) {
+      console.error('[SESSION] Register session returned no data');
+      return jsonError('Failed to register session: no data returned', 500);
+    }
+
+    return jsonSuccess({ session: data });
+  } catch (err) {
+    console.error('[SESSION] Error registering session:', err);
+    return jsonError('Failed to register session', 500);
   }
 }
 
@@ -47,6 +121,10 @@ export async function DELETE(req: NextRequest) {
       .eq('session_id', sessionId);
 
     if (error) {
+      if (isUserSessionsMissingError(error)) {
+        console.warn('[SESSION] user_sessions table missing. Session deletion skipped.');
+        return jsonSuccess({ message: 'Session tracking unavailable' });
+      }
       console.error('[SESSION] Failed to delete session:', error);
       return jsonError('Failed to log out session', 500);
     }

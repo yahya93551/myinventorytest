@@ -1,0 +1,196 @@
+# Patch: Responsive icons + Card theming (for review)
+# This is a git-style patch you can inspect and apply manually.
+# It makes minimal, reversible changes:
+# - Replace fixed `size={...}` icon props with responsive `className` sizes
+# - Update `Card.tsx` to use theme utilities and add a small `compact` prop
+# No files in the repo are modified by creating this patch file.
+
+*** Begin Patch
+*** Update File: components/Card.tsx
+@@
+ export default function Card({
+   hover = false,
+   interactive = false,
+   className = "",
++  compact = false,
+   children,
+   ...props
+ }: CardProps) {
+   return (
+     <div
+       className={`
+-        rounded-2xl border border-slate-700/50 bg-slate-800/50
+-        backdrop-blur-xl p-6 shadow-xl
++        rounded-2xl border border-theme bg-theme-card
++        backdrop-blur-xl ${compact ? "p-3" : "p-6"} shadow-xl
+         transition-all duration-200
+         ${hover ? "hover:border-slate-600 hover:bg-slate-800/70" : ""}
+         ${interactive ? "cursor-pointer hover:shadow-2xl" : ""}
+         ${className}
+       `}
+       {...props}
+     >
+       {children}
+     </div>
+   );
+ }
+*** End Patch
+
+*** Begin Patch
+*** Update File: components/StatsCards.tsx
+@@
+-  const Card = ({ title, value, icon }: any) => (
+-    <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-5 shadow-xl flex items-center gap-4 transition-all duration-200 hover:shadow-2xl">
+-      <div className="p-3 rounded-xl bg-cyan-500/20 text-cyan-400">
+-        {icon}
+-      </div>
++  const Card = ({ title, value, icon }: any) => (
++    <div className="bg-theme-card backdrop-blur-xl border-theme rounded-2xl p-5 shadow-xl flex items-center gap-4 transition-all duration-200 hover:shadow-2xl">
++      <div className="p-3 rounded-xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center">
++        {icon}
++      </div>
+       <div>
+         <p className="text-slate-400 text-sm font-medium">{title}</p>
+         <h2 className="text-2xl font-bold text-white mt-1">{value}</h2>
+       </div>
+     </div>
+   );
+@@
+-    {
+-      title: "Total Products",
+-      value: total,
+-      icon: <Package size={24} />,
+-    },
++    {
++      title: "Total Products",
++      value: total,
++      icon: <Package className="w-6 h-6 sm:w-7 sm:h-7" />,
++    },
+@@
+-    cards.push({
+-      title: "Inventory Cost",
+-      value: `$${totalCost.toFixed(2)}`,
+-      icon: <DollarSign size={24} />,
+-    });
++    cards.push({
++      title: "Inventory Cost",
++      value: `$${totalCost.toFixed(2)}`,
++      icon: <DollarSign className="w-6 h-6 sm:w-7 sm:h-7" />,
++    });
+@@
+-    cards.push({
+-      title: "Inventory Sell Value",
+-      value: `$${totalSellValue.toFixed(2)}`,
+-      icon: <DollarSign size={24} />,
+-    });
++    cards.push({
++      title: "Inventory Sell Value",
++      value: `$${totalSellValue.toFixed(2)}`,
++      icon: <DollarSign className="w-6 h-6 sm:w-7 sm:h-7" />,
++    });
+@@
+-    cards.push({
+-      title: "Potential Profit",
+-      value: `$${potentialProfit.toFixed(2)}`,
+-      icon: <DollarSign size={24} />,
+-    });
++    cards.push({
++      title: "Potential Profit",
++      value: `$${potentialProfit.toFixed(2)}`,
++      icon: <DollarSign className="w-6 h-6 sm:w-7 sm:h-7" />,
++    });
+*** End Patch
+
+*** Begin Patch
+*** Update File: components/Inventory.tsx
+@@
+-      <button
+-        onClick={save}
+-        className="btn-primary mb-6 flex items-center gap-2 w-full sm:w-auto justify-center"
+-      >
+-        <Plus size={20} />
+-        Add Product
+-      </button>
++      <button
++        onClick={save}
++        className="btn-primary mb-6 flex items-center gap-2 w-full sm:w-auto justify-center"
++      >
++        <Plus className="w-5 h-5 sm:w-6 sm:h-6" />
++        Add Product
++      </button>
+@@
+-                        <Edit size={16} />
+-                        <span className="hidden sm:inline">Edit</span>
++                        <Edit className="w-4 h-4 sm:w-5 sm:h-5" />
++                        <span className="hidden sm:inline">Edit</span>
+                       </button>
+@@
+-                        <ShoppingCart size={16} />
+-                        <span className="hidden sm:inline">Sell</span>
++                        <ShoppingCart className="w-4 h-4 sm:w-5 sm:h-5" />
++                        <span className="hidden sm:inline">Sell</span>
+                       </button>
+@@
+-                        <Trash2 size={16} />
+-                        <span className="hidden sm:inline">Delete</span>
++                        <Trash2 className="w-4 h-4 sm:w-5 sm:h-5" />
++                        <span className="hidden sm:inline">Delete</span>
+                       </button>
+*** End Patch
+
+*** Begin Patch
+*** Update File: app/inventory/ProductTable.tsx
+@@
+-                    <ShoppingCart size={14} />
++                    <ShoppingCart className="w-3 h-3 sm:w-4 sm:h-4" />
+                     Sell
+@@
+-                    <Plus size={14} />
++                    <Plus className="w-3 h-3 sm:w-4 sm:h-4" />
+                     Restock
+@@
+-                    <Edit size={14} />
++                    <Edit className="w-3 h-3 sm:w-4 sm:h-4" />
+                     Edit
+@@
+-                    <Trash2 size={14} />
++                    <Trash2 className="w-3 h-3 sm:w-4 sm:h-4" />
+                     Delete
+*** End Patch
+
+*** Begin Patch
+*** Update File: components/Sidebar.tsx
+@@
+-          <Building2 size={24} className="text-cyan-400" />
++          <Building2 className="w-6 h-6 sm:w-7 sm:h-7 text-cyan-400" />
+@@
+-          <LayoutDashboard size={20} />
++          <LayoutDashboard className="w-5 h-5 sm:w-6 sm:h-6" />
+@@
+-            <Package size={20} />
++            <Package className="w-5 h-5 sm:w-6 sm:h-6" />
+@@
+-            <Plus size={20} />
++            <Plus className="w-5 h-5 sm:w-6 sm:h-6" />
+@@
+-            <Tag size={20} />
++            <Tag className="w-5 h-5 sm:w-6 sm:h-6" />
+@@
+-            <ShoppingCart size={20} />
++            <ShoppingCart className="w-5 h-5 sm:w-6 sm:h-6" />
+@@
+-            <FileText size={20} />
++            <FileText className="w-5 h-5 sm:w-6 sm:h-6" />
+@@
+-            <Settings size={20} />
++            <Settings className="w-5 h-5 sm:w-6 sm:h-6" />
+@@
+-            <User size={20} />
++            <User className="w-5 h-5 sm:w-6 sm:h-6" />
+@@
+-          {dark ? <Sun size={20} /> : <Moon size={20} />}
++          {dark ? <Sun className="w-5 h-5 sm:w-6 sm:h-6" /> : <Moon className="w-5 h-5 sm:w-6 sm:h-6" />}
+@@
+-          <X size={20} />
++          <X className="w-5 h-5 sm:w-6 sm:h-6" />
+*** End Patch

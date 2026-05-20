@@ -24,7 +24,7 @@ export default function StatsCards({ products, visibleFieldNames }: { products: 
     {
       title: "Total Products",
       value: total,
-      icon: <Package size={24} />,
+      icon: <Package className="w-6 h-6 sm:w-7 sm:h-7" />,
     },
   ];
 
@@ -32,7 +32,7 @@ export default function StatsCards({ products, visibleFieldNames }: { products: 
     cards.push({
       title: "Inventory Cost",
       value: `$${totalCost.toFixed(2)}`,
-      icon: <DollarSign size={24} />,
+      icon: <DollarSign className="w-6 h-6 sm:w-7 sm:h-7" />,
     });
   }
 
@@ -40,7 +40,7 @@ export default function StatsCards({ products, visibleFieldNames }: { products: 
     cards.push({
       title: "Inventory Sell Value",
       value: `$${totalSellValue.toFixed(2)}`,
-      icon: <DollarSign size={24} />,
+      icon: <DollarSign className="w-6 h-6 sm:w-7 sm:h-7" />,
     });
   }
 
@@ -48,18 +48,18 @@ export default function StatsCards({ products, visibleFieldNames }: { products: 
     cards.push({
       title: "Potential Profit",
       value: `$${potentialProfit.toFixed(2)}`,
-      icon: <DollarSign size={24} />,
+      icon: <DollarSign className="w-6 h-6 sm:w-7 sm:h-7" />,
     });
   }
 
   const Card = ({ title, value, icon }: any) => (
-    <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-5 shadow-lg flex items-center gap-4">
-      <div className="text-cyan-400">
+    <div className="bg-slate-950/85 border border-slate-700/50 backdrop-blur-xl rounded-2xl p-5 shadow-card flex items-center gap-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-2xl">
+      <div className="p-3 rounded-xl bg-cyan-500/15 text-cyan-300 flex items-center justify-center">
         {icon}
       </div>
       <div>
-        <p className="text-gray-300 text-sm">{title}</p>
-        <h2 className="text-2xl font-bold text-white mt-1">{value}</h2>
+        <p className="text-theme-secondary text-sm font-medium">{title}</p>
+        <h2 className="text-2xl font-bold text-theme-primary mt-1">{value}</h2>
       </div>
     </div>
   );

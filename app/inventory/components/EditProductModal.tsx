@@ -20,10 +20,12 @@ export default function EditProductModal({
 }: Props) {
   const [name, setName] = useState("");
   const [category, setCategory] = useState("");
-  const [costPrice, setCostPrice] = useState(0);
-  const [price, setPrice] = useState(0);
+  const [costPrice, setCostPrice] = useState<number | "">("");
+  const [price, setPrice] = useState<number | "">("");
   const [stock, setStock] = useState(0);
   const [customData, setCustomData] = useState<Record<string, any>>({});
+  const [canEditCostPrice, setCanEditCostPrice] = useState(false);
+  const [canEditPrice, setCanEditPrice] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const visibleStandardFields = getVisibleSystemFields(customFields);
@@ -32,10 +34,12 @@ export default function EditProductModal({
     if (!editItem) return;
     setName(editItem.name);
     setCategory(editItem.category || categories[0] || "");
-    setCostPrice((editItem as any).cost_price ?? 0);
-    setPrice(editItem.price);
+    setCostPrice((editItem as any).cost_price ?? "");
+    setPrice(editItem.price ?? "");
     setStock(editItem.stock);
     setCustomData(editItem.custom_data || {});
+    setCanEditCostPrice(false);
+    setCanEditPrice(false);
     setError(null);
   }, [editItem, categories]);
 
@@ -63,14 +67,26 @@ export default function EditProductModal({
     const priceVisible = visibleStandardFields.some((field) => field.field_name === "price");
     const stockVisible = visibleStandardFields.some((field) => field.field_name === "stock");
 
-    if (costPriceVisible && costPrice < 0) {
-      setError("Cost price cannot be negative.");
-      return;
+    if (costPriceVisible && canEditCostPrice) {
+      if (costPrice === "") {
+        setError("Cost price is required.");
+        return;
+      }
+      if (costPrice < 0) {
+        setError("Cost price cannot be negative.");
+        return;
+      }
     }
 
-    if (priceVisible && price <= 0) {
-      setError("Sell price must be greater than 0.");
-      return;
+    if (priceVisible && canEditPrice) {
+      if (price === "") {
+        setError("Sell price is required.");
+        return;
+      }
+      if (price <= 0) {
+        setError("Sell price must be greater than 0.");
+        return;
+      }
     }
 
     if (stockVisible && stock < 0) {
@@ -82,8 +98,8 @@ export default function EditProductModal({
       ...editItem,
       name: name.trim(),
       category,
-      cost_price: costPrice,
-      price,
+      cost_price: canEditCostPrice ? (costPrice === "" ? 0 : costPrice) : (editItem as any).cost_price,
+      price: canEditPrice ? (price === "" ? 0 : price) : editItem.price,
       stock,
       custom_data: customData,
     });
@@ -99,10 +115,10 @@ export default function EditProductModal({
             switch (field.field_name) {
               case "name":
                 return (
-                  <label key={field.id} className="block text-sm text-gray-300">
+                  <label key={field.id} className="block text-sm text-theme-secondary">
                     {field.display_name}
                     <input
-                      className="mt-2 block w-full rounded bg-slate-900 p-2 text-white border border-white/10"
+                      className="mt-2 block w-full rounded bg-theme-card p-2 text-theme-primary border border-theme"
                       value={name}
                       onChange={(e) => setName(e.target.value)}
                       required={field.is_required}
@@ -111,10 +127,10 @@ export default function EditProductModal({
                 );
               case "category":
                 return (
-                  <label key={field.id} className="block text-sm text-gray-300">
+                  <label key={field.id} className="block text-sm text-theme-secondary">
                     {field.display_name}
                     <select
-                      className="mt-2 block w-full rounded bg-slate-900 p-2 text-white border border-white/10"
+                      className="mt-2 block w-full rounded bg-theme-card p-2 text-theme-primary border border-theme"
                       value={category}
                       onChange={(e) => setCategory(e.target.value)}
                       required={field.is_required}
@@ -129,45 +145,76 @@ export default function EditProductModal({
                 );
               case "cost_price":
                 return (
-                  <label key={field.id} className="block text-sm text-gray-300">
-                    {field.display_name}
+                  <label key={field.id} className="block text-sm text-theme-secondary">
+                    <div className="flex items-center justify-between gap-3">
+                      <span>{field.display_name}</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (canEditCostPrice) {
+                            setCostPrice((editItem as any).cost_price ?? 0);
+                          }
+                          setCanEditCostPrice((prev) => !prev);
+                        }}
+                        className="rounded-full border border-theme bg-theme-input px-3 py-1 text-xs font-semibold text-theme-primary transition hover:bg-theme-surface"
+                      >
+                        {canEditCostPrice ? "Lock" : "Edit"}
+                      </button>
+                    </div>
                     <input
-                      className="mt-2 block w-full rounded bg-slate-900 p-2 text-white border border-white/10"
+                      className="mt-2 block w-full rounded bg-theme-card p-2 text-theme-primary border border-theme disabled:cursor-not-allowed disabled:opacity-60"
                       type="number"
                       min={0}
                       step="0.01"
                       value={costPrice}
-                      onChange={(e) => setCostPrice(Number(e.target.value))}
+                      onChange={(e) => setCostPrice(e.target.value === "" ? "" : Number(e.target.value))}
                       required={field.is_required}
+                      disabled={!canEditCostPrice}
                     />
                   </label>
                 );
               case "price":
                 return (
-                  <label key={field.id} className="block text-sm text-gray-300">
-                    {field.display_name}
+                  <label key={field.id} className="block text-sm text-theme-secondary">
+                    <div className="flex items-center justify-between gap-3">
+                      <span>{field.display_name}</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (canEditPrice) {
+                            setPrice(editItem.price);
+                          }
+                          setCanEditPrice((prev) => !prev);
+                        }}
+                        className="rounded-full border border-theme bg-theme-input px-3 py-1 text-xs font-semibold text-theme-primary transition hover:bg-theme-surface"
+                      >
+                        {canEditPrice ? "Lock" : "Edit"}
+                      </button>
+                    </div>
                     <input
-                      className="mt-2 block w-full rounded bg-slate-900 p-2 text-white border border-white/10"
+                      className="mt-2 block w-full rounded bg-theme-card p-2 text-theme-primary border border-theme disabled:cursor-not-allowed disabled:opacity-60"
                       type="number"
                       min={0}
                       step="0.01"
                       value={price}
-                      onChange={(e) => setPrice(Number(e.target.value))}
+                      onChange={(e) => setPrice(e.target.value === "" ? "" : Number(e.target.value))}
                       required={field.is_required}
+                      disabled={!canEditPrice}
                     />
                   </label>
                 );
               case "stock":
                 return (
-                  <label key={field.id} className="block text-sm text-gray-300">
+                  <label key={field.id} className="block text-sm text-theme-secondary">
                     {field.display_name}
                     <input
-                      className="mt-2 block w-full rounded bg-slate-900 p-2 text-white border border-white/10"
+                      className="mt-2 block w-full rounded bg-theme-card p-2 text-theme-primary border border-theme disabled:cursor-not-allowed disabled:opacity-60"
                       type="number"
                       min={0}
                       step={1}
                       value={stock}
-                      onChange={(e) => setStock(Number(e.target.value))}
+                      disabled
+                      title="Stock cannot be changed from the edit form"
                     />
                   </label>
                 );
@@ -195,7 +242,7 @@ export default function EditProductModal({
         <div className="flex justify-end gap-3">
           <button
             onClick={() => setEditItem(null)}
-            className="rounded-xl border border-white/10 px-4 py-2 text-gray-300"
+            className="rounded-xl border border-theme px-4 py-2 text-theme-secondary"
           >
             Cancel
           </button>
@@ -219,11 +266,11 @@ export default function EditProductModal({
           z-index: 50;
         }
         .box {
-          background: #0f172a;
+          background: var(--surface-card);
           padding: 24px;
           border-radius: 12px;
           width: 420px;
-          color: white;
+          color: var(--text-primary);
         }
       `}</style>
     </div>

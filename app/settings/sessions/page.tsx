@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { apiGet, apiDelete } from "@/lib/apiClient";
 import type { UserSession } from "@/types";
@@ -11,7 +11,7 @@ export default function SessionsSettingsPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const loadSessions = async () => {
+  const loadSessions = useCallback(async () => {
     setError(null);
     try {
       const result = await apiGet<{ sessions: UserSession[] }>("/api/auth/session");
@@ -19,7 +19,7 @@ export default function SessionsSettingsPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load sessions.");
     }
-  };
+  }, []);
 
   const deleteSession = async (sessionId: string) => {
     setBusy(true);
@@ -36,8 +36,10 @@ export default function SessionsSettingsPage() {
   };
 
   useEffect(() => {
-    loadSessions();
-  }, []);
+    if (!loading) {
+      loadSessions();
+    }
+  }, [loading, loadSessions]);
 
   if (loading) {
     return (

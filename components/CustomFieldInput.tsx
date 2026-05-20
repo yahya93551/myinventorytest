@@ -16,14 +16,14 @@ export function CustomFieldInput({
   disabled = false,
 }: CustomFieldInputProps) {
   const baseClassName =
-    "w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed";
+    "w-full bg-theme-input border border-theme rounded-2xl px-4 py-3 text-theme-primary placeholder:text-theme-secondary focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20 disabled:opacity-50 disabled:cursor-not-allowed";
 
   const label = (
-    <label className="block text-sm font-medium text-slate-300 mb-1">
+    <label className="block text-sm font-semibold text-theme-primary mb-2">
       {field.display_name}
       {field.is_required && <span className="text-red-400"> *</span>}
       {field.description && (
-        <span className="ml-2 text-xs text-slate-500" title={field.description}>
+        <span className="ml-2 text-xs text-theme-secondary" title={field.description}>
           ℹ️
         </span>
       )}
@@ -82,8 +82,8 @@ export function CustomFieldInput({
       return (
         <div>
           {label}
-          <div className="flex items-center">
-            <span className="text-slate-400 mr-2">$</span>
+          <div className="flex items-center gap-2">
+            <span className="text-theme-secondary">$</span>
             <input
               type="number"
               step="0.01"
@@ -143,9 +143,9 @@ export function CustomFieldInput({
             checked={value || false}
             onChange={(e) => onChange(e.target.checked)}
             disabled={disabled}
-            className="w-4 h-4 rounded border border-slate-600 bg-slate-700 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-4 h-4 rounded border border-theme bg-theme-input text-cyan-400 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           />
-          <label htmlFor={field.id} className="text-sm font-medium text-slate-300">
+          <label htmlFor={field.id} className="text-sm font-medium text-theme-primary">
             {field.display_name}
             {field.is_required && <span className="text-red-400"> *</span>}
           </label>

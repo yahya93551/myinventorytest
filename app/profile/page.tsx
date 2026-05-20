@@ -4,11 +4,12 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
 import { useRequireAuth, logout } from "@/hooks/useRequireAuth";
+import { useTheme } from "@/lib/theme-context";
 import { supabase } from "@/lib/supabase";
 
 export default function ProfilePage() {
   const { user, loading } = useRequireAuth();
-  const [dark, setDark] = useState(true);
+  const { dark } = useTheme();
   const [tenantRole, setTenantRole] = useState<string>("");
   const [subUsers, setSubUsers] = useState<Array<{ user_id: string; user_email: string; role: string; active: boolean; created_at: string }>>([]);
   const [newSubUserEmail, setNewSubUserEmail] = useState("");
@@ -181,31 +182,31 @@ export default function ProfilePage() {
 
   return (
     <div className={`flex min-h-screen items-start flex-col lg:flex-row ${dark ? "bg-slate-950 text-slate-100" : "bg-slate-100 text-slate-950"}`}>
-      <Sidebar dark={dark} setDark={setDark} />
+      <Sidebar />
       <main className="flex-1 p-6">
         <div className="mb-6 flex flex-col gap-4">
           <div>
             <h1 className="text-3xl font-bold">User Profile</h1>
-            <p className="text-gray-400 mt-2">View your account details and sign out.</p>
+            <p className="text-theme-secondary mt-2">View your account details and sign out.</p>
           </div>
         </div>
 
-        <div className="max-w-xl rounded-3xl border border-white/10 bg-white/5 p-6">
+        <div className="max-w-xl rounded-2xl border border-theme bg-theme-card p-6">
           <div className="space-y-4">
             <div>
-              <p className="text-sm text-gray-400">Email</p>
+              <p className="text-sm text-theme-secondary">Email</p>
               <p className="text-lg font-medium">{user?.email || "Unknown"}</p>
             </div>
             <div>
-              <p className="text-sm text-gray-400">User ID</p>
+              <p className="text-sm text-theme-secondary">User ID</p>
               <p className="text-sm break-all">{user?.id || "Unknown"}</p>
             </div>
             <div>
-              <p className="text-sm text-gray-400">Role</p>
+              <p className="text-sm text-theme-secondary">Role</p>
               <p className="text-lg font-medium">{tenantRole || user?.app_metadata?.provider || "User"}</p>
             </div>
             <div>
-              <p className="text-sm text-gray-400">Created</p>
+              <p className="text-sm text-theme-secondary">Created</p>
               <p className="text-lg font-medium">{user?.created_at ? new Date(user.created_at).toLocaleString() : "N/A"}</p>
             </div>
           </div>
@@ -219,28 +220,28 @@ export default function ProfilePage() {
         </div>
 
         {tenantRole === "owner" && (
-          <div className="mt-10 rounded-3xl border border-white/10 bg-white/5 p-6">
+          <div className="mt-10 rounded-2xl border border-theme bg-theme-card p-6">
             <h2 className="text-2xl font-semibold">Manage Sub-users</h2>
-            <p className="text-sm text-gray-400">Create accountants or sales users for this account.</p>
+            <p className="text-sm text-theme-secondary">Create accountants or sales users for this account.</p>
 
             <div className="mt-6 grid gap-4 sm:grid-cols-3">
               <input
                 value={newSubUserEmail}
                 onChange={(e) => setNewSubUserEmail(e.target.value)}
                 placeholder="Sub-user email"
-                className="w-full rounded-2xl border border-white/10 bg-slate-900/80 px-4 py-3 text-white outline-none focus:border-cyan-400"
+                className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
               />
               <input
                 type="password"
                 value={newSubUserPassword}
                 onChange={(e) => setNewSubUserPassword(e.target.value)}
                 placeholder="Password"
-                className="w-full rounded-2xl border border-white/10 bg-slate-900/80 px-4 py-3 text-white outline-none focus:border-cyan-400"
+                className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
               />
               <select
                 value={newSubUserRole}
                 onChange={(e) => setNewSubUserRole(e.target.value as "accountant" | "sales")}
-                className="w-full rounded-2xl border border-white/10 bg-slate-900/80 px-4 py-3 text-white outline-none focus:border-cyan-400"
+                className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
               >
                 <option value="sales">Sales</option>
                 <option value="accountant">Accountant</option>
@@ -256,30 +257,30 @@ export default function ProfilePage() {
             </button>
 
             {subUserMessage && (
-              <p className="mt-4 text-sm text-white/80">{subUserMessage}</p>
+              <p className="mt-4 text-sm text-theme-secondary">{subUserMessage}</p>
             )}
 
             <div className="mt-8">
               <h3 className="text-lg font-semibold">Team members</h3>
               {subUserLoading && !subUsers.length ? (
-                <p className="mt-3 text-sm text-gray-400">Loading sub-users...</p>
+                <p className="mt-3 text-sm text-theme-secondary">Loading sub-users...</p>
               ) : subUsers.length === 0 ? (
-                <p className="mt-3 text-sm text-gray-400">No sub-users found.</p>
+                <p className="mt-3 text-sm text-theme-secondary">No sub-users found.</p>
               ) : (
                 <div className="mt-4 space-y-3">
                   {subUsers.map((member) => (
-                    <div key={member.user_id} className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+                    <div key={member.user_id} className="rounded-2xl border border-theme bg-theme-card p-4">
                       <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                         <div>
-                          <p className="text-sm text-gray-400">Email</p>
+                          <p className="text-sm text-theme-secondary">Email</p>
                           <p className="font-medium">{member.user_email}</p>
                         </div>
                         <div>
-                          <p className="text-sm text-gray-400">Role</p>
+                          <p className="text-sm text-theme-secondary">Role</p>
                           <p className="font-medium capitalize">{member.role}</p>
                         </div>
                       </div>
-                      <p className="mt-3 text-sm text-gray-500">Added: {new Date(member.created_at).toLocaleString()}</p>
+                      <p className="mt-3 text-sm text-theme-secondary">Added: {new Date(member.created_at).toLocaleString()}</p>
                     </div>
                   ))}
                 </div>

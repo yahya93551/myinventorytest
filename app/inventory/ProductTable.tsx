@@ -78,8 +78,8 @@ export default function ProductTable({
 
   if (allVisibleFields.length === 0) {
     return (
-      <div className="w-full max-h-[70vh] overflow-auto rounded-2xl bg-white/10 p-8 text-center">
-        <div className="text-gray-400">
+      <div className="w-full max-h-[70vh] overflow-auto rounded-2xl bg-theme-card border border-theme p-8 text-center shadow-soft">
+        <div className="text-theme-secondary">
           <h3 className="text-lg font-semibold mb-2">Create Your Table</h3>
           <p>Go to Settings to configure your product fields and start managing your inventory.</p>
         </div>
@@ -88,12 +88,12 @@ export default function ProductTable({
   }
 
   return (
-    <div className="w-full max-h-[70vh] overflow-auto rounded-2xl bg-white/10">
+    <div className="w-full max-h-[70vh] overflow-auto rounded-2xl bg-theme-card border border-theme shadow-soft">
       <table className="min-w-full w-full text-sm">
-        <thead className="sticky top-0 bg-slate-900 z-10">
+        <thead className="sticky top-0 bg-theme-surface backdrop-blur-xl z-10">
           <tr>
             {allVisibleFields.map((field) => (
-              <th key={field.id} className="p-3 text-left whitespace-nowrap" title={field.description}>
+              <th key={field.id} className="p-3 text-left whitespace-nowrap text-theme-secondary" title={field.description}>
                 {field.display_name}
               </th>
             ))}
@@ -104,8 +104,8 @@ export default function ProductTable({
         <tbody>
           {loading ? (
             <tr>
-              <td colSpan={totalCols} className="p-8 text-center text-gray-400">
-                <div className="inline-flex items-center gap-2">
+              <td colSpan={totalCols} className="p-8 text-center text-theme-secondary">
+                <div className="inline-flex items-center gap-2 text-theme-secondary">
                   <span className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
                   Loading products...
                 </div>
@@ -113,17 +113,17 @@ export default function ProductTable({
             </tr>
           ) : products.length === 0 ? (
             <tr>
-              <td colSpan={totalCols} className="p-6 text-center text-gray-400">
+              <td colSpan={totalCols} className="p-6 text-center text-theme-secondary">
                 No inventory items found.
               </td>
             </tr>
           ) : (
             products.map((p) => (
-              <tr key={p.id} className="border-t border-white/10 hover:bg-white/5 transition">
+              <tr key={p.id} className="border-t border-theme hover:bg-theme-surface-soft transition-colors duration-150">
                 {allVisibleFields.map((field) => (
                   <td
                     key={field.id}
-                    className="p-3 whitespace-nowrap text-slate-300"
+                    className="p-3 whitespace-nowrap text-theme-primary"
                     title={field.is_system ? String((p as any)[field.field_name]) : String(p.custom_data?.[field.field_name])}
                   >
                     {renderFieldValue(field, p)}
@@ -139,7 +139,7 @@ export default function ProductTable({
                     disabled={p.stock === 0}
                     title={p.stock === 0 ? "Out of stock" : "Record a sale"}
                   >
-                    <ShoppingCart size={14} />
+                    <ShoppingCart className="w-3 h-3 sm:w-4 sm:h-4" />
                     Sell
                   </button>
 
@@ -148,7 +148,7 @@ export default function ProductTable({
                     className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1 transition"
                     title="Add to stock"
                   >
-                    <Plus size={14} />
+                    <Plus className="w-3 h-3 sm:w-4 sm:h-4" />
                     Restock
                   </button>
 
@@ -157,7 +157,7 @@ export default function ProductTable({
                     className="text-xs text-yellow-400 hover:text-yellow-300 flex items-center gap-1 transition"
                     title="Edit product"
                   >
-                    <Edit size={14} />
+                    <Edit className="w-3 h-3 sm:w-4 sm:h-4" />
                     Edit
                   </button>
 
@@ -166,7 +166,7 @@ export default function ProductTable({
                     className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1 transition"
                     title="Delete product"
                   >
-                    <Trash2 size={14} />
+                    <Trash2 className="w-3 h-3 sm:w-4 sm:h-4" />
                     Delete
                   </button>
                 </td>

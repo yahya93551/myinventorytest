@@ -1,12 +1,19 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Product } from "../../types";
+
+type SaleMeta = {
+  order_id?: string;
+  customer_name?: string;
+  customer_address?: string;
+  customer_phone?: string;
+};
 
 type Props = {
   sellItem: Product | null;
   sellQty: number;
   setSellQty: (qty: number) => void;
   setSellItem: (item: Product | null) => void;
-  confirmSell: () => Promise<boolean | void> | void;
+  confirmSell: (metadata?: SaleMeta) => Promise<boolean | void> | void;
 };
 
 export default function SellModal({
@@ -19,6 +26,21 @@ export default function SellModal({
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [printAfterSale, setPrintAfterSale] = useState(false);
+  const [orderId, setOrderId] = useState(() => `INV-${Date.now()}`);
+  const [customerName, setCustomerName] = useState("");
+  const [customerAddress, setCustomerAddress] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
+
+  useEffect(() => {
+    if (sellItem) {
+      setOrderId(`INV-${Date.now()}`);
+      setCustomerName("");
+      setCustomerAddress("");
+      setCustomerPhone("");
+      setPrintAfterSale(false);
+      setError(null);
+    }
+  }, [sellItem]);
 
   if (!sellItem) return null;
 
@@ -35,32 +57,41 @@ export default function SellModal({
     const receiptHtml = `
       <html>
         <head>
-          <title>Sale Receipt</title>
+          <title>Sale Invoice</title>
           <style>
             body { font-family: Arial, sans-serif; padding: 24px; color: #111; }
             h1 { font-size: 24px; margin-bottom: 16px; }
+            .section { margin-bottom: 16px; }
+            .details p { margin: 4px 0; }
             table { width: 100%; border-collapse: collapse; margin-top: 16px; }
             th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }
             tfoot td { font-weight: bold; }
           </style>
         </head>
         <body>
-          <h1>Sale Receipt</h1>
-          <p>Product: ${sellItem.name}</p>
-          <p>Date: ${formattedDate}</p>
+          <h1>Sale Invoice</h1>
+          <div class="section details">
+            <p><strong>Invoice #:</strong> ${orderId}</p>
+            <p><strong>Date:</strong> ${formattedDate}</p>
+            <p><strong>Customer:</strong> ${customerName || "Walk-in Customer"}</p>
+            <p><strong>Address:</strong> ${customerAddress || "-"}</p>
+            <p><strong>Phone:</strong> ${customerPhone || "-"}</p>
+          </div>
           <table>
             <thead>
-              <tr><th>Qty</th><th>Price</th><th>Total</th></tr>
+              <tr><th>No.</th><th>Item Description</th><th>Qty</th><th>Unit Price</th><th>Total</th></tr>
             </thead>
             <tbody>
               <tr>
+                <td>1</td>
+                <td>${sellItem.name}</td>
                 <td>${sellQty}</td>
                 <td>$${sellItem.price}</td>
                 <td>$${total}</td>
               </tr>
             </tbody>
             <tfoot>
-              <tr><td colspan="2">Grand Total</td><td>$${total}</td></tr>
+              <tr><td colspan="4">Grand Total</td><td>$${total}</td></tr>
             </tfoot>
           </table>
         </body>
@@ -86,7 +117,12 @@ export default function SellModal({
     setError(null);
 
     try {
-      const result = await confirmSell();
+      const result = await confirmSell({
+        order_id: orderId,
+        customer_name: customerName || undefined,
+        customer_address: customerAddress || undefined,
+        customer_phone: customerPhone || undefined,
+      });
 
       // Only keep modal open if confirmSell explicitly returns false
       // If it returns undefined (void) or true, we assume success and close
@@ -110,16 +146,54 @@ export default function SellModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-      <div className="bg-gray-900 p-6 rounded-2xl w-96 text-white">
+    <div className="fixed inset-0 bg-black/60 overflow-y-auto px-4 py-6 flex items-center justify-center z-50">
+      <div className="border border-theme bg-theme-card p-6 rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto text-theme-primary">
         <h2 className="text-xl mb-2">Sell Product</h2>
-        <p className="text-gray-400 mb-1">
+        <p className="text-theme-secondary mb-1">
           {sellItem.name} — Stock: {sellItem.stock}
         </p>
-        <p className="text-xs text-gray-500 mb-3">Date: {formattedDate}</p>
+        <p className="text-xs text-theme-secondary mb-3">Date: {formattedDate}</p>
+
+        <div className="mb-4 rounded-2xl border border-theme p-3 bg-theme-surface text-theme-primary">
+          <p className="text-sm font-semibold mb-2">Invoice & Customer</p>
+          <p className="text-xs text-theme-secondary mb-2">Invoice #: {orderId}</p>
+          <label className="block text-sm text-theme-secondary mb-2">
+            Customer name
+            <input
+              className="mt-1 w-full rounded bg-theme-input px-3 py-2 text-theme-primary"
+              type="text"
+              value={customerName}
+              onChange={(e) => setCustomerName(e.target.value)}
+              disabled={isProcessing}
+              placeholder="Walk-in customer"
+            />
+          </label>
+          <label className="block text-sm text-theme-secondary mb-2">
+            Address
+            <input
+              className="mt-1 w-full rounded bg-theme-input px-3 py-2 text-theme-primary"
+              type="text"
+              value={customerAddress}
+              onChange={(e) => setCustomerAddress(e.target.value)}
+              disabled={isProcessing}
+              placeholder="Customer address"
+            />
+          </label>
+          <label className="block text-sm text-theme-secondary">
+            Phone
+            <input
+              className="mt-1 w-full rounded bg-theme-input px-3 py-2 text-theme-primary"
+              type="text"
+              value={customerPhone}
+              onChange={(e) => setCustomerPhone(e.target.value)}
+              disabled={isProcessing}
+              placeholder="Customer phone"
+            />
+          </label>
+        </div>
 
         <input
-          className="p-2 rounded bg-white/10 w-full mb-2"
+          className="p-2 rounded bg-theme-input w-full mb-2 text-theme-primary"
           type="number"
           min={1}
           max={sellItem.stock}
@@ -136,10 +210,10 @@ export default function SellModal({
           disabled={isProcessing}
         />
 
-        <label className="mb-3 flex items-center gap-2 text-sm text-gray-300">
+        <label className="mb-3 flex items-center gap-2 text-sm text-theme-secondary">
           <input
             type="checkbox"
-            className="h-4 w-4 rounded border-gray-500 bg-slate-800 text-green-500"
+            className="h-4 w-4 rounded border border-theme bg-theme-input text-green-500"
             checked={printAfterSale}
             disabled={isProcessing}
             onChange={() => setPrintAfterSale((prev) => !prev)}
@@ -147,7 +221,7 @@ export default function SellModal({
           Print receipt after sale
         </label>
 
-        <p className="text-xs text-gray-500 mb-3">
+        <p className="text-xs text-theme-secondary mb-3">
           Enter a quantity between 1 and {sellItem.stock}.
         </p>
 
@@ -160,7 +234,7 @@ export default function SellModal({
         <div className="flex justify-between">
           <button
             onClick={() => setSellItem(null)}
-            className="text-gray-400"
+            className="text-theme-secondary"
             disabled={isProcessing}
           >
             Cancel

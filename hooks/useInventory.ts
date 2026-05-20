@@ -9,6 +9,7 @@ import {
   Product,
   ProductForm,
   Sale,
+  SaleMetadata,
   Category,
   LoadingState,
   ProductSchema,
@@ -152,7 +153,7 @@ export function useInventory() {
 
   // ================= SELL PRODUCT MUTATION =================
   const sellProductMutation = useMutation({
-    mutationFn: async ({ productId, quantity }: { productId: string; quantity: number }) => {
+    mutationFn: async ({ productId, quantity, metadata }: { productId: string; quantity: number; metadata?: SaleMetadata }) => {
       if (quantity <= 0) {
         throw new Error("Sale quantity must be at least 1");
       }
@@ -169,6 +170,7 @@ export function useInventory() {
       await apiPost<void>("/api/sales", {
         product_id: productId,
         quantity,
+        ...metadata,
       });
     },
     onSuccess: () => {
@@ -179,8 +181,8 @@ export function useInventory() {
 
   // ================= BULK SELL MUTATION =================
   const sellProductsMutation = useMutation({
-    mutationFn: async (items: BulkSaleItem[]) => {
-      const normalizedItems = items.reduce((acc, item) => {
+    mutationFn: async (payload: { items: BulkSaleItem[]; metadata?: SaleMetadata }) => {
+      const normalizedItems = payload.items.reduce((acc, item) => {
         const existing = acc.find((entry) => entry.productId === item.productId);
         if (existing) {
           existing.quantity += item.quantity;
@@ -205,6 +207,7 @@ export function useInventory() {
           product_id: item.productId,
           quantity: item.quantity,
         })),
+        ...payload.metadata,
       });
     },
     onSuccess: () => {
@@ -272,10 +275,14 @@ export function useInventory() {
     setSellQty(1);
   };
 
-  const confirmSell = async (): Promise<boolean> => {
+  const confirmSell = async (metadata?: SaleMetadata): Promise<boolean> => {
     if (!sellItem) return false;
     try {
-      await sellProductMutation.mutateAsync({ productId: sellItem.id, quantity: sellQty });
+      await sellProductMutation.mutateAsync({
+        productId: sellItem.id,
+        quantity: sellQty,
+        metadata,
+      });
       setSellItem(null);
       setSellQty(1);
       return true;
@@ -321,18 +328,25 @@ export function useInventory() {
     }
   };
 
-  const sellProduct = async (productId: string, quantity: number): Promise<boolean> => {
+  const sellProduct = async (
+    productId: string,
+    quantity: number,
+    metadata?: SaleMetadata
+  ): Promise<boolean> => {
     try {
-      await sellProductMutation.mutateAsync({ productId, quantity });
+      await sellProductMutation.mutateAsync({ productId, quantity, metadata });
       return true;
     } catch {
       return false;
     }
   };
 
-  const sellProducts = async (items: BulkSaleItem[]): Promise<boolean> => {
+  const sellProducts = async (
+    items: BulkSaleItem[],
+    metadata?: SaleMetadata
+  ): Promise<boolean> => {
     try {
-      await sellProductsMutation.mutateAsync(items);
+      await sellProductsMutation.mutateAsync({ items, metadata });
       return true;
     } catch {
       return false;

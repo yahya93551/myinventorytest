@@ -20,7 +20,18 @@ export const SaleSchema = z.object({
   quantity: z.number().int().positive('Quantity must be positive'),
   total: z.number().positive('Total must be positive'),
   date: z.string().datetime(),
+  order_id: z.string().optional(),
+  customer_name: z.string().optional(),
+  customer_address: z.string().optional(),
+  customer_phone: z.string().optional(),
 });
+
+export type SaleMetadata = {
+  order_id?: string;
+  customer_name?: string;
+  customer_address?: string;
+  customer_phone?: string;
+};
 
 export const CategorySchema = z.string().min(1, 'Category name required').max(50, 'Category name too long');
 

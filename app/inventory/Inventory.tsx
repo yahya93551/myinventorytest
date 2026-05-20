@@ -30,8 +30,18 @@ type InventoryProps = {
   setSellQty: (qty: number) => void;
   setSellItem: (item: Product | null) => void;
   openSell: (product: Product) => void;
-  confirmSell: () => void;
-  sellProducts: (items: BulkSaleItem[]) => Promise<boolean>;
+  confirmSell: (metadata?: {
+    order_id?: string;
+    customer_name?: string;
+    customer_address?: string;
+    customer_phone?: string;
+  }) => Promise<boolean>;
+  sellProducts: (items: BulkSaleItem[], metadata?: {
+    order_id?: string;
+    customer_name?: string;
+    customer_address?: string;
+    customer_phone?: string;
+  }) => Promise<boolean>;
   addProduct: (product: ProductForm) => Promise<boolean>;
   
   // Pagination
@@ -68,9 +78,9 @@ export default function Inventory(props: InventoryProps) {
 
   const [name, setName] = useState("");
   const [category, setCategory] = useState(categories?.[0] ?? "");
-  const [costPrice, setCostPrice] = useState(0);
-  const [price, setPrice] = useState(0);
-  const [stock, setStock] = useState(0);
+  const [costPrice, setCostPrice] = useState<number | "">("");
+  const [price, setPrice] = useState<number | "">("");
+  const [stock, setStock] = useState<number | "">("");
   const [customData, setCustomData] = useState<Record<string, any>>({});
 
   const [editItem, setEditItem] = useState<Product | null>(null);
@@ -113,17 +123,36 @@ export default function Inventory(props: InventoryProps) {
     const priceVisible = visibleStandardFieldNames.includes("price");
     const stockVisible = visibleStandardFieldNames.includes("stock");
 
-    if (costPriceVisible && costPrice < 0) {
+    const parsedCostPrice = costPrice === "" ? 0 : costPrice;
+    const parsedPrice = price === "" ? 0 : price;
+    const parsedStock = stock === "" ? 0 : stock;
+
+    if (costPriceVisible && costPrice === "") {
+      showMessage("error", "Cost price is required");
+      return;
+    }
+
+    if (costPriceVisible && parsedCostPrice < 0) {
       showMessage("error", "Cost price cannot be negative");
       return;
     }
 
-    if (priceVisible && price <= 0) {
+    if (priceVisible && price === "") {
+      showMessage("error", "Sell price is required");
+      return;
+    }
+
+    if (priceVisible && parsedPrice <= 0) {
       showMessage("error", "Sell price must be greater than 0");
       return;
     }
 
-    if (stockVisible && stock < 0) {
+    if (stockVisible && stock === "") {
+      showMessage("error", "Stock is required");
+      return;
+    }
+
+    if (stockVisible && parsedStock < 0) {
       showMessage("error", "Stock cannot be negative");
       return;
     }
@@ -131,17 +160,17 @@ export default function Inventory(props: InventoryProps) {
     const success = await addProduct({
       name: name.trim(),
       category,
-      cost_price: costPrice,
-      price,
-      stock,
+      cost_price: parsedCostPrice,
+      price: parsedPrice,
+      stock: parsedStock,
       custom_data: customData,
     });
 
     if (success) {
       setName("");
-      setCostPrice(0);
-      setPrice(0);
-      setStock(0);
+      setCostPrice("");
+      setPrice("");
+      setStock("");
       setCustomData({});
       showMessage("success", "Product added successfully");
       setIsAddModalOpen(false);
@@ -247,7 +276,7 @@ export default function Inventory(props: InventoryProps) {
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h2 className="text-3xl sm:text-4xl font-bold">Inventory</h2>
-          <p className="mt-2 text-sm text-slate-400">
+          <p className="mt-2 text-sm text-theme-secondary">
             Manage products, stock, and sales from one dashboard.
           </p>
         </div>
@@ -256,13 +285,13 @@ export default function Inventory(props: InventoryProps) {
           <button
             type="button"
             onClick={() => setIsAddModalOpen(true)}
-            className="rounded-2xl bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-400"
+            className="rounded-2xl bg-theme-accent px-4 py-2 text-sm font-semibold text-slate-950 shadow-sm transition hover:bg-cyan-400"
           >
             + Add Product
           </button>
           <button
             onClick={() => setBulkSellOpen(true)}
-            className="rounded-2xl bg-slate-800 px-4 py-2 text-sm text-white hover:bg-slate-700"
+            className="rounded-2xl border border-theme bg-theme-card px-4 py-2 text-sm font-semibold text-theme-primary transition hover:bg-theme-surface"
           >
             Sell multiple items
           </button>
@@ -270,35 +299,35 @@ export default function Inventory(props: InventoryProps) {
       </div>
 
       <div className="grid gap-3 py-4 md:grid-cols-3">
-        <div className="rounded-3xl border border-white/10 bg-slate-900 p-5">
-          <p className="text-sm uppercase tracking-[0.16em] text-slate-400">Products</p>
-          <p className="mt-3 text-3xl font-semibold">{totalProducts}</p>
-          <p className="mt-2 text-sm text-slate-400">Total inventory items.</p>
+        <div className="rounded-2xl border-theme bg-theme-card p-5 shadow-soft">
+          <p className="text-sm uppercase tracking-[0.16em] text-theme-secondary">Products</p>
+          <p className="mt-3 text-3xl font-semibold text-theme-primary">{totalProducts}</p>
+          <p className="mt-2 text-sm text-theme-secondary">Total inventory items.</p>
         </div>
-        <div className="rounded-3xl border border-white/10 bg-slate-900 p-5">
-          <p className="text-sm uppercase tracking-[0.16em] text-slate-400">Low stock</p>
-          <p className="mt-3 text-3xl font-semibold">{lowStockCount}</p>
-          <p className="mt-2 text-sm text-slate-400">Products below threshold.</p>
+        <div className="rounded-2xl border-theme bg-theme-card p-5 shadow-soft">
+          <p className="text-sm uppercase tracking-[0.16em] text-theme-secondary">Low stock</p>
+          <p className="mt-3 text-3xl font-semibold text-theme-primary">{lowStockCount}</p>
+          <p className="mt-2 text-sm text-theme-secondary">Products below threshold.</p>
         </div>
-        <div className="rounded-3xl border border-white/10 bg-slate-900 p-5">
-          <p className="text-sm uppercase tracking-[0.16em] text-slate-400">Out of stock</p>
-          <p className="mt-3 text-3xl font-semibold">{outOfStockCount}</p>
-          <p className="mt-2 text-sm text-slate-400">Need restocking now.</p>
+        <div className="rounded-2xl border-theme bg-theme-card p-5 shadow-soft">
+          <p className="text-sm uppercase tracking-[0.16em] text-theme-secondary">Out of stock</p>
+          <p className="mt-3 text-3xl font-semibold text-theme-primary">{outOfStockCount}</p>
+          <p className="mt-2 text-sm text-theme-secondary">Need restocking now.</p>
         </div>
       </div>
 
       {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/90 p-4">
-          <div className="w-full max-w-4xl rounded-3xl border border-white/10 bg-slate-950 p-6 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-4xl max-h-[calc(100vh-4rem)] overflow-y-auto rounded-2xl border border-theme bg-theme-card p-6 shadow-2xl">
             <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <h3 className="text-xl font-semibold">Add Product</h3>
-                <p className="mt-1 text-sm text-slate-400">Create a new product without leaving the page.</p>
+                <h3 className="text-xl font-semibold text-theme-primary">Add Product</h3>
+                <p className="mt-1 text-sm text-theme-secondary">Create a new product without leaving the page.</p>
               </div>
               <button
                 type="button"
                 onClick={() => setIsAddModalOpen(false)}
-                className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white hover:bg-white/10"
+                className="rounded-2xl border border-theme bg-theme-input px-4 py-2 text-sm font-semibold text-theme-primary transition hover:bg-theme-surface"
               >
                 Close
               </button>
@@ -328,7 +357,7 @@ export default function Inventory(props: InventoryProps) {
 
       {/* TABLE */}
       <section>
-        <div className="rounded-2xl overflow-auto max-h-[65vh] bg-white/5">
+        <div className="rounded-2xl overflow-auto max-h-[65vh] bg-theme-card border border-theme shadow-soft">
           <ProductTable
             products={products}
             customFields={customFields}
@@ -344,7 +373,7 @@ export default function Inventory(props: InventoryProps) {
       {/* PAGINATION */}
       {totalCount > 0 && (
         <section className="flex items-center justify-between gap-4">
-          <div className="text-sm text-gray-400">
+          <div className="text-sm text-theme-secondary">
             Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, totalCount)} of {totalCount} products
           </div>
           <div className="flex gap-2">

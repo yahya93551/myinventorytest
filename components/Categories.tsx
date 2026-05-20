@@ -78,28 +78,32 @@ export default function Categories({
         </div>
       )}
 
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <input
-          className="input"
+          className="flex-1 rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary placeholder:text-theme-secondary outline-none focus:border-cyan-400"
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="New category"
           disabled={loading}
         />
-        <button onClick={add} className="btn-primary" disabled={loading}>
+        <button
+          onClick={add}
+          className="rounded-2xl bg-cyan-500 px-4 py-3 text-sm font-semibold text-slate-950 hover:bg-cyan-400 transition"
+          disabled={loading}
+        >
           {loading ? "Loading..." : "Add"}
         </button>
       </div>
 
       {loading ? (
-        <div className="mt-6 p-6 rounded-2xl bg-white/5 text-center text-gray-400">
+        <div className="mt-6 p-6 rounded-2xl bg-theme-card text-center text-theme-secondary shadow-soft">
           <span className="inline-flex items-center gap-2">
             <span className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
             Loading categories...
           </span>
         </div>
       ) : categories?.length === 0 ? (
-        <div className="mt-6 p-6 rounded-2xl bg-white/5 text-center text-gray-400">
+        <div className="mt-6 p-6 rounded-2xl bg-theme-card text-center text-theme-secondary shadow-soft">
           No categories yet.
         </div>
       ) : (
@@ -107,12 +111,12 @@ export default function Categories({
           {categories?.map((c: string, index: number) => (
             <li
               key={`${c}-${index}`}
-              className="bg-white/10 p-3 rounded-xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
+              className="bg-theme-card border border-theme p-3 rounded-xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
             >
               {editing === c ? (
                 <div className="flex-1">
                   <input
-                    className="input w-full"
+                    className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary placeholder:text-theme-secondary outline-none focus:border-cyan-400"
                     value={editValue}
                     onChange={(e) => setEditValue(e.target.value)}
                     placeholder="Edit category"
@@ -123,19 +127,19 @@ export default function Categories({
                 <span>{c}</span>
               )}
 
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 {editing === c ? (
                   <>
                     <button
                       onClick={saveEdit}
-                      className="btn-primary"
+                      className="rounded-2xl bg-cyan-500 px-4 py-3 text-sm font-semibold text-slate-950 hover:bg-cyan-400 transition"
                       disabled={loading}
                     >
                       Save
                     </button>
                     <button
                       onClick={cancelEdit}
-                      className="btn-secondary"
+                      className="rounded-2xl bg-slate-800/80 px-4 py-3 text-sm text-theme-secondary hover:bg-slate-700 transition"
                     >
                       Cancel
                     </button>
@@ -144,13 +148,13 @@ export default function Categories({
                   <>
                     <button
                       onClick={() => startEdit(c)}
-                      className="btn-secondary"
+                      className="rounded-2xl bg-slate-800/80 px-4 py-3 text-sm text-theme-secondary hover:bg-slate-700 transition"
                     >
                       Edit
                     </button>
                     <button
                       onClick={() => remove(c)}
-                      className="btn-danger"
+                      className="rounded-2xl bg-red-600 px-4 py-3 text-sm text-white hover:bg-red-500 transition"
                     >
                       Delete
                     </button>
@@ -161,34 +165,6 @@ export default function Categories({
           ))}
         </ul>
       )}
-
-      <style jsx>{`
-        .input {
-          padding: 10px;
-          border-radius: 12px;
-          background: rgba(255,255,255,0.1);
-          border: 1px solid rgba(255,255,255,0.2);
-        }
-        .btn-primary,
-        .btn-secondary,
-        .btn-danger {
-          padding: 10px 16px;
-          border-radius: 12px;
-          border: none;
-          color: white;
-          cursor: pointer;
-        }
-        .btn-primary {
-          background: linear-gradient(to right, #7c3aed, #4f46e5);
-        }
-        .btn-secondary {
-          background: rgba(255,255,255,0.1);
-          color: #e5e7eb;
-        }
-        .btn-danger {
-          background: #dc2626;
-        }
-      `}</style>
     </div>
   );
 }

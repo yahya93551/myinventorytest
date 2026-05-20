@@ -1,7 +1,10 @@
 'use client';
 
-import { ReactNode } from 'react';
+import { ReactNode, useEffect } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { ThemeProvider } from '@/lib/theme-context';
+import { registerCurrentSession, clearCurrentSessionId } from '@/lib/apiClient';
+import { supabase } from '@/lib/supabase';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -17,10 +20,55 @@ const queryClient = new QueryClient({
   },
 });
 
+function SessionTracker() {
+  useEffect(() => {
+    let active = true;
+    let subscription: any;
+
+    const registerSession = async () => {
+      try {
+        await registerCurrentSession();
+      } catch (error) {
+        if (active) {
+          console.warn('[SESSION] Active session registration failed:', error);
+        }
+      }
+    };
+
+    registerSession();
+
+    const { data } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!active) return;
+
+      if (event === 'SIGNED_IN' && session) {
+        registerSession();
+      }
+
+      if (event === 'SIGNED_OUT') {
+        clearCurrentSessionId();
+      }
+    });
+
+    subscription = data?.subscription;
+
+    return () => {
+      active = false;
+      if (subscription?.unsubscribe) {
+        subscription.unsubscribe();
+      }
+    };
+  }, []);
+
+  return null;
+}
+
 export function Providers({ children }: { children: ReactNode }) {
   return (
-    <QueryClientProvider client={queryClient}>
-      {children}
-    </QueryClientProvider>
+    <ThemeProvider>
+      <QueryClientProvider client={queryClient}>
+        <SessionTracker />
+        {children}
+      </QueryClientProvider>
+    </ThemeProvider>
   );
 }

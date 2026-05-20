@@ -50,13 +50,13 @@ export default function Dashboard() {
       <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
           <h2 className="text-3xl font-semibold">Dashboard</h2>
-          <p className="text-gray-400 mt-2">
+          <p className="text-theme-secondary mt-2">
             Inventory overview, cash flow, and report summaries.
           </p>
         </div>
 
-        <div className="rounded-3xl bg-white/10 px-6 py-4 text-white shadow-lg shadow-black/10">
-          <p className="text-sm text-gray-300">Categories</p>
+        <div className="rounded-2xl border border-theme bg-theme-card/95 px-6 py-4 text-white shadow-card">
+          <p className="text-sm text-theme-secondary">Categories</p>
           <p className="text-2xl font-bold">{categoryCount}</p>
         </div>
       </div>
@@ -64,54 +64,54 @@ export default function Dashboard() {
       <StatsCards products={products} visibleFieldNames={visibleSystemFieldNames} />
 
       <div className="mt-6 grid gap-4 xl:grid-cols-2">
-        <div className="rounded-3xl bg-white/10 p-6 shadow-lg shadow-black/10">
+        <div className="rounded-2xl border border-theme bg-theme-card/90 p-6 shadow-card">
           <h3 className="text-xl font-semibold mb-4">Cash Flow</h3>
           <div className="grid gap-3 sm:grid-cols-2">
             {costPriceVisible && (
-              <div className="rounded-2xl bg-black/20 p-4">
-                <p className="text-sm text-gray-400">Total Cost Value</p>
+              <div className="rounded-2xl border border-slate-700/50 bg-slate-950/60 p-4">
+                <p className="text-sm text-theme-secondary">Total Cost Value</p>
                 <p className="text-2xl font-bold">${totalCost.toFixed(2)}</p>
               </div>
             )}
             {priceVisible && (
-              <div className="rounded-2xl bg-black/20 p-4">
-                <p className="text-sm text-gray-400">Inventory Sell Value</p>
+              <div className="rounded-2xl border border-slate-700/50 bg-slate-950/60 p-4">
+                <p className="text-sm text-theme-secondary">Inventory Sell Value</p>
                 <p className="text-2xl font-bold">${totalSellValue.toFixed(2)}</p>
               </div>
             )}
             {profitVisible && (
-              <div className="rounded-2xl bg-black/20 p-4">
-                <p className="text-sm text-gray-400">Potential Profit</p>
+              <div className="rounded-2xl border border-slate-700/50 bg-slate-950/60 p-4">
+                <p className="text-sm text-theme-secondary">Potential Profit</p>
                 <p className="text-2xl font-bold">${totalProfit.toFixed(2)}</p>
               </div>
             )}
-            <div className="rounded-2xl bg-black/20 p-4">
-              <p className="text-sm text-gray-400">Last Sale</p>
+            <div className="rounded-2xl border border-slate-700/50 bg-slate-950/60 p-4">
+              <p className="text-sm text-theme-secondary">Last Sale</p>
               <p className="text-2xl font-bold">{lastSaleDate}</p>
             </div>
           </div>
         </div>
 
-        <div className="rounded-3xl bg-white/10 p-6 shadow-lg shadow-black/10">
+        <div className="rounded-2xl border border-theme bg-theme-card/90 p-6 shadow-card">
           <h3 className="text-xl font-semibold mb-4">Report</h3>
           {sales.length === 0 ? (
-            <p className="text-gray-300">No sales have been recorded yet.</p>
+            <p className="text-theme-secondary">No sales have been recorded yet.</p>
           ) : (
             <div className="space-y-3">
               {sales.slice(0, 5).map((sale) => {
                 const saleDate = getSaleDate(sale);
                 return (
-                  <div key={sale.id} className="rounded-2xl bg-black/20 p-4">
+                  <div key={sale.id} className="rounded-2xl border border-slate-700/50 bg-slate-950/60 p-4">
                     <div className="flex items-center justify-between gap-4">
                       <div>
                         <p className="font-semibold">{getProductName(sale)}</p>
-                        <p className="text-sm text-gray-400">
+                        <p className="text-sm text-theme-secondary">
                           {sale.quantity} units
                         </p>
                       </div>
                       <p className="text-lg font-bold">${sale.total}</p>
                     </div>
-                    <p className="text-sm text-gray-400 mt-2">
+                    <p className="text-sm text-theme-secondary mt-2">
                       {saleDate ? saleDate.toLocaleString() : "No date"}
                     </p>
                   </div>

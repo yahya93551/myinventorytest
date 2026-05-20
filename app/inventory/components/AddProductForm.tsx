@@ -3,21 +3,19 @@
 
 import { CustomField } from "../../../types";
 import { CustomFieldInput } from "@/components/CustomFieldInput";
-import {
-  getVisibleSystemFields,
-} from "@/lib/customFields";
+import { getVisibleSystemFields } from "@/lib/customFields";
 
 type Props = {
   name: string;
   setName: (v: string) => void;
   category: string;
   setCategory: (v: string) => void;
-  costPrice: number;
-  setCostPrice: (v: number) => void;
-  price: number;
-  setPrice: (v: number) => void;
-  stock: number;
-  setStock: (v: number) => void;
+  costPrice: number | "";
+  setCostPrice: (v: number | "") => void;
+  price: number | "";
+  setPrice: (v: number | "") => void;
+  stock: number | "";
+  setStock: (v: number | "") => void;
   categories: string[];
   loadingCategories?: boolean;
   customFields?: CustomField[];
@@ -44,156 +42,270 @@ export default function AddProductForm({
   setCustomData,
   addProductHandler,
 }: Props) {
-  const visibleStandardFields = getVisibleSystemFields(customFields);
+  const visibleStandardFields =
+    getVisibleSystemFields(customFields);
 
-  const handleCustomFieldChange = (fieldName: string, value: any) => {
+  const handleCustomFieldChange = (
+    fieldName: string,
+    value: any
+  ) => {
     if (!setCustomData) return;
+
     setCustomData({
       ...customData,
       [fieldName]: value,
     });
   };
 
-  const renderStandardField = (field: CustomField) => {
+  // Shared modern responsive styles
+  const inputStyle =
+    "w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-sm text-theme-primary placeholder:text-theme-secondary shadow-sm transition-all duration-200 outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20";
+
+  const labelStyle =
+    "block text-sm font-semibold text-theme-primary";
+
+  const fieldWrapper =
+    "space-y-2 w-full";
+
+  const renderStandardField = (
+    field: CustomField
+  ) => {
     switch (field.field_name) {
       case "name":
         return (
-          <div key={field.id}>
-            <label className="text-sm text-gray-300">{field.display_name}</label>
+          <div
+            key={field.id}
+            className={fieldWrapper}
+          >
+            <label className={labelStyle}>
+              {field.display_name}
+            </label>
+
             <input
-              className="input"
+              className={inputStyle}
+              placeholder="Product title, e.g. Blue Denim Jacket"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) =>
+                setName(e.target.value)
+              }
               required={field.is_required}
             />
           </div>
         );
+
       case "category":
         return (
-          <div key={field.id}>
-            <label className="text-sm text-gray-300">{field.display_name}</label>
+          <div
+            key={field.id}
+            className={fieldWrapper}
+          >
+            <label className={labelStyle}>
+              {field.display_name}
+            </label>
+
             <select
-              className="input text-white bg-slate-800"
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
+              className={inputStyle}
+              value={category || ""}
+              onChange={(e) =>
+                setCategory(e.target.value)
+              }
               disabled={loadingCategories}
               required={field.is_required}
             >
               {loadingCategories ? (
-                <option>Loading categories...</option>
+                <option>
+                  Loading categories...
+                </option>
               ) : categories.length === 0 ? (
-                <option className="text-black">No categories</option>
+                <option value="">
+                  No categories
+                </option>
               ) : (
-                categories.map((c, index) => (
-                  <option key={`${c}-${index}`} value={c} className="text-black">
-                    {c}
+                <>
+                  <option value="" disabled>
+                    Select category
                   </option>
-                ))
+
+                  {categories.map((c, index) => (
+                    <option
+                      key={`${c}-${index}`}
+                      value={c}
+                    >
+                      {c}
+                    </option>
+                  ))}
+                </>
               )}
             </select>
           </div>
         );
+
       case "cost_price":
         return (
-          <div key={field.id}>
-            <label className="text-sm text-gray-300">{field.display_name} ($)</label>
+          <div
+            key={field.id}
+            className={fieldWrapper}
+          >
+            <label className={labelStyle}>
+              {field.display_name} ($)
+            </label>
+
             <input
-              className="input"
+              className={inputStyle}
               type="number"
               min={0}
               step="0.01"
+              placeholder="Enter cost price"
               value={costPrice}
-              onChange={(e) => setCostPrice(Number(e.target.value))}
+              onChange={(e) =>
+                setCostPrice(
+                  e.target.value === ""
+                    ? ""
+                    : Number(e.target.value)
+                )
+              }
               required={field.is_required}
             />
           </div>
         );
+
       case "price":
         return (
-          <div key={field.id}>
-            <label className="text-sm text-gray-300">{field.display_name} ($)</label>
+          <div
+            key={field.id}
+            className={fieldWrapper}
+          >
+            <label className={labelStyle}>
+              {field.display_name} ($)
+            </label>
+
             <input
-              className="input"
+              className={inputStyle}
               type="number"
               min={0}
               step="0.01"
+              placeholder="Enter sale price"
               value={price}
-              onChange={(e) => setPrice(Number(e.target.value))}
+              onChange={(e) =>
+                setPrice(
+                  e.target.value === ""
+                    ? ""
+                    : Number(e.target.value)
+                )
+              }
               required={field.is_required}
             />
           </div>
         );
+
       case "stock":
         return (
-          <div key={field.id}>
-            <label className="text-sm text-gray-300">{field.display_name}</label>
+          <div
+            key={field.id}
+            className={fieldWrapper}
+          >
+            <label className={labelStyle}>
+              {field.display_name}
+            </label>
+
             <input
-              className="input"
+              className={inputStyle}
               type="number"
+              placeholder="Enter stock quantity"
               value={stock}
-              onChange={(e) => setStock(Number(e.target.value))}
+              onChange={(e) =>
+                setStock(
+                  e.target.value === ""
+                    ? ""
+                    : Number(e.target.value)
+                )
+              }
               required={field.is_required}
             />
           </div>
         );
+
       default:
         return null;
     }
   };
 
   return (
-    <div className="w-full bg-slate-900/40 border border-white/10 rounded-2xl p-4 sm:p-6">
-      <h3 className="text-lg sm:text-xl font-semibold mb-4 text-white">
-        ➕ Add New Product
-      </h3>
+    <div className="w-full rounded-3xl border border-theme bg-theme-card p-4 sm:p-6 lg:p-8 shadow-soft">
+      {/* Header */}
+      <div className="mb-8 flex flex-col gap-3">
+        <div className="inline-flex items-center gap-2 rounded-full bg-theme-input px-3 py-1 text-xs font-semibold uppercase tracking-[0.3em] text-theme-secondary shadow-sm">
+          <span>New product</span>
+        </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {visibleStandardFields.map(renderStandardField)}
+        <div>
+          <h3 className="text-2xl sm:text-3xl font-bold tracking-tight text-theme-primary">
+            ➕ Add a friendly product entry
+          </h3>
+          <p className="mt-2 text-sm sm:text-base text-theme-secondary max-w-2xl">
+            Use the form below to quickly save inventory details — everything adapts to your theme and keeps the UI clean.
+          </p>
+        </div>
+      </div>
+
+      {/* Form Fields */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 sm:gap-6">
+        {visibleStandardFields.map(
+          renderStandardField
+        )}
+
+        {customFields.some(
+          (field) => !field.is_system && field.is_visible
+        ) && (
+          <div className="col-span-full rounded-3xl border border-theme bg-theme-input p-4 text-theme-secondary">
+            <p className="text-sm font-semibold text-theme-primary">
+              Add custom product details
+            </p>
+            <p className="mt-1 text-sm">
+              Fill any extra fields that help your team understand this product.
+            </p>
+          </div>
+        )}
 
         {/* Custom Fields */}
         {customFields
-          .filter((field) => !field.is_system && field.is_visible)
+          .filter(
+            (field) =>
+              !field.is_system &&
+              field.is_visible
+          )
           .map((field) => (
-            <CustomFieldInput
+            <div
               key={field.id}
-              field={field}
-              value={customData?.[field.field_name]}
-              onChange={(value) => handleCustomFieldChange(field.field_name, value)}
-              disabled={false}
-            />
+              className="w-full"
+            >
+              <CustomFieldInput
+                field={field}
+                value={
+                  customData?.[field.field_name]
+                }
+                onChange={(value) =>
+                  handleCustomFieldChange(
+                    field.field_name,
+                    value
+                  )
+                }
+                disabled={false}
+              />
+            </div>
           ))}
       </div>
 
-      {/* Button */}
-      <div className="mt-5 flex justify-end">
+      {/* Footer */}
+      <div className="mt-8 flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-3">
         <button
-          type="button" // ✅ prevents accidental page reload
+          type="button"
           onClick={addProductHandler}
-          className="btn w-full sm:w-auto"
+          className="inline-flex items-center justify-center rounded-2xl bg-theme-accent px-6 py-3 text-sm font-semibold text-slate-950 shadow-lg transition-all duration-200 hover:bg-cyan-400 hover:scale-[1.02] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/40"
         >
           + Add Product
         </button>
       </div>
-
-      <style jsx>{`
-        .input {
-          width: 100%;
-          margin-top: 6px;
-          padding: 12px;
-          border-radius: 12px;
-          background: rgba(255, 255, 255, 0.06);
-          border: 1px solid rgba(255, 255, 255, 0.12);
-          color: white;
-        }
-
-        .btn {
-          padding: 10px 18px;
-          border-radius: 12px;
-          font-weight: 600;
-          color: white;
-          background: linear-gradient(to right, #7c3aed, #4f46e5);
-        }
-      `}</style>
     </div>
   );
 }

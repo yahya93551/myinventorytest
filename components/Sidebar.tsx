@@ -5,6 +5,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { logout } from "@/hooks/useRequireAuth";
+import { useTheme } from "@/lib/theme-context";
 import {
   LayoutDashboard,
   Package,
@@ -21,14 +22,10 @@ import {
   Plus,
 } from "lucide-react";
 
-type Props = {
-  dark: boolean;
-  setDark: (value: boolean) => void;
-};
-
-export default function Sidebar({ dark, setDark }: Props) {
+export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
+  const { dark, setDark } = useTheme();
 
   const [collapsed, setCollapsed] = useState(false);
   const [open, setOpen] = useState(false);
@@ -42,15 +39,25 @@ export default function Sidebar({ dark, setDark }: Props) {
     router.push("/login");
   };
 
+  const sidebarBaseClasses = dark
+    ? "bg-slate-950/95 text-white border-white/10 shadow-lg"
+    : "bg-white/95 text-slate-950 border-slate-200 shadow-sm";
+
   const navClass = (active: boolean) =>
-    `w-full text-left px-2 py-3 rounded-xl transition flex items-center gap-3 ${
-      active ? "bg-white/20" : "hover:bg-white/10"
+    `w-full text-left px-3 py-3 rounded-2xl transition duration-200 flex items-center gap-3 ${
+      active
+        ? dark
+          ? "bg-white/15 text-white shadow-[0_12px_40px_-20px_rgba(255,255,255,0.25)]"
+          : "bg-slate-200 text-slate-950 shadow-sm"
+        : dark
+        ? "text-slate-300 hover:bg-white/10 hover:text-white"
+        : "text-slate-700 hover:bg-slate-100 hover:text-slate-900"
     }`;
 
   return (
     <>
       {/* MOBILE TOP BAR */}
-      <div className="lg:hidden flex items-center justify-between p-4 border-b border-white/10 bg-slate-950">
+      <div className={`lg:hidden flex items-center justify-between p-4 border-b ${dark ? "border-white/10 bg-slate-950 text-white" : "border-slate-200 bg-white text-slate-950"}`}>
         <button onClick={() => setOpen(true)}>
           <Menu />
         </button>
@@ -68,10 +75,11 @@ export default function Sidebar({ dark, setDark }: Props) {
       {/* SIDEBAR */}
       <div
         className={`
-          fixed lg:static z-50 top-0 left-0 h-full
+          fixed lg:static z-50 top-0 left-0 h-full max-h-screen
           ${collapsed ? "w-16" : "w-64"}
-          bg-slate-950/95 backdrop-blur-xl border-r border-white/10
-          flex flex-col p-4 transition-all duration-300
+          ${sidebarBaseClasses}
+          backdrop-blur-xl
+          flex flex-col p-4 transition-all duration-300 overflow-y-auto
           ${open ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
         `}
       >
@@ -91,11 +99,11 @@ export default function Sidebar({ dark, setDark }: Props) {
 
         {/* BRAND */}
         <div className="mb-8 flex items-center gap-3">
-          <Building2 size={24} className="text-cyan-400" />
+          <Building2 className="w-6 h-6 sm:w-7 sm:h-7 text-cyan-400" />
           {!collapsed && (
             <div>
               <h1 className="text-xl font-bold">My Inventory</h1>
-              <p className="text-xs text-gray-400">ERP System</p>
+              <p className="text-xs text-theme-secondary">ERP System</p>
             </div>
           )}
         </div>
@@ -107,7 +115,7 @@ export default function Sidebar({ dark, setDark }: Props) {
             onClick={() => setOpen(false)}
             className={navClass(pathname === "/")}
           >
-            <LayoutDashboard size={20} />
+            <LayoutDashboard className="w-5 h-5 sm:w-6 sm:h-6" />
             {!collapsed && <span>Dashboard</span>}
           </Link>
 
@@ -116,7 +124,7 @@ export default function Sidebar({ dark, setDark }: Props) {
             onClick={() => setOpen(false)}
             className={navClass(pathname?.startsWith("/inventory") === true)}
           >
-            <Package size={20} />
+            <Package className="w-5 h-5 sm:w-6 sm:h-6" />
             {!collapsed && <span>Inventory</span>}
           </Link>
 
@@ -125,7 +133,7 @@ export default function Sidebar({ dark, setDark }: Props) {
             onClick={() => setOpen(false)}
             className={navClass(pathname === "/inventory/add")}
           >
-            <Plus size={20} />
+            <Plus className="w-5 h-5 sm:w-6 sm:h-6" />
             {!collapsed && <span>Add Product</span>}
           </Link>
 
@@ -134,7 +142,7 @@ export default function Sidebar({ dark, setDark }: Props) {
             onClick={() => setOpen(false)}
             className={navClass(pathname === "/categories")}
           >
-            <Tag size={20} />
+            <Tag className="w-5 h-5 sm:w-6 sm:h-6" />
             {!collapsed && <span>Categories</span>}
           </Link>
 
@@ -143,7 +151,7 @@ export default function Sidebar({ dark, setDark }: Props) {
             onClick={() => setOpen(false)}
             className={navClass(pathname === "/sales")}
           >
-            <ShoppingCart size={20} />
+            <ShoppingCart className="w-5 h-5 sm:w-6 sm:h-6" />
             {!collapsed && <span>Sales</span>}
           </Link>
 
@@ -152,7 +160,7 @@ export default function Sidebar({ dark, setDark }: Props) {
             onClick={() => setOpen(false)}
             className={navClass(pathname === "/reports")}
           >
-            <FileText size={20} />
+            <FileText className="w-5 h-5 sm:w-6 sm:h-6" />
             {!collapsed && <span>Reports</span>}
           </Link>
 
@@ -161,7 +169,7 @@ export default function Sidebar({ dark, setDark }: Props) {
             onClick={() => setOpen(false)}
             className={navClass(pathname === "/settings")}
           >
-            <Settings size={20} />
+            <Settings className="w-5 h-5 sm:w-6 sm:h-6" />
             {!collapsed && <span>Settings</span>}
           </Link>
 
@@ -170,7 +178,7 @@ export default function Sidebar({ dark, setDark }: Props) {
             onClick={() => setOpen(false)}
             className={navClass(pathname === "/profile")}
           >
-            <User size={20} />
+            <User className="w-5 h-5 sm:w-6 sm:h-6" />
             {!collapsed && <span>Profile</span>}
           </Link>
         </div>
@@ -178,9 +186,9 @@ export default function Sidebar({ dark, setDark }: Props) {
         {/* THEME */}
         <button
           onClick={() => setDark(!dark)}
-          className="mt-6 w-full bg-linear-to-r from-purple-500 to-indigo-500 py-2 rounded-xl flex items-center justify-center gap-2"
+          className="mt-6 w-full rounded-xl border border-theme bg-theme-card py-2 text-theme-secondary transition hover:bg-theme-surface flex items-center justify-center gap-2"
         >
-          {dark ? <Sun size={20} /> : <Moon size={20} />}
+          {dark ? <Sun className="w-5 h-5 sm:w-6 sm:h-6" /> : <Moon className="w-5 h-5 sm:w-6 sm:h-6" />}
           {!collapsed && <span>Toggle Theme</span>}
         </button>
 
@@ -188,7 +196,7 @@ export default function Sidebar({ dark, setDark }: Props) {
           onClick={handleLogout}
           className="mt-3 w-full bg-red-600 py-2 rounded-xl flex items-center justify-center gap-2"
         >
-          <X size={20} />
+          <X className="w-5 h-5 sm:w-6 sm:h-6" />
           {!collapsed && <span>Logout</span>}
         </button>
       </div>

@@ -9,11 +9,18 @@ type BulkSaleLine = {
   quantity: number;
 };
 
+type SaleMeta = {
+  order_id?: string;
+  customer_name?: string;
+  customer_address?: string;
+  customer_phone?: string;
+};
+
 type Props = {
   isOpen: boolean;
   products: Product[];
   onClose: () => void;
-  onConfirm: (items: BulkSaleLine[]) => Promise<boolean>;
+  onConfirm: (items: BulkSaleLine[], metadata?: SaleMeta) => Promise<boolean>;
   showMessage: (type: "success" | "error", text: string) => void;
 };
 
@@ -28,6 +35,10 @@ export default function BulkSellModal({
   const [error, setError] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [printAfterSale, setPrintAfterSale] = useState(false);
+  const [orderId, setOrderId] = useState(() => `INV-${Date.now()}`);
+  const [customerName, setCustomerName] = useState("");
+  const [customerAddress, setCustomerAddress] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
 
   useEffect(() => {
     if (!isOpen) {
@@ -35,6 +46,11 @@ export default function BulkSellModal({
       setError(null);
       setIsProcessing(false);
       setPrintAfterSale(false);
+      setCustomerName("");
+      setCustomerAddress("");
+      setCustomerPhone("");
+    } else {
+      setOrderId(`INV-${Date.now()}`);
     }
   }, [isOpen]);
 
@@ -80,32 +96,40 @@ export default function BulkSellModal({
     const receiptHtml = `
       <html>
         <head>
-          <title>Sale Receipt</title>
+          <title>Sale Invoice</title>
           <style>
             body { font-family: Arial, sans-serif; padding: 24px; color: #111; }
             h1 { font-size: 24px; margin-bottom: 16px; }
+            .section { margin-bottom: 16px; }
+            .details p { margin: 4px 0; }
             table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
             th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }
             tfoot td { font-weight: bold; }
           </style>
         </head>
         <body>
-          <h1>Sale Receipt</h1>
-          <p>Date: ${formattedDate}</p>
+          <h1>Sale Invoice</h1>
+          <div class="section details">
+            <p><strong>Invoice #:</strong> ${orderId}</p>
+            <p><strong>Date:</strong> ${formattedDate}</p>
+            <p><strong>Customer:</strong> ${customerName || "Walk-in Customer"}</p>
+            <p><strong>Address:</strong> ${customerAddress || "-"}</p>
+            <p><strong>Phone:</strong> ${customerPhone || "-"}</p>
+          </div>
           <table>
             <thead>
-              <tr><th>Product</th><th>Qty</th><th>Price</th><th>Total</th></tr>
+              <tr><th>No.</th><th>Item Description</th><th>Qty</th><th>Unit Price</th><th>Total</th></tr>
             </thead>
             <tbody>
               ${lines
                 .map(
-                  (item) =>
-                    `<tr><td>${item.name}</td><td>${item.quantity}</td><td>$${item.price}</td><td>$${item.total}</td></tr>`
+                  (item, index) =>
+                    `<tr><td>${index + 1}</td><td>${item.name}</td><td>${item.quantity}</td><td>$${item.price}</td><td>$${item.total}</td></tr>`
                 )
                 .join("")}
             </tbody>
             <tfoot>
-              <tr><td colspan="3">Grand Total</td><td>$${totalAmount}</td></tr>
+              <tr><td colspan="4">Grand Total</td><td>$${totalAmount}</td></tr>
             </tfoot>
           </table>
         </body>
@@ -134,7 +158,12 @@ export default function BulkSellModal({
       quantity: line.quantity,
     }));
 
-    const success = await onConfirm(payload);
+    const success = await onConfirm(payload, {
+      order_id: orderId,
+      customer_name: customerName || undefined,
+      customer_address: customerAddress || undefined,
+      customer_phone: customerPhone || undefined,
+    });
 
     if (!success) {
       setError("Bulk sale failed. Please try again.");
@@ -162,38 +191,38 @@ export default function BulkSellModal({
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-      <div className="bg-gray-900 p-6 rounded-2xl w-[min(95vw,900px)] text-white max-h-[90vh] overflow-auto">
+      <div className="bg-theme-card border-theme p-6 rounded-2xl w-[min(95vw,900px)] text-theme-primary max-h-[90vh] overflow-auto">
         <div className="flex items-start justify-between gap-4 mb-4">
           <div>
             <h2 className="text-xl font-semibold">Sell Multiple Items</h2>
-            <p className="text-sm text-gray-400">Choose quantities for each product and confirm.</p>
+            <p className="text-sm text-theme-secondary">Choose quantities for each product and confirm.</p>
           </div>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-white"
+            className="text-theme-secondary hover:text-theme-primary"
             aria-label="Close bulk sell modal"
           >
-            <X size={20} />
+            <X className="w-5 h-5 sm:w-6 sm:h-6" />
           </button>
         </div>
 
-        <div className="grid gap-3 mb-3 text-sm text-gray-300">
-          <div className="grid grid-cols-[1fr_auto_auto_auto] gap-3 px-2 font-semibold border-b border-white/10 pb-2">
+        <div className="grid gap-3 mb-3 text-sm text-theme-secondary">
+          <div className="grid grid-cols-[1fr_auto_auto_auto] gap-3 px-2 font-semibold border-b border-theme pb-2">
             <span>Product</span>
             <span className="text-right">Price</span>
             <span className="text-right">Stock</span>
             <span className="text-right">Qty</span>
           </div>
           {availableProducts.length === 0 ? (
-            <div className="p-4 text-center text-gray-400">No products available for bulk sale.</div>
+            <div className="p-4 text-center text-theme-secondary">No products available for bulk sale.</div>
           ) : (
             availableProducts.map((product) => (
-              <div key={product.id} className="grid grid-cols-[1fr_auto_auto_auto] gap-3 items-center px-2 py-2 border-b border-white/10">
+              <div key={product.id} className="grid grid-cols-[1fr_auto_auto_auto] gap-3 items-center px-2 py-2 border-b border-theme">
                 <span>{product.name}</span>
                 <span className="text-right">${product.price}</span>
                 <span className="text-right">{product.stock}</span>
                 <input
-                  className="w-full rounded bg-white/10 px-2 py-1 text-slate-900"
+                  className="w-full rounded bg-theme-input px-2 py-1 text-theme-primary"
                   type="number"
                   min={0}
                   max={product.stock}
@@ -208,17 +237,48 @@ export default function BulkSellModal({
           )}
         </div>
 
-        <div className="mb-4 text-sm text-gray-300">
+        <div className="mb-4 rounded-2xl border border-theme p-4 bg-theme-surface text-theme-primary">
+          <p className="text-sm font-semibold mb-3">Invoice & Customer</p>
+          <p className="text-xs text-theme-secondary mb-3">Invoice #: {orderId}</p>
+          <div className="grid gap-3">
+            <input
+              className="rounded bg-theme-input px-3 py-2 text-theme-primary"
+              type="text"
+              value={customerName}
+              onChange={(e) => setCustomerName(e.target.value)}
+              disabled={isProcessing}
+              placeholder="Customer name"
+            />
+            <input
+              className="rounded bg-theme-input px-3 py-2 text-theme-primary"
+              type="text"
+              value={customerAddress}
+              onChange={(e) => setCustomerAddress(e.target.value)}
+              disabled={isProcessing}
+              placeholder="Customer address"
+            />
+            <input
+              className="rounded bg-theme-input px-3 py-2 text-theme-primary"
+              type="text"
+              value={customerPhone}
+              onChange={(e) => setCustomerPhone(e.target.value)}
+              disabled={isProcessing}
+              placeholder="Customer phone"
+            />
+          </div>
+        </div>
+
+        <div className="mb-4 text-sm text-theme-secondary">
           Total: <span className="text-green-300">${total}</span>
         </div>
 
-        <label className="flex items-center gap-2 mb-4 text-sm text-gray-300">
+        <label className="flex items-center gap-2 mb-4 text-sm text-theme-secondary">
           <input
             type="checkbox"
             checked={printAfterSale}
             onChange={() => setPrintAfterSale((prev) => !prev)}
             disabled={isProcessing}
-            className="h-4 w-4 rounded border-gray-500 bg-slate-800 text-green-500"
+            className="h-4 w-4 rounded border-theme bg-theme-input text-green-500"
           />
           Print receipt after sale
         </label>
@@ -228,7 +288,7 @@ export default function BulkSellModal({
         <div className="flex flex-wrap items-center justify-end gap-3">
           <button
             onClick={onClose}
-            className="rounded-xl border border-white/10 px-4 py-2 text-gray-300"
+            className="rounded-xl border border-theme px-4 py-2 text-theme-secondary"
             disabled={isProcessing}
           >
             Cancel

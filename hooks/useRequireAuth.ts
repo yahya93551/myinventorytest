@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { apiDelete } from "@/lib/apiClient";
+import { clearCurrentSessionId, getCurrentSessionId } from "@/lib/apiClient";
 import type { User } from "@supabase/supabase-js";
 
 export function useRequireAuth() {
@@ -41,6 +43,17 @@ export function useRequireAuth() {
 }
 
 export async function logout() {
+  try {
+    const sessionId = getCurrentSessionId();
+    if (sessionId) {
+      await apiDelete(`/api/auth/session?session_id=${encodeURIComponent(sessionId)}`);
+    }
+  } catch (error) {
+    console.error('[SESSION] Failed to revoke current session during logout:', error);
+  } finally {
+    clearCurrentSessionId();
+  }
+
   const { error } = await supabase.auth.signOut();
   if (error) {
     throw error;

@@ -6,6 +6,7 @@ import { apiGet } from "@/lib/apiClient";
 import { Sale } from "../../types";
 import Sidebar from "@/components/Sidebar";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
+import { useTheme } from "@/lib/theme-context";
 import { jsPDF } from "jspdf";
 
 import {
@@ -18,8 +19,8 @@ import {
 
 export default function ReportsPage() {
   const { loading } = useRequireAuth();
+  const { dark } = useTheme();
 
-  const [dark, setDark] = useState(true);
   const [sales, setSales] = useState<Sale[]>([]);
   const [filter, setFilter] = useState<"7d" | "30d" | "all">("all");
   const [loadingSales, setLoadingSales] = useState(true);
@@ -224,11 +225,10 @@ export default function ReportsPage() {
 
     doc.setFontSize(11);
 
-    doc.text("Sale ID", margin, y);
-    doc.text("Product", margin + 80, y);
+    doc.text("Product", margin, y);
     doc.text("Qty", margin + 260, y);
-    doc.text("Total", margin + 320, y);
-    doc.text("Date", margin + 400, y);
+    doc.text("Total", margin + 340, y);
+    doc.text("Date", margin + 420, y);
 
     y += lineHeight;
 
@@ -242,17 +242,11 @@ export default function ReportsPage() {
       }
 
       doc.text(
-        String(sale.id ?? ""),
-        margin,
-        y
-      );
-
-      doc.text(
         sale.productName || "Unknown",
-        margin + 80,
+        margin,
         y,
         {
-          maxWidth: 160,
+          maxWidth: 200,
         }
       );
 
@@ -266,7 +260,7 @@ export default function ReportsPage() {
         `$${Number(
           sale.total || 0
         ).toFixed(2)}`,
-        margin + 320,
+        margin + 340,
         y
       );
 
@@ -280,7 +274,7 @@ export default function ReportsPage() {
               }
             )
           : "No date",
-        margin + 400,
+        margin + 420,
         y,
         {
           maxWidth: 180,
@@ -314,7 +308,7 @@ export default function ReportsPage() {
     <div
       className={`flex min-h-screen items-start flex-col lg:flex-row ${theme}`}
     >
-      <Sidebar dark={dark} setDark={setDark} />
+      <Sidebar />
 
       <div className="flex-1 p-4 sm:p-6 overflow-x-hidden">
         <div className="mx-auto max-w-7xl">

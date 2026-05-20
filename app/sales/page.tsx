@@ -6,6 +6,7 @@ import Sidebar from "@/components/Sidebar";
 import { Sale } from "../../types";
 import { apiGet } from "@/lib/apiClient";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
+import { useTheme } from "@/lib/theme-context";
 
 import {
   LineChart,
@@ -21,7 +22,7 @@ export default function SalesPage() {
   const [salesLoading, setSalesLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filterDate, setFilterDate] = useState("");
-  const [dark, setDark] = useState(true);
+  const { dark } = useTheme();
 
   const { loading } = useRequireAuth();
 
@@ -181,7 +182,7 @@ export default function SalesPage() {
     <div
       className={`flex min-h-screen items-start flex-col lg:flex-row ${theme}`}
     >
-      <Sidebar dark={dark} setDark={setDark} />
+      <Sidebar />
 
       <div className="flex-1 p-4 sm:p-6 overflow-x-hidden">
         {/* HEADER */}
@@ -198,7 +199,7 @@ export default function SalesPage() {
               Sales Dashboard
             </h2>
 
-            <p className="text-gray-400 mt-2">
+            <p className="text-theme-secondary mt-2">
               View and analyze sales data and revenue trends.
             </p>
           </div>
@@ -213,13 +214,13 @@ export default function SalesPage() {
 
         {/* FILTER */}
         <div className="flex flex-wrap gap-4 items-center mb-6">
-          <label className="text-sm text-gray-300">
+          <label className="text-sm text-theme-secondary">
             Filter by date:
           </label>
 
           <input
             type="date"
-            className="bg-white/10 border border-white/10 p-2 rounded-lg outline-none"
+            className="bg-theme-input border border-theme px-3 py-2 rounded-2xl outline-none text-theme-primary focus:border-cyan-400"
             value={filterDate}
             onChange={(e) =>
               setFilterDate(e.target.value)
@@ -237,8 +238,8 @@ export default function SalesPage() {
         </div>
 
         {/* TOTAL */}
-        <div className="mb-6 rounded-2xl bg-white/5 border border-white/10 p-5">
-          <p className="text-sm text-gray-400 mb-2">
+        <div className="mb-6 rounded-2xl bg-theme-card border border-theme p-5 shadow-soft">
+          <p className="text-sm text-theme-secondary mb-2">
             Total Revenue
           </p>
 
@@ -248,14 +249,16 @@ export default function SalesPage() {
         </div>
 
         {/* TABLE */}
-        <div className="bg-white/10 rounded-2xl overflow-auto mb-6 border border-white/10">
-          <table className="w-full min-w-[700px]">
-            <thead className="bg-white/5">
+        <div className="bg-theme-card rounded-2xl overflow-auto mb-6 border border-theme shadow-soft">
+          <table className="w-full min-w-175">
+            <thead className="bg-theme-surface">
               <tr>
-                <th className="p-4 text-left">Product</th>
-                <th className="p-4 text-left">Qty</th>
-                <th className="p-4 text-left">Total</th>
-                <th className="p-4 text-left">Date</th>
+                <th className="p-4 text-left text-theme-secondary">Invoice</th>
+                <th className="p-4 text-left text-theme-secondary">Customer</th>
+                <th className="p-4 text-left text-theme-secondary">Product</th>
+                <th className="p-4 text-left text-theme-secondary">Qty</th>
+                <th className="p-4 text-left text-theme-secondary">Total</th>
+                <th className="p-4 text-left text-theme-secondary">Date</th>
               </tr>
             </thead>
 
@@ -263,8 +266,8 @@ export default function SalesPage() {
               {salesLoading ? (
                 <tr>
                   <td
-                    colSpan={4}
-                    className="p-8 text-center text-gray-400"
+                    colSpan={6}
+                    className="p-8 text-center text-theme-secondary"
                   >
                     <div className="inline-flex items-center gap-2">
                       <span className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
@@ -275,8 +278,8 @@ export default function SalesPage() {
               ) : filteredSales.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={4}
-                    className="p-6 text-center text-gray-400"
+                    colSpan={6}
+                    className="p-6 text-center text-theme-secondary"
                   >
                     No sales found
                   </td>
@@ -285,8 +288,14 @@ export default function SalesPage() {
                 filteredSales.map((sale) => (
                   <tr
                     key={sale.id}
-                    className="border-t border-white/10 hover:bg-white/[0.03] transition"
+                    className="border-t border-theme hover:bg-theme-surface-soft transition-colors duration-150"
                   >
+                    <td className="p-4 text-sm text-theme-secondary">
+                      {sale.order_id || "-"}
+                    </td>
+                    <td className="p-4">
+                      {sale.customer_name || "Walk-in"}
+                    </td>
                     <td className="p-4">
                       {sale.productName || "Unknown"}
                     </td>
@@ -302,7 +311,7 @@ export default function SalesPage() {
                       ).toFixed(2)}
                     </td>
 
-                    <td className="p-4 text-sm text-gray-300">
+                    <td className="p-4 text-sm text-theme-secondary">
                       {formatDate(sale)}
                     </td>
                   </tr>
@@ -313,17 +322,17 @@ export default function SalesPage() {
         </div>
 
         {/* DAILY SUMMARY */}
-        <div className="bg-white/5 border border-white/10 p-5 rounded-2xl mb-6">
+        <div className="bg-theme-card border border-theme p-5 rounded-2xl mb-6 shadow-soft">
           <h3 className="text-lg font-semibold mb-4">
             Daily Revenue
           </h3>
 
           {salesLoading ? (
-            <p className="text-gray-400">
+            <p className="text-theme-secondary">
               Loading summary...
             </p>
           ) : Object.keys(dailySummary).length === 0 ? (
-            <p className="text-gray-400">
+            <p className="text-theme-secondary">
               No data available
             </p>
           ) : (
@@ -335,7 +344,7 @@ export default function SalesPage() {
                 .map(([date, total]) => (
                   <li
                     key={date}
-                    className="flex justify-between border-b border-white/5 pb-2"
+                    className="flex justify-between border-b border-slate-700/20 pb-2"
                   >
                     <span>{date}</span>
 
@@ -349,13 +358,13 @@ export default function SalesPage() {
         </div>
 
         {/* CHART */}
-        <div className="bg-white/5 border border-white/10 p-5 rounded-2xl">
+        <div className="bg-theme-card border border-theme p-5 rounded-2xl shadow-soft">
           <h3 className="text-lg font-semibold mb-4">
             Revenue Chart
           </h3>
 
           {salesLoading ? (
-            <div className="h-72 flex items-center justify-center text-gray-400">
+            <div className="h-72 flex items-center justify-center text-theme-secondary">
               Loading chart...
             </div>
           ) : (

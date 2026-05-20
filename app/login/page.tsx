@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
+import { registerCurrentSession } from "@/lib/apiClient";
 
 export default function LoginPage() {
   const [mode, setMode] = useState<"login" | "signup">("login");
@@ -68,7 +69,7 @@ export default function LoginPage() {
     setLoading(true);
     setMessage("");
 
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email: email.trim(),
       password,
     });
@@ -79,6 +80,11 @@ export default function LoginPage() {
       setMessageType("error");
       setMessage(error.message);
     } else {
+      try {
+        await registerCurrentSession();
+      } catch (sessionError) {
+        console.error('[SESSION] Failed to register session after login:', sessionError);
+      }
       router.push("/");
     }
   };
@@ -124,11 +130,11 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white px-4">
-      <div className="w-full max-w-md rounded-3xl bg-white/10 p-6 shadow-xl shadow-black/20">
+      <div className="w-full max-w-md rounded-3xl bg-theme-card border border-theme p-6 shadow-card">
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-2xl font-bold">{mode === "login" ? "Login" : "Create Account"}</h2>
-            <p className="text-gray-400 mt-1">
+            <p className="text-theme-secondary mt-1">
               {mode === "login"
                 ? "Enter your credentials to access the dashboard."
                 : "Create a secure account to manage your inventory."}
@@ -137,14 +143,14 @@ export default function LoginPage() {
           <div className="flex gap-2 rounded-full bg-slate-900/70 p-1">
             <button
               type="button"
-              className={`rounded-full px-3 py-1 text-sm ${mode === "login" ? "bg-cyan-400 text-slate-950" : "text-gray-300 hover:text-white"}`}
+              className={`rounded-full px-3 py-1 text-sm ${mode === "login" ? "bg-cyan-400 text-slate-950" : "text-theme-secondary hover:text-white"}`}
               onClick={() => setMode("login")}
             >
               Login
             </button>
             <button
               type="button"
-              className={`rounded-full px-3 py-1 text-sm ${mode === "signup" ? "bg-violet-500 text-white" : "text-gray-300 hover:text-white"}`}
+              className={`rounded-full px-3 py-1 text-sm ${mode === "signup" ? "bg-violet-500 text-white" : "text-theme-secondary hover:text-white"}`}
               onClick={() => setMode("signup")}
             >
               Sign Up
@@ -160,7 +166,7 @@ export default function LoginPage() {
 
         <div className="space-y-3">
           <input
-            className="w-full rounded-2xl border border-white/10 bg-slate-900/80 px-4 py-3 text-white outline-none focus:border-cyan-400"
+            className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
             placeholder="Email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
@@ -168,7 +174,7 @@ export default function LoginPage() {
 
           <input
             type="password"
-            className="w-full rounded-2xl border border-white/10 bg-slate-900/80 px-4 py-3 text-white outline-none focus:border-cyan-400"
+            className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
             placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -177,7 +183,7 @@ export default function LoginPage() {
           {mode === "signup" && (
             <input
               type="password"
-              className="w-full rounded-2xl border border-white/10 bg-slate-900/80 px-4 py-3 text-white outline-none focus:border-cyan-400"
+              className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
               placeholder="Confirm Password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}

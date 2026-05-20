@@ -52,6 +52,10 @@ CREATE TABLE IF NOT EXISTS sales (
   product_name text NOT NULL,
   quantity integer NOT NULL CHECK (quantity > 0),
   total numeric(14,2) NOT NULL CHECK (total >= 0),
+  order_id text,
+  customer_name text,
+  customer_address text,
+  customer_phone text,
   created_at timestamptz NOT NULL DEFAULT now()
 );
 

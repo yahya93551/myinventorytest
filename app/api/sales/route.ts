@@ -7,8 +7,15 @@ const SaleItemSchema = z.object({
   quantity: z.number().int().positive(),
 });
 
-const SingleSaleSchema = SaleItemSchema;
-const BulkSaleSchema = z.object({ items: z.array(SaleItemSchema).min(1) });
+const SaleMetadataSchema = z.object({
+  order_id: z.string().optional(),
+  customer_name: z.string().optional(),
+  customer_address: z.string().optional(),
+  customer_phone: z.string().optional(),
+});
+
+const SingleSaleSchema = SaleItemSchema.merge(SaleMetadataSchema);
+const BulkSaleSchema = z.object({ items: z.array(SaleItemSchema).min(1) }).merge(SaleMetadataSchema);
 
 export async function GET(req: Request) {
   const tenantContext = await getServerTenantContext(req);
@@ -21,7 +28,7 @@ export async function GET(req: Request) {
 
   const { data, error } = await supabaseAdmin
     .from("sales")
-    .select("id, product_id, product_name, quantity, total, created_at, user_id")
+    .select("*")
     .eq("tenant_id", tenantContext.tenantId)
     .order("created_at", { ascending: false })
     .limit(limit);
@@ -62,9 +69,16 @@ export async function POST(req: Request) {
     return jsonError(errors.join(", "), 422);
   }
 
+  const payloadData = salePayload.success ? salePayload.data : singlePayload.data;
   const items = salePayload.success
     ? salePayload.data.items
     : ([singlePayload.data] as Array<z.infer<typeof SaleItemSchema>>);
+
+  const metadata = payloadData as z.infer<typeof SaleMetadataSchema>;
+  const orderId = metadata.order_id || `INV-${Date.now()}`;
+  const customerName = metadata.customer_name?.trim() || null;
+  const customerAddress = metadata.customer_address?.trim() || null;
+  const customerPhone = metadata.customer_phone?.trim() || null;
 
   const normalized = items.reduce<Array<{ product_id: string; quantity: number }>>(
     (acc, item: { product_id: string; quantity: number }) => {
@@ -153,12 +167,19 @@ export async function POST(req: Request) {
     total: product.quantity * product.price,
     tenant_id: tenantContext.tenantId,
     user_id: tenantContext.userId,
+    created_by: tenantContext.userId,
+    order_id: orderId,
+    customer_name: customerName,
+    customer_address: customerAddress,
+    customer_phone: customerPhone,
   }));
+
+  const fallbackRows = salesRows.map(({ order_id, customer_name, customer_address, customer_phone, created_by, ...rest }) => rest);
 
   let { data: inserted, error: insertError } = await supabaseAdmin
     .from("sales")
     .insert(salesRows)
-    .select("id, product_id, product_name, quantity, total, created_at, user_id");
+    .select("*");
 
   if (insertError || !inserted) {
     console.error("Sales route: failed to insert sale rows", {
@@ -166,16 +187,26 @@ export async function POST(req: Request) {
       insertError,
     });
 
+    const shouldRetryWithoutMeta = insertError?.message?.match(/order_id|customer_name|customer_address|customer_phone/i);
+    if (shouldRetryWithoutMeta) {
+      console.warn("Sales route: retrying sale insert without invoice/customer metadata");
+      const retryResult = await supabaseAdmin
+        .from("sales")
+        .insert(fallbackRows)
+        .select("*");
+      inserted = retryResult.data;
+      insertError = retryResult.error;
+    }
+
     const missingCreatedBy = insertError?.message?.includes("created_by") ||
       insertError?.code === "PGRST204";
 
-    if (missingCreatedBy) {
+    if (insertError && missingCreatedBy) {
       console.warn("Sales route: retrying sale insert without created_by column");
-      const fallbackRows = salesRows;
       const fallbackResult = await supabaseAdmin
         .from("sales")
         .insert(fallbackRows)
-        .select("id, product_id, product_name, quantity, total, created_at, user_id");
+        .select("*");
 
       inserted = fallbackResult.data;
       insertError = fallbackResult.error;

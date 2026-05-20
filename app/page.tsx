@@ -1,12 +1,12 @@
 "use client";
 
-import { useState } from "react";
 import Sidebar from "../components/Sidebar";
 import Dashboard from "../components/Dashboard";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
+import { useTheme } from "@/lib/theme-context";
 
 export default function Page() {
-  const [dark, setDark] = useState(true);
+  const { dark } = useTheme();
   const { loading } = useRequireAuth();
 
   if (loading) {
@@ -17,13 +17,9 @@ export default function Page() {
     );
   }
 
-  const theme = dark
-    ? "bg-slate-950 text-slate-100"
-    : "bg-slate-100 text-slate-950";
-
   return (
-    <div className={`flex min-h-screen items-start flex-col lg:flex-row ${theme}`}>
-      <Sidebar dark={dark} setDark={setDark} />
+    <div className={`flex min-h-screen items-start flex-col lg:flex-row ${dark ? "theme-dark" : "theme-light"}`}>
+      <Sidebar />
       <div className="flex-1 p-4 sm:p-6">
         <Dashboard />
       </div>

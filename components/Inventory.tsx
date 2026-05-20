@@ -94,7 +94,7 @@ export default function Inventory({ products, setProducts, categories }: any) {
         onClick={save}
         className="btn-primary mb-6 flex items-center gap-2 w-full sm:w-auto justify-center"
       >
-        <Plus size={20} />
+        <Plus className="w-5 h-5 sm:w-6 sm:h-6" />
         Add Product
       </button>
 
@@ -127,7 +127,7 @@ export default function Inventory({ products, setProducts, categories }: any) {
                         onClick={() => openEdit(p)}
                         className="text-blue-400 hover:text-blue-300 flex items-center gap-1"
                       >
-                        <Edit size={16} />
+                        <Edit className="w-4 h-4 sm:w-5 sm:h-5" />
                         <span className="hidden sm:inline">Edit</span>
                       </button>
 
@@ -135,7 +135,7 @@ export default function Inventory({ products, setProducts, categories }: any) {
                         onClick={() => sell(p.id)}
                         className="text-green-400 hover:text-green-300 flex items-center gap-1"
                       >
-                        <ShoppingCart size={16} />
+                        <ShoppingCart className="w-4 h-4 sm:w-5 sm:h-5" />
                         <span className="hidden sm:inline">Sell</span>
                       </button>
 
@@ -147,7 +147,7 @@ export default function Inventory({ products, setProducts, categories }: any) {
                         }
                         className="text-red-400 hover:text-red-300 flex items-center gap-1"
                       >
-                        <Trash2 size={16} />
+                        <Trash2 className="w-4 h-4 sm:w-5 sm:h-5" />
                         <span className="hidden sm:inline">Delete</span>
                       </button>
                     </div>
@@ -162,7 +162,7 @@ export default function Inventory({ products, setProducts, categories }: any) {
       {/* EDIT MODAL */}
       {showEditModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center px-4">
-          <div className="bg-gray-900 p-6 rounded-2xl w-full max-w-md">
+          <div className="bg-theme-card border-theme p-6 rounded-2xl w-full max-w-md">
             <h2 className="text-xl mb-4">Edit Product</h2>
 
             <input
@@ -220,16 +220,17 @@ export default function Inventory({ products, setProducts, categories }: any) {
         .input {
           padding: 10px;
           border-radius: 12px;
-          background: rgba(255,255,255,0.1);
-          border: 1px solid rgba(255,255,255,0.2);
-          color: white;
+          background: var(--surface-input);
+          border: 1px solid var(--border);
+          color: var(--text-primary);
           width: 100%;
         }
 
         .btn-primary {
           padding: 10px 16px;
           border-radius: 12px;
-          background: linear-gradient(to right, #7c3aed, #4f46e5);
+          background: linear-gradient(to right, var(--color-accent-primary), var(--color-accent-secondary));
+          color: var(--text-primary);
         }
       `}</style>
     </div>
