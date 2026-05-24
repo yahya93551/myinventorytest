@@ -6,6 +6,7 @@ import Link from "next/link";
 
 import Sidebar from "@/components/Sidebar";
 import AddProductForm from "../components/AddProductForm";
+import BulkUploadProducts from "@/components/BulkUploadProducts";
 import { apiGet, apiPost } from "@/lib/apiClient";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { useCustomFields } from "@/hooks/useCustomFields";
@@ -248,6 +249,26 @@ export default function AddPage() {
             <p>Adding product...</p>
           </div>
         )}
+
+        {/* DIVIDER */}
+        <div className="my-12">
+          <div className="flex items-center gap-4">
+            <div className="flex-1 h-px bg-theme/20" />
+            <span className="text-theme-secondary text-sm font-semibold">OR</span>
+            <div className="flex-1 h-px bg-theme/20" />
+          </div>
+        </div>
+
+        {/* BULK UPLOAD SECTION */}
+        <div className="mb-6">
+          <h2 className="text-2xl font-bold mb-2">
+            Bulk Upload Products
+          </h2>
+          <p className="text-theme-secondary mb-4">
+            Upload multiple products at once using JSON or CSV files
+          </p>
+          <BulkUploadProducts />
+        </div>
       </div>
     </div>
   );

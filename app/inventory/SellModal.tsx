@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { apiPost } from "@/lib/apiClient";
 import { Product } from "../../types";
 
 type SaleMeta = {
@@ -108,6 +109,23 @@ export default function SellModal({
     printWindow.print();
   };
 
+  const logLoadAction = async () => {
+    try {
+      await apiPost('/api/activity/log', {
+        action: 'LOAD',
+        entity: 'product',
+        entity_id: sellItem?.id,
+        details: {
+          productName: sellItem?.name,
+          quantity: sellQty,
+          stockAvailable: sellItem?.stock,
+        },
+      });
+    } catch (err) {
+      console.warn('Unable to track load activity', err);
+    }
+  };
+
   const handleConfirm = async () => {
     if (isProcessing) return;
     if (!canConfirm) {
@@ -164,7 +182,10 @@ export default function SellModal({
           </p>
           <button
             type="button"
-            onClick={() => setGoodsLoaded(true)}
+            onClick={async () => {
+              setGoodsLoaded(true);
+              await logLoadAction();
+            }}
             disabled={isProcessing || goodsLoaded}
             className="mb-4 rounded-2xl bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-500 disabled:opacity-50"
           >

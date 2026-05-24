@@ -1,6 +1,6 @@
 ﻿import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { getServerTenantContext, jsonError, jsonSuccess } from "@/lib/api";
+import { getServerTenantContext, jsonError, jsonSuccess, logAudit } from "@/lib/api";
 
 const missingColumnRegex = /Could not find the '(.+?)' column of 'products'/;
 
@@ -207,6 +207,18 @@ export async function POST(req: Request) {
     }
 
     console.log("[POST /api/products] Product inserted successfully:", { id: insertedProduct.id });
+    
+    // Log audit trail
+    await logAudit(
+      tenantContext.tenantId,
+      tenantContext.userId,
+      "CREATE",
+      "product",
+      req,
+      insertedProduct.id,
+      { name, category, cost_price, price, stock }
+    );
+    
     return jsonSuccess(insertedProduct, 201);
   } catch (err) {
     // Phase 6: Catch-All for Unexpected Errors
@@ -244,7 +256,7 @@ export async function PATCH(req: Request) {
 
   const { data: product, error: productError } = await supabaseAdmin
     .from("products")
-    .select("tenant_id")
+    .select("tenant_id, stock")
     .eq("id", id)
     .single();
 
@@ -261,6 +273,12 @@ export async function PATCH(req: Request) {
     .update(updates)
     .eq("id", id)
     .eq("tenant_id", tenantContext.tenantId);
+
+  const actionType = typeof updates.stock === "number"
+    ? updates.stock > product.stock
+      ? "RESTOCK"
+      : "UPDATE"
+    : "UPDATE";
 
   if (error) {
     const missingColumns = parseMissingColumns(error);
@@ -288,11 +306,42 @@ export async function PATCH(req: Request) {
       }
 
       console.log("[PATCH /api/products] Update succeeded after dropping missing columns:", { id, updates: fallbackUpdates });
+      
+      // Log audit trail
+      await logAudit(
+        tenantContext.tenantId,
+        tenantContext.userId,
+        actionType,
+        "product",
+        req,
+        id,
+        {
+          updates: fallbackUpdates,
+          previousStock: product.stock,
+          newStock: typeof fallbackUpdates.stock === "number" ? fallbackUpdates.stock : product.stock,
+        }
+      );
+      
       return jsonSuccess({ id, updates: fallbackUpdates });
     }
 
     return jsonError(error.message, 500);
   }
+
+  // Log audit trail
+  await logAudit(
+    tenantContext.tenantId,
+    tenantContext.userId,
+    actionType,
+    "product",
+    req,
+    id,
+    {
+      updates,
+      previousStock: product.stock,
+      newStock: typeof updates.stock === "number" ? updates.stock : product.stock,
+    }
+  );
 
   return jsonSuccess({ id, updates });
 }
@@ -344,6 +393,16 @@ export async function DELETE(req: Request) {
   if (error) {
     return jsonError(error.message, 500);
   }
+
+  // Log audit trail
+  await logAudit(
+    tenantContext.tenantId,
+    tenantContext.userId,
+    "DELETE",
+    "product",
+    req,
+    id
+  );
 
   return jsonSuccess({ id });
 }

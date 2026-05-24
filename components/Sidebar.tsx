@@ -20,6 +20,7 @@ import {
   Menu,
   X,
   Plus,
+  History,
 } from "lucide-react";
 
 export default function Sidebar() {
@@ -162,6 +163,15 @@ export default function Sidebar() {
           >
             <FileText className="w-5 h-5 sm:w-6 sm:h-6" />
             {!collapsed && <span>Reports</span>}
+          </Link>
+
+          <Link
+            href="/activity"
+            onClick={() => setOpen(false)}
+            className={navClass(pathname === "/activity")}
+          >
+            <History className="w-5 h-5 sm:w-6 sm:h-6" />
+            {!collapsed && <span>Activity Log</span>}
           </Link>
 
           <Link

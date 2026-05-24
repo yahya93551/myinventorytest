@@ -1,5 +1,5 @@
 // app/api/auth/session/route.ts - Manage user sessions
-import { getServerTenantContext, jsonSuccess, jsonError } from '@/lib/api';
+import { getServerTenantContext, jsonSuccess, jsonError, logAudit } from '@/lib/api';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { extractIPAddress, extractUserAgent } from '@/lib/audit';
 import { NextRequest, NextResponse } from 'next/server';
@@ -95,6 +95,16 @@ export async function POST(req: NextRequest) {
       return jsonError('Failed to register session: no data returned', 500);
     }
 
+    await logAudit(
+      tenantContext.tenantId,
+      tenantContext.userId,
+      'LOGIN',
+      'user',
+      req,
+      undefined,
+      { sessionId }
+    );
+
     return jsonSuccess({ session: data });
   } catch (err) {
     console.error('[SESSION] Error registering session:', err);
@@ -128,6 +138,16 @@ export async function DELETE(req: NextRequest) {
       console.error('[SESSION] Failed to delete session:', error);
       return jsonError('Failed to log out session', 500);
     }
+
+    await logAudit(
+      tenantContext.tenantId,
+      tenantContext.userId,
+      'LOGOUT',
+      'user',
+      req,
+      undefined,
+      { sessionId }
+    );
 
     return jsonSuccess({ message: 'Session logged out successfully' });
   } catch (err) {

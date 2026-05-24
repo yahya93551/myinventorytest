@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { getServerTenantContext, jsonError, jsonSuccess } from "@/lib/api";
+import { getServerTenantContext, jsonError, jsonSuccess, logAudit } from "@/lib/api";
 
 const SaleItemSchema = z.object({
   product_id: z.string().uuid(),
@@ -217,6 +217,25 @@ export async function POST(req: Request) {
     await rollbackStock();
     return jsonError(insertError?.message || "Failed to record sale", 500);
   }
+
+  const totalQuantity = productRows.reduce((sum, item) => sum + item.quantity, 0);
+
+  // Log audit trail
+  await logAudit(
+    tenantContext.tenantId,
+    tenantContext.userId,
+    "SELL",
+    "sale",
+    req,
+    undefined,
+    {
+      orderId,
+      itemCount: productRows.length,
+      totalQuantity,
+      items: productRows,
+      customerName,
+    }
+  );
 
   return jsonSuccess(inserted);
 }
