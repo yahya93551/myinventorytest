@@ -106,6 +106,12 @@ export interface BusinessSettings {
   tenant_id: string;
   business_type: BusinessType;
   description?: string;
+  business_name?: string | null;
+  business_address?: string | null;
+  business_contact_name?: string | null;
+  business_contact_phone?: string | null;
+  business_contact_email?: string | null;
+  business_website?: string | null;
   created_at: string;
   updated_at: string;
 }

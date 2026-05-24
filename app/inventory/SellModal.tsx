@@ -30,6 +30,7 @@ export default function SellModal({
   const [customerName, setCustomerName] = useState("");
   const [customerAddress, setCustomerAddress] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
+  const [goodsLoaded, setGoodsLoaded] = useState(false);
 
   useEffect(() => {
     if (sellItem) {
@@ -39,6 +40,7 @@ export default function SellModal({
       setCustomerPhone("");
       setPrintAfterSale(false);
       setError(null);
+      setGoodsLoaded(false);
     }
   }, [sellItem]);
 
@@ -157,6 +159,17 @@ export default function SellModal({
         <div className="mb-4 rounded-2xl border border-theme p-3 bg-theme-surface text-theme-primary">
           <p className="text-sm font-semibold mb-2">Invoice & Customer</p>
           <p className="text-xs text-theme-secondary mb-2">Invoice #: {orderId}</p>
+          <p className="text-xs text-theme-secondary mb-3">
+            Load the selected goods first, then confirm the sale.
+          </p>
+          <button
+            type="button"
+            onClick={() => setGoodsLoaded(true)}
+            disabled={isProcessing || goodsLoaded}
+            className="mb-4 rounded-2xl bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-500 disabled:opacity-50"
+          >
+            {goodsLoaded ? "Goods loaded" : "Load goods details"}
+          </button>
           <label className="block text-sm text-theme-secondary mb-2">
             Customer name
             <input
@@ -242,9 +255,9 @@ export default function SellModal({
           <button
             onClick={handleConfirm}
             className="bg-green-600 px-4 py-2 rounded-xl disabled:opacity-50"
-            disabled={isProcessing || !canConfirm}
+            disabled={isProcessing || !canConfirm || !goodsLoaded}
           >
-            {isProcessing ? "Processing..." : "Confirm Sell"}
+            {isProcessing ? "Processing..." : goodsLoaded ? "Confirm Sell" : "Load goods first"}
           </button>
         </div>
       </div>

@@ -202,6 +202,7 @@ export async function POST(req: Request) {
   const { error: profileError } = await supabaseAdmin.from("profiles").upsert(
     {
       id: newUser.id,
+      user_id: newUser.id,
       email,
     },
     { onConflict: "id" }

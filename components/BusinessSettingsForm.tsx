@@ -22,6 +22,12 @@ interface BusinessSettingsFormProps {
 export function BusinessSettingsForm({ onBusinessTypeChange }: BusinessSettingsFormProps) {
   const [selectedType, setSelectedType] = useState("");
   const [description, setDescription] = useState("");
+  const [businessName, setBusinessName] = useState("");
+  const [businessAddress, setBusinessAddress] = useState("");
+  const [businessContactName, setBusinessContactName] = useState("");
+  const [businessContactPhone, setBusinessContactPhone] = useState("");
+  const [businessContactEmail, setBusinessContactEmail] = useState("");
+  const [businessWebsite, setBusinessWebsite] = useState("");
 
   const { data: settings, isLoading } = useQuery<BusinessSettings | undefined, Error>({
     queryKey: ["business_settings"],
@@ -35,11 +41,26 @@ export function BusinessSettingsForm({ onBusinessTypeChange }: BusinessSettingsF
     if (settings) {
       setSelectedType(settings.business_type);
       setDescription(settings.description || "");
+      setBusinessName(settings.business_name || "");
+      setBusinessAddress(settings.business_address || "");
+      setBusinessContactName(settings.business_contact_name || "");
+      setBusinessContactPhone(settings.business_contact_phone || "");
+      setBusinessContactEmail(settings.business_contact_email || "");
+      setBusinessWebsite(settings.business_website || "");
     }
   }, [settings]);
 
   const saveMutation = useMutation({
-    mutationFn: async (data: { business_type: string; description?: string }) => {
+    mutationFn: async (data: {
+      business_type: string;
+      description?: string;
+      business_name?: string;
+      business_address?: string;
+      business_contact_name?: string;
+      business_contact_phone?: string;
+      business_contact_email?: string;
+      business_website?: string;
+    }) => {
       const response = await apiPost<BusinessSettings>("/api/business-settings", data);
       return response.data;
     },
@@ -59,6 +80,12 @@ export function BusinessSettingsForm({ onBusinessTypeChange }: BusinessSettingsF
     await saveMutation.mutateAsync({
       business_type: selectedType,
       description: description || undefined,
+      business_name: businessName || undefined,
+      business_address: businessAddress || undefined,
+      business_contact_name: businessContactName || undefined,
+      business_contact_phone: businessContactPhone || undefined,
+      business_contact_email: businessContactEmail || undefined,
+      business_website: businessWebsite || undefined,
     });
   };
 
@@ -105,12 +132,71 @@ export function BusinessSettingsForm({ onBusinessTypeChange }: BusinessSettingsF
           </div>
         )}
 
+        <div className="grid grid-cols-1 gap-4 mb-6">
+          <div>
+            <label className="block text-sm font-medium text-theme-secondary mb-2">Business Name</label>
+            <input
+              value={businessName}
+              onChange={(e) => setBusinessName(e.target.value)}
+              placeholder="Business name"
+              className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-theme-secondary mb-2">Business Address</label>
+            <input
+              value={businessAddress}
+              onChange={(e) => setBusinessAddress(e.target.value)}
+              placeholder="Address"
+              className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-theme-secondary mb-2">Contact Name</label>
+            <input
+              value={businessContactName}
+              onChange={(e) => setBusinessContactName(e.target.value)}
+              placeholder="Contact name"
+              className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-theme-secondary mb-2">Contact Phone</label>
+            <input
+              value={businessContactPhone}
+              onChange={(e) => setBusinessContactPhone(e.target.value)}
+              placeholder="Phone number"
+              className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-theme-secondary mb-2">Contact Email</label>
+            <input
+              value={businessContactEmail}
+              onChange={(e) => setBusinessContactEmail(e.target.value)}
+              placeholder="Email"
+              className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-theme-secondary mb-2">
+              Website <span className="text-xs text-theme-secondary">(optional)</span>
+            </label>
+            <input
+              value={businessWebsite}
+              onChange={(e) => setBusinessWebsite(e.target.value)}
+              placeholder="Website (optional)"
+              className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
+            />
+          </div>
+        </div>
+
         <button
           onClick={handleSave}
           disabled={saveMutation.isPending || !selectedType}
           className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-theme-surface text-white font-medium py-2 rounded transition"
         >
-          {saveMutation.isPending ? "Saving..." : "Save Business Type"}
+          {saveMutation.isPending ? "Saving..." : "Save Business Settings"}
         </button>
 
         {saveMutation.isSuccess && (

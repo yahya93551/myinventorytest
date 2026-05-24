@@ -137,10 +137,10 @@ export default function ProductTable({
                       p.stock === 0 ? "text-gray-500 cursor-not-allowed" : "text-green-400 hover:text-green-300"
                     } transition`}
                     disabled={p.stock === 0}
-                    title={p.stock === 0 ? "Out of stock" : "Record a sale"}
+                    title={p.stock === 0 ? "Out of stock" : "Load goods to sell"}
                   >
                     <ShoppingCart className="w-3 h-3 sm:w-4 sm:h-4" />
-                    Sell
+                    Load Goods
                   </button>
 
                   <button

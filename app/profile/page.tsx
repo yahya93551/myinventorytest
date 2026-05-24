@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
 import { useRequireAuth, logout } from "@/hooks/useRequireAuth";
 import { useTheme } from "@/lib/theme-context";
+import { apiGet, apiPost } from "@/lib/apiClient";
+import { BusinessSettings } from "@/types";
 import { supabase } from "@/lib/supabase";
 
 export default function ProfilePage() {
@@ -17,6 +19,21 @@ export default function ProfilePage() {
   const [newSubUserRole, setNewSubUserRole] = useState<"accountant" | "sales">("sales");
   const [subUserMessage, setSubUserMessage] = useState<string>("");
   const [subUserLoading, setSubUserLoading] = useState(false);
+  const [businessType, setBusinessType] = useState<string>("custom");
+  const [businessName, setBusinessName] = useState("");
+  const [businessAddress, setBusinessAddress] = useState("");
+  const [businessContactName, setBusinessContactName] = useState("");
+  const [businessContactPhone, setBusinessContactPhone] = useState("");
+  const [businessContactEmail, setBusinessContactEmail] = useState("");
+  const [businessWebsite, setBusinessWebsite] = useState("");
+  const [businessLoading, setBusinessLoading] = useState(false);
+  const [businessSaving, setBusinessSaving] = useState(false);
+  const [businessMessage, setBusinessMessage] = useState("");
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordMessage, setPasswordMessage] = useState("");
+  const [passwordLoading, setPasswordLoading] = useState(false);
   const router = useRouter();
 
   const handleLogout = async () => {
@@ -31,59 +48,10 @@ export default function ProfilePage() {
   useEffect(() => {
     const loadTenantRole = async () => {
       try {
-        const { data, error } = await supabase
-          .from("tenant_members")
-          .select("tenant_id, role")
-          .eq("user_id", user?.id)
-          .order("created_at", { ascending: false })
-          .limit(1);
-
-        if (error) {
-          console.error("Tenant role fetch error:", error.message);
-          return;
-        }
-
-        const membership = Array.isArray(data) ? data[0] : data;
-        if (membership?.role) {
-          setTenantRole(membership.role);
-          return;
-        }
-
-        if (user?.email) {
-          const { data: emailData, error: emailError } = await supabase
-            .from("tenant_members")
-            .select("tenant_id, role")
-            .eq("user_email", user.email)
-            .order("created_at", { ascending: false })
-            .limit(1);
-
-          const emailMembership = Array.isArray(emailData) ? emailData[0] : emailData;
-          if (!emailError && emailMembership?.role) {
-            setTenantRole(emailMembership.role);
-            return;
-          }
-        }
-
-        if ((Array.isArray(data) ? data.length === 0 : !data) && user?.id && user.email) {
-          const { data: created, error: createError } = await supabase
-            .from("tenant_members")
-            .insert({
-              tenant_id: user.id,
-              user_id: user.id,
-              user_email: user.email,
-              role: "owner",
-              active: true,
-              created_by: user.id,
-            })
-            .select("role")
-            .maybeSingle();
-
-          if (!createError && created?.role) {
-            setTenantRole(created.role);
-          }
-        }
-      } catch (err) {
-        console.error(err);
+        const result = await apiGet<{ role: string }>('/api/tenant-role');
+        setTenantRole(result.data?.role ?? '');
+      } catch (error) {
+        console.error('Tenant role fetch error:', error instanceof Error ? error.message : error);
       }
     };
 
@@ -91,6 +59,130 @@ export default function ProfilePage() {
       loadTenantRole();
     }
   }, [loading, user]);
+
+  useEffect(() => {
+    const loadBusinessSettings = async () => {
+      setBusinessLoading(true);
+      try {
+        const result = await apiGet<BusinessSettings>("/api/business-settings");
+        const settings = result.data || {
+          business_type: "custom",
+          business_name: undefined,
+          business_address: undefined,
+          business_contact_name: undefined,
+          business_contact_phone: undefined,
+          business_contact_email: undefined,
+          business_website: undefined,
+        };
+
+        setBusinessType(settings.business_type ?? "custom");
+        setBusinessName(settings.business_name ?? "");
+        setBusinessAddress(settings.business_address ?? "");
+        setBusinessContactName(settings.business_contact_name ?? "");
+        setBusinessContactPhone(settings.business_contact_phone ?? "");
+        setBusinessContactEmail(settings.business_contact_email ?? "");
+        setBusinessWebsite(settings.business_website ?? "");
+      } catch (error) {
+        console.error("Business settings fetch error:", error instanceof Error ? error.message : error);
+      } finally {
+        setBusinessLoading(false);
+      }
+    };
+
+    if (!loading && user) {
+      loadBusinessSettings();
+    }
+  }, [loading, user]);
+
+  const handleSaveBusinessInfo = async () => {
+    setBusinessMessage("");
+    setBusinessSaving(true);
+
+    try {
+      await apiPost<BusinessSettings>("/api/business-settings", {
+        business_type: businessType || "custom",
+        business_name: businessName || undefined,
+        business_address: businessAddress || undefined,
+        business_contact_name: businessContactName || undefined,
+        business_contact_phone: businessContactPhone || undefined,
+        business_contact_email: businessContactEmail || undefined,
+        business_website: businessWebsite || undefined,
+      });
+
+      setBusinessMessage("Business information saved successfully.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to save business information.";
+      setBusinessMessage(message);
+      console.error("Business settings save error:", message);
+    } finally {
+      setBusinessSaving(false);
+    }
+  };
+
+  const handleUpdatePassword = async () => {
+    setPasswordMessage("");
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      setPasswordMessage("All password fields are required.");
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setPasswordMessage("New passwords do not match.");
+      return;
+    }
+
+    if (newPassword.length < 8) {
+      setPasswordMessage("Password must be at least 8 characters.");
+      return;
+    }
+
+    if (newPassword === currentPassword) {
+      setPasswordMessage("New password must be different from current password.");
+      return;
+    }
+
+    setPasswordLoading(true);
+    try {
+      // First verify current password by attempting to sign in
+      if (!user?.email) {
+        setPasswordMessage("Unable to verify your identity.");
+        setPasswordLoading(false);
+        return;
+      }
+
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: user.email,
+        password: currentPassword,
+      });
+
+      if (signInError) {
+        setPasswordMessage("Current password is incorrect.");
+        setPasswordLoading(false);
+        return;
+      }
+
+      // If verification successful, update to new password
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+
+      if (updateError) {
+        setPasswordMessage(updateError.message);
+      } else {
+        setCurrentPassword("");
+        setNewPassword("");
+        setConfirmPassword("");
+        setPasswordMessage("Password updated successfully.");
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to update password.";
+      setPasswordMessage(message);
+      console.error("Password update error:", message);
+    } finally {
+      setPasswordLoading(false);
+    }
+  };
 
   useEffect(() => {
     const loadSubUsers = async () => {
@@ -217,6 +309,139 @@ export default function ProfilePage() {
           >
             Logout
           </button>
+        </div>
+
+        <div className="mt-10 rounded-2xl border border-theme bg-theme-card p-6">
+          <h2 className="text-2xl font-semibold">Business Information</h2>
+          <p className="text-sm text-theme-secondary mt-1">Register or update your business name, address, and contact details.</p>
+
+          {businessLoading ? (
+            <p className="mt-6 text-sm text-theme-secondary">Loading business info...</p>
+          ) : (
+            <div className="mt-6 grid gap-4">
+              <div>
+                <label className="block text-sm text-theme-secondary mb-2">Business Name</label>
+                <input
+                  value={businessName}
+                  onChange={(e) => setBusinessName(e.target.value)}
+                  placeholder="Business name"
+                  className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-theme-secondary mb-2">Business Address</label>
+                <input
+                  value={businessAddress}
+                  onChange={(e) => setBusinessAddress(e.target.value)}
+                  placeholder="Address"
+                  className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-theme-secondary mb-2">Contact Name</label>
+                <input
+                  value={businessContactName}
+                  onChange={(e) => setBusinessContactName(e.target.value)}
+                  placeholder="Contact person"
+                  className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-theme-secondary mb-2">Contact Phone</label>
+                <input
+                  value={businessContactPhone}
+                  onChange={(e) => setBusinessContactPhone(e.target.value)}
+                  placeholder="Phone number"
+                  className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-theme-secondary mb-2">Contact Email</label>
+                <input
+                  value={businessContactEmail}
+                  onChange={(e) => setBusinessContactEmail(e.target.value)}
+                  placeholder="Email address"
+                  className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-theme-secondary mb-2">
+                  Website <span className="text-xs text-theme-secondary">(optional)</span>
+                </label>
+                <input
+                  value={businessWebsite}
+                  onChange={(e) => setBusinessWebsite(e.target.value)}
+                  placeholder="Website (optional)"
+                  className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
+                />
+              </div>
+            </div>
+          )}
+
+          <button
+            onClick={handleSaveBusinessInfo}
+            disabled={businessLoading || businessSaving}
+            className="mt-6 w-full rounded-2xl bg-cyan-500 px-4 py-3 text-sm font-semibold text-slate-950 hover:opacity-90 disabled:opacity-50"
+          >
+            {businessSaving ? "Saving..." : "Save Business Info"}
+          </button>
+
+          {businessMessage && (
+            <p className="mt-4 text-sm text-theme-secondary">{businessMessage}</p>
+          )}
+          {tenantRole !== "owner" && (
+            <p className="mt-3 text-sm text-yellow-100/80">Only the tenant owner can update business information.</p>
+          )}
+        </div>
+
+        <div className="mt-10 rounded-2xl border border-theme bg-theme-card p-6">
+          <h2 className="text-2xl font-semibold">Change Password</h2>
+          <p className="text-sm text-theme-secondary mt-1">Update your account password securely from your profile.</p>
+
+          <div className="mt-6 grid gap-4">
+            <div>
+              <label className="block text-sm text-theme-secondary mb-2">Current Password</label>
+              <input
+                type="password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                placeholder="Enter your current password"
+                className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-theme-secondary mb-2">New Password</label>
+              <input
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="Enter new password"
+                className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-theme-secondary mb-2">Confirm New Password</label>
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Confirm new password"
+                className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
+              />
+            </div>
+          </div>
+
+          <button
+            onClick={handleUpdatePassword}
+            disabled={passwordLoading}
+            className="mt-4 w-full rounded-2xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
+          >
+            {passwordLoading ? "Updating..." : "Update Password"}
+          </button>
+
+          {passwordMessage && (
+            <p className="mt-4 text-sm text-theme-secondary">{passwordMessage}</p>
+          )}
         </div>
 
         {tenantRole === "owner" && (

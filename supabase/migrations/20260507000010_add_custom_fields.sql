@@ -31,6 +31,12 @@ CREATE TABLE IF NOT EXISTS business_settings (
   tenant_id uuid NOT NULL UNIQUE REFERENCES auth.users(id) ON DELETE CASCADE,
   business_type text NOT NULL CHECK (business_type IN ('pharmacy', 'ngo', 'warehouse', 'supermarket', 'retail_shop', 'distributor', 'custom')),
   description text,
+  business_name text,
+  business_address text,
+  business_contact_name text,
+  business_contact_phone text,
+  business_contact_email text,
+  business_website text,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );

@@ -5,6 +5,12 @@ import { getServerTenantContext, jsonError, jsonSuccess } from "@/lib/api";
 const BusinessSettingsSchema = z.object({
   business_type: z.enum(['pharmacy', 'ngo', 'warehouse', 'supermarket', 'retail_shop', 'distributor', 'custom']),
   description: z.string().max(500).optional(),
+  business_name: z.string().max(200).optional(),
+  business_address: z.string().max(500).optional(),
+  business_contact_name: z.string().max(200).optional(),
+  business_contact_phone: z.string().max(100).optional(),
+  business_contact_email: z.string().email().optional(),
+  business_website: z.string().max(200).optional(),
 });
 
 export async function GET(req: Request) {
@@ -57,7 +63,16 @@ export async function POST(req: Request) {
     return jsonError(parseResult.error.issues.map((i) => i.message).join(", "), 422);
   }
 
-  const { business_type, description } = parseResult.data;
+  const {
+    business_type,
+    description,
+    business_name,
+    business_address,
+    business_contact_name,
+    business_contact_phone,
+    business_contact_email,
+    business_website,
+  } = parseResult.data;
 
   // Check if settings already exist
   const { data: existing } = await supabaseAdmin
@@ -73,6 +88,12 @@ export async function POST(req: Request) {
       .update({
         business_type,
         description,
+        business_name,
+        business_address,
+        business_contact_name,
+        business_contact_phone,
+        business_contact_email,
+        business_website,
         updated_at: new Date().toISOString(),
       })
       .eq("tenant_id", tenantContext.tenantId)
@@ -93,6 +114,12 @@ export async function POST(req: Request) {
       tenant_id: tenantContext.tenantId,
       business_type,
       description,
+      business_name,
+      business_address,
+      business_contact_name,
+      business_contact_phone,
+      business_contact_email,
+      business_website,
     })
     .select()
     .single();
