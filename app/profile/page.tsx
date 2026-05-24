@@ -303,12 +303,7 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          <button
-            onClick={handleLogout}
-            className="mt-8 w-full rounded-xl bg-red-600 px-4 py-3 text-white"
-          >
-            Logout
-          </button>
+          <div className="mt-8 text-sm text-theme-secondary">Use the Logout button in the sidebar to sign out.</div>
         </div>
 
         <div className="mt-10 rounded-2xl border border-theme bg-theme-card p-6">

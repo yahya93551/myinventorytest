@@ -1,0 +1,78 @@
+import { z } from "zod";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { getServerTenantContext, jsonError, jsonSuccess, logAudit } from "@/lib/api";
+
+const RestockSchema = z.object({
+  id: z.string().uuid(),
+  amount: z.number().int().positive("Restock amount must be greater than zero"),
+});
+
+export async function POST(req: Request) {
+  const tenantContext = await getServerTenantContext(req);
+  if ("error" in tenantContext) {
+    return jsonError(tenantContext.error, tenantContext.status);
+  }
+
+  // Only tenant owners may restock products
+  if (tenantContext.role !== "owner") {
+    return jsonError("Only tenant owners can restock products", 403);
+  }
+
+  let payload: unknown;
+  try {
+    payload = await req.json();
+  } catch {
+    return jsonError("Invalid JSON payload", 400);
+  }
+
+  const parseResult = RestockSchema.safeParse(payload);
+  if (!parseResult.success) {
+    return jsonError(parseResult.error.issues.map((issue) => issue.message).join(", "), 422);
+  }
+
+  const { id, amount } = parseResult.data;
+
+  const { data: product, error: productError } = await supabaseAdmin
+    .from("products")
+    .select("tenant_id, stock")
+    .eq("id", id)
+    .single();
+
+  if (productError || !product) {
+    return jsonError(productError?.message || "Product not found", 404);
+  }
+
+  if (product.tenant_id !== tenantContext.tenantId) {
+    return jsonError("You do not have permission to restock this product", 403);
+  }
+
+  const newStock = (typeof product.stock === "number" ? product.stock : 0) + amount;
+
+  const { data: updatedProduct, error: updateError } = await supabaseAdmin
+    .from("products")
+    .update({ stock: newStock })
+    .eq("id", id)
+    .eq("tenant_id", tenantContext.tenantId)
+    .select("stock")
+    .single();
+
+  if (updateError || !updatedProduct) {
+    return jsonError(updateError?.message || "Failed to update stock", 500);
+  }
+
+  await logAudit(
+    tenantContext.tenantId,
+    tenantContext.userId,
+    "RESTOCK",
+    "product",
+    req,
+    id,
+    {
+      amount,
+      previousStock: product.stock,
+      newStock: updatedProduct.stock,
+    }
+  );
+
+  return jsonSuccess({ stock: updatedProduct.stock });
+}

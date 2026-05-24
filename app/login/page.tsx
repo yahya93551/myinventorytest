@@ -85,7 +85,12 @@ export default function LoginPage() {
       } catch (sessionError) {
         console.error('[SESSION] Failed to register session after login:', sessionError);
       }
-      router.push("/");
+      if (typeof window !== 'undefined') {
+        // Hard refresh to ensure fresh state after login
+        window.location.href = '/';
+      } else {
+        router.push('/');
+      }
     }
   };
 

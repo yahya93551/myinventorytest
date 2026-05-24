@@ -7,6 +7,11 @@ export async function GET(req: Request) {
     return jsonError(tenantContext.error, tenantContext.status);
   }
 
+  // Only owners can view activity logs
+  if (tenantContext.role !== 'owner') {
+    return jsonError('Forbidden: only tenant owners can view activity logs', 403);
+  }
+
   const url = new URL(req.url);
   const page = Math.max(1, Number(url.searchParams.get("page") || "1"));
   const perPage = Math.min(100, Math.max(1, Number(url.searchParams.get("per_page") || "20")));
@@ -32,8 +37,27 @@ export async function GET(req: Request) {
     if (entity) {
       query = query.eq("entity", entity);
     }
+
+    // Support filtering by performer ID or email
     if (performedBy) {
-      query = query.eq("performed_by", performedBy);
+      if (performedBy.includes("@")) {
+        // map email -> user_id(s) from tenant_members
+        const { data: membersByEmail, error: membersError } = await supabaseAdmin
+          .from('tenant_members')
+          .select('user_id')
+          .eq('user_email', performedBy)
+          .eq('tenant_id', tenantContext.tenantId);
+
+        if (!membersError && membersByEmail && membersByEmail.length > 0) {
+          const ids = membersByEmail.map((m: any) => m.user_id);
+          query = query.in('performed_by', ids);
+        } else {
+          // No matching user email for this tenant -> return empty result
+          return jsonSuccess({ activities: [], count: 0, page, perPage, totalPages: 0 });
+        }
+      } else {
+        query = query.eq("performed_by", performedBy);
+      }
     }
 
     const { data, error, count } = await query;
@@ -43,8 +67,27 @@ export async function GET(req: Request) {
       return jsonError(error.message, 500);
     }
 
-    // Enhance the response with user information if available
-    const enrichedData = data ?? [];
+    // Enhance the response with performer email addresses when available
+    const rows = data ?? [];
+    const performerIds = Array.from(new Set(rows.map((r: any) => r.performed_by).filter(Boolean)));
+    let emailMap: Record<string, string> = {};
+    if (performerIds.length > 0) {
+      const { data: members, error: membersError } = await supabaseAdmin
+        .from('tenant_members')
+        .select('user_id, user_email')
+        .in('user_id', performerIds);
+
+      if (!membersError && members) {
+        for (const m of members) {
+          if (m?.user_id) emailMap[m.user_id] = m.user_email || m.user_id;
+        }
+      }
+    }
+
+    const enrichedData = rows.map((r: any) => ({
+      ...r,
+      performed_by_email: r.performed_by ? emailMap[r.performed_by] || null : null,
+    }));
 
     return jsonSuccess({
       activities: enrichedData,

@@ -236,9 +236,8 @@ export async function PATCH(req: Request) {
     return jsonError(tenantContext.error, tenantContext.status);
   }
 
-  if (!["owner", "accountant"].includes(tenantContext.role)) {
-    return jsonError("Only owners or accountants can update products", 403);
-  }
+  // Allow 'sales' users to update `stock` only. Owners/accountants can update all fields.
+  const role = tenantContext.role;
 
   let payload: unknown;
   try {
@@ -253,6 +252,20 @@ export async function PATCH(req: Request) {
   }
 
   const { id, updates } = parseResult.data;
+
+  // If the user is a 'sales' role, restrict updates to only the `stock` field
+  if (role === "sales") {
+    const keys = Object.keys(updates);
+    const nonStock = keys.filter((k) => k !== "stock");
+    if (nonStock.length > 0) {
+      return jsonError("Sales users can only update stock", 403);
+    }
+  } else {
+    // For other roles (owner/accountant) we require manager permissions
+    if (!["owner", "accountant"].includes(role)) {
+      return jsonError("Only owners or accountants can update products", 403);
+    }
+  }
 
   const { data: product, error: productError } = await supabaseAdmin
     .from("products")

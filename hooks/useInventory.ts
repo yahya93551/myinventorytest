@@ -136,15 +136,7 @@ export function useInventory() {
         throw new Error("Restock amount must be greater than zero");
       }
 
-      const product = productsData?.products.find((p) => p.id === id);
-      if (!product) {
-        throw new Error("Product not found");
-      }
-
-      await apiPatch<void>("/api/products", {
-        id,
-        updates: { stock: product.stock + amount },
-      });
+      await apiPost<void>("/api/products/restock", { id, amount });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["products"] });

@@ -24,9 +24,9 @@ export default function RestockModal({
       <div className="w-full max-w-md rounded-3xl border border-theme bg-theme-card p-6 shadow-2xl text-theme-primary">
         <div className="mb-4 flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-xl font-semibold">Restock {restockItem.name}</h2>
+            <h2 className="text-xl font-semibold">Load goods for {restockItem.name}</h2>
             <p className="mt-1 text-sm text-theme-secondary">
-              Current stock: {restockItem.stock}. Add how many units to restock.
+              Current stock: {restockItem.stock}. How many units do you want to load?
             </p>
           </div>
           <button
@@ -69,7 +69,7 @@ export default function RestockModal({
             disabled={!isValidAmount}
             className={`rounded-2xl px-4 py-3 text-sm font-semibold transition ${isValidAmount ? "bg-theme-accent text-slate-950 hover:bg-cyan-400" : "bg-slate-500 text-slate-200 cursor-not-allowed"}`}
           >
-            Restock
+            Load Goods
           </button>
         </div>
       </div>

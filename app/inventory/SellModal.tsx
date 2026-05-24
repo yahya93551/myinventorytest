@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { apiPost } from "@/lib/apiClient";
 import { Product } from "../../types";
+import { useBusinessSettings } from "@/hooks/useCustomFields";
 
 type SaleMeta = {
   order_id?: string;
@@ -33,6 +34,8 @@ export default function SellModal({
   const [customerPhone, setCustomerPhone] = useState("");
   const [goodsLoaded, setGoodsLoaded] = useState(false);
 
+  const { data: businessSettings } = useBusinessSettings();
+
   useEffect(() => {
     if (sellItem) {
       setOrderId(`INV-${Date.now()}`);
@@ -44,6 +47,12 @@ export default function SellModal({
       setGoodsLoaded(false);
     }
   }, [sellItem]);
+
+  useEffect(() => {
+    if (goodsLoaded) {
+      setGoodsLoaded(false);
+    }
+  }, [sellQty]);
 
   if (!sellItem) return null;
 
@@ -74,6 +83,11 @@ export default function SellModal({
         <body>
           <h1>Sale Invoice</h1>
           <div class="section details">
+            <h3>Business Information</h3>
+            <p><strong>Name:</strong> ${businessSettings?.business_name || "-"}</p>
+            <p><strong>Address:</strong> ${businessSettings?.business_address || "-"}</p>
+            <p><strong>Contact:</strong> ${businessSettings?.business_contact_phone || businessSettings?.business_contact_email || "-"}</p>
+            <hr />
             <p><strong>Invoice #:</strong> ${orderId}</p>
             <p><strong>Date:</strong> ${formattedDate}</p>
             <p><strong>Customer:</strong> ${customerName || "Walk-in Customer"}</p>
@@ -178,18 +192,23 @@ export default function SellModal({
           <p className="text-sm font-semibold mb-2">Invoice & Customer</p>
           <p className="text-xs text-theme-secondary mb-2">Invoice #: {orderId}</p>
           <p className="text-xs text-theme-secondary mb-3">
-            Load the selected goods first, then confirm the sale.
+            Load the selected quantity first, then confirm the sale.
           </p>
           <button
             type="button"
             onClick={async () => {
+              if (!canConfirm) {
+                setError("Please enter a valid quantity within available stock.");
+                return;
+              }
+
               setGoodsLoaded(true);
               await logLoadAction();
             }}
             disabled={isProcessing || goodsLoaded}
             className="mb-4 rounded-2xl bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-500 disabled:opacity-50"
           >
-            {goodsLoaded ? "Goods loaded" : "Load goods details"}
+            {goodsLoaded ? "Quantity loaded" : "Load quantity details"}
           </button>
           <label className="block text-sm text-theme-secondary mb-2">
             Customer name

@@ -59,3 +59,12 @@ export async function logout() {
     throw error;
   }
 }
+
+// Force a hard reload on logout
+export async function logoutAndReload() {
+  await logout();
+  if (typeof window !== "undefined") {
+    // Redirect to login with a full page load
+    window.location.href = "/login";
+  }
+}

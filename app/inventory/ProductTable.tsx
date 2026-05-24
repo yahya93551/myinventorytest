@@ -10,6 +10,9 @@ export default function ProductTable({
   onRestock,
   onDelete,
   loading = false,
+  canEdit = true,
+  canDelete = true,
+  canRestock = false,
 }: {
   products?: ProductWithCustomData[];
   customFields?: CustomField[];
@@ -18,6 +21,9 @@ export default function ProductTable({
   onRestock?: (product: ProductWithCustomData) => void;
   onDelete?: (id: string) => void;
   loading?: boolean;
+  canEdit?: boolean;
+  canDelete?: boolean;
+  canRestock?: boolean;
 }) {
   const allVisibleFields = getVisibleTableFields(customFields);
 
@@ -137,38 +143,44 @@ export default function ProductTable({
                       p.stock === 0 ? "text-gray-500 cursor-not-allowed" : "text-green-400 hover:text-green-300"
                     } transition`}
                     disabled={p.stock === 0}
-                    title={p.stock === 0 ? "Out of stock" : "Load goods to sell"}
+                    title={p.stock === 0 ? "Out of stock" : "Sell this product"}
                   >
                     <ShoppingCart className="w-3 h-3 sm:w-4 sm:h-4" />
-                    Load Goods
+                    Sell
                   </button>
 
-                  <button
-                    onClick={() => onRestock?.(p)}
-                    className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1 transition"
-                    title="Add to stock"
-                  >
-                    <Plus className="w-3 h-3 sm:w-4 sm:h-4" />
-                    Restock
-                  </button>
+                  {canRestock && (
+                    <button
+                      onClick={() => onRestock?.(p)}
+                      className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1 transition"
+                      title="Load goods into stock"
+                    >
+                      <Plus className="w-3 h-3 sm:w-4 sm:h-4" />
+                      Load Goods
+                    </button>
+                  )}
 
-                  <button
-                    onClick={() => onEdit?.(p)}
-                    className="text-xs text-yellow-400 hover:text-yellow-300 flex items-center gap-1 transition"
-                    title="Edit product"
-                  >
-                    <Edit className="w-3 h-3 sm:w-4 sm:h-4" />
-                    Edit
-                  </button>
+                  {canEdit && (
+                    <button
+                      onClick={() => onEdit?.(p)}
+                      className="text-xs text-yellow-400 hover:text-yellow-300 flex items-center gap-1 transition"
+                      title="Edit product"
+                    >
+                      <Edit className="w-3 h-3 sm:w-4 sm:h-4" />
+                      Edit
+                    </button>
+                  )}
 
-                  <button
-                    onClick={() => onDelete?.(p.id)}
-                    className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1 transition"
-                    title="Delete product"
-                  >
-                    <Trash2 className="w-3 h-3 sm:w-4 sm:h-4" />
-                    Delete
-                  </button>
+                  {canDelete && (
+                    <button
+                      onClick={() => onDelete?.(p.id)}
+                      className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1 transition"
+                      title="Delete product"
+                    >
+                      <Trash2 className="w-3 h-3 sm:w-4 sm:h-4" />
+                      Delete
+                    </button>
+                  )}
                 </td>
               </tr>
             ))

@@ -31,8 +31,9 @@ export default function BulkSellModal({
   onConfirm,
   showMessage,
 }: Props) {
-  const [quantities, setQuantities] = useState<Record<string, number>>({});
+  const [quantities, setQuantities] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [printAfterSale, setPrintAfterSale] = useState(false);
   const [orderId, setOrderId] = useState(() => `INV-${Date.now()}`);
@@ -59,12 +60,18 @@ export default function BulkSellModal({
     [products]
   );
 
+  const filteredProducts = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return availableProducts;
+    return availableProducts.filter((p) => p.name.toLowerCase().includes(q));
+  }, [availableProducts, searchQuery]);
+
   const selectedLines = useMemo(
     () =>
       availableProducts
         .map((product) => ({
           product,
-          quantity: quantities[product.id] ?? 0,
+          quantity: Number(quantities[product.id] || 0),
         }))
         .filter((line) => line.quantity > 0),
     [availableProducts, quantities]
@@ -79,9 +86,9 @@ export default function BulkSellModal({
     [selectedLines]
   );
 
-  const handleQuantityChange = (productId: string, value: number, max: number) => {
-    const quantity = Number.isNaN(value) ? 0 : Math.max(0, Math.min(value, max));
-    setQuantities((prev) => ({ ...prev, [productId]: quantity }));
+  const handleQuantityChange = (productId: string, value: string) => {
+    const sanitized = value === "" ? "" : String(Number(value) >= 0 ? Number(value) : "");
+    setQuantities((prev) => ({ ...prev, [productId]: sanitized }));
     setError(null);
   };
 
@@ -150,6 +157,12 @@ export default function BulkSellModal({
       return;
     }
 
+    const invalidLine = selectedLines.find((line) => line.quantity > line.product.stock);
+    if (invalidLine) {
+      setError(`Quantity for ${invalidLine.product.name} cannot exceed available stock.`);
+      return;
+    }
+
     setIsProcessing(true);
     setError(null);
 
@@ -213,10 +226,20 @@ export default function BulkSellModal({
             <span className="text-right">Stock</span>
             <span className="text-right">Qty</span>
           </div>
-          {availableProducts.length === 0 ? (
+          <div className="px-2">
+            <input
+              type="search"
+              placeholder="Search products..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="mb-2 w-full rounded bg-theme-input px-3 py-2 text-theme-primary"
+            />
+          </div>
+
+          {filteredProducts.length === 0 ? (
             <div className="p-4 text-center text-theme-secondary">No products available for bulk sale.</div>
           ) : (
-            availableProducts.map((product) => (
+            filteredProducts.map((product) => (
               <div key={product.id} className="grid grid-cols-[1fr_auto_auto_auto] gap-3 items-center px-2 py-2 border-b border-theme">
                 <span>{product.name}</span>
                 <span className="text-right">${product.price}</span>
@@ -226,9 +249,9 @@ export default function BulkSellModal({
                   type="number"
                   min={0}
                   max={product.stock}
-                  value={quantities[product.id] ?? 0}
+                  value={quantities[product.id] ?? ""}
                   onChange={(e) =>
-                    handleQuantityChange(product.id, Number(e.target.value), product.stock)
+                    handleQuantityChange(product.id, e.target.value)
                   }
                   disabled={isProcessing}
                 />

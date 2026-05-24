@@ -10,6 +10,7 @@ import AddProductForm from "./components/AddProductForm";
 import RestockModal from "./components/RestockModal";
 import EditProductModal from "./components/EditProductModal";
 import { getVisibleSystemFieldNames } from "@/lib/customFields";
+import { apiGet } from "@/lib/apiClient";
 
 
 type InventoryProps = {
@@ -93,6 +94,7 @@ export default function Inventory(props: InventoryProps) {
     type: "success" | "error";
     text: string;
   } | null>(null);
+  const [tenantRole, setTenantRole] = useState<string>("");
 
   const visibleStandardFieldNames = getVisibleSystemFieldNames(customFields);
   const totalProducts = products.length;
@@ -109,6 +111,19 @@ export default function Inventory(props: InventoryProps) {
       setCategory(categories[0]);
     }
   }, [categories]);
+
+  useEffect(() => {
+    const loadTenantRole = async () => {
+      try {
+        const result = await apiGet<{ role: string }>("/api/tenant-role");
+        setTenantRole(result.data?.role ?? "");
+      } catch (error) {
+        console.error("Failed to load tenant role:", error);
+      }
+    };
+
+    loadTenantRole();
+  }, []);
 
   // =====================================================
   // ✅ API FUNCTION
@@ -282,13 +297,15 @@ export default function Inventory(props: InventoryProps) {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setIsAddModalOpen(true)}
-            className="rounded-2xl bg-theme-accent px-4 py-2 text-sm font-semibold text-slate-950 shadow-sm transition hover:bg-cyan-400"
-          >
-            + Add Product
-          </button>
+          {(tenantRole === 'owner' || tenantRole === 'accountant') && (
+            <button
+              type="button"
+              onClick={() => setIsAddModalOpen(true)}
+              className="rounded-2xl bg-theme-accent px-4 py-2 text-sm font-semibold text-slate-950 shadow-sm transition hover:bg-cyan-400"
+            >
+              + Add Product
+            </button>
+          )}
           <button
             onClick={() => setBulkSellOpen(true)}
             className="rounded-2xl border border-theme bg-theme-card px-4 py-2 text-sm font-semibold text-theme-primary transition hover:bg-theme-surface"
@@ -366,6 +383,9 @@ export default function Inventory(props: InventoryProps) {
             onEdit={setEditItem}
             onRestock={openRestockModal}
             onDelete={deleteProductHandler}
+            canEdit={tenantRole === 'owner' || tenantRole === 'accountant'}
+            canDelete={tenantRole === 'owner' || tenantRole === 'accountant'}
+            canRestock={tenantRole === 'owner'}
           />
         </div>
       </section>
