@@ -63,7 +63,7 @@ export function useInventory() {
   } = useQuery({
     queryKey: ["sales"],
     queryFn: async () => {
-      const response = await apiGet<Sale[]>("/api/sales?limit=200");
+      const response = await apiGet<Sale[]>("/api/sales?limit=100");
       return response.data || [];
     },
     staleTime: 1000 * 60 * 5,

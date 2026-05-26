@@ -33,7 +33,7 @@ export default function SalesPage() {
       setError(null);
 
       try {
-        const response = await apiGet<Sale[]>("/api/sales?limit=200");
+        const response = await apiGet<Sale[]>("/api/sales?limit=100");
 
         const mapped: Sale[] = (response.data || []).map((sale: any) => ({
           ...sale,

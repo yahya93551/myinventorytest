@@ -16,6 +16,7 @@ import {
   Sun,
   User,
   Building2,
+  Book,
   Settings,
   Menu,
   X,
@@ -172,6 +173,15 @@ export default function Sidebar() {
           >
             <History className="w-5 h-5 sm:w-6 sm:h-6" />
             {!collapsed && <span>Activity Log</span>}
+          </Link>
+
+          <Link
+            href="/debts"
+            onClick={() => setOpen(false)}
+            className={navClass(pathname?.startsWith("/debts") === true)}
+          >
+            <Book className="w-5 h-5 sm:w-6 sm:h-6" />
+            {!collapsed && <span>Debts</span>}
           </Link>
 
           <Link

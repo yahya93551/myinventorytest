@@ -28,7 +28,7 @@ export async function GET(req: Request) {
 
   const { data, error } = await supabaseAdmin
     .from("sales")
-    .select("*")
+    .select("id, product_id, product_name, quantity, total, order_id, customer_name, customer_address, customer_phone, user_id, created_by, created_at")
     .eq("tenant_id", tenantContext.tenantId)
     .order("created_at", { ascending: false })
     .limit(limit);
@@ -37,7 +37,41 @@ export async function GET(req: Request) {
     return jsonError(error.message, 500);
   }
 
-  return jsonSuccess(data ?? []);
+  const salesData = (data || []).map((sale: any) => ({
+    ...sale,
+    date: sale.created_at,
+  }));
+  const userIds = Array.from(
+    new Set(
+      salesData
+        .map((sale: any) => sale.user_id)
+        .filter(Boolean)
+    )
+  );
+
+  let userEmailMap: Record<string, string> = {};
+  if (userIds.length > 0) {
+    const { data: members, error: membersError } = await supabaseAdmin
+      .from("tenant_members")
+      .select("user_id, user_email")
+      .in("user_id", userIds);
+
+    if (!membersError && members) {
+      for (const member of members) {
+        if (member?.user_id) {
+          userEmailMap[member.user_id] = member.user_email || member.user_id;
+        }
+      }
+    }
+  }
+
+  const enrichedSales = salesData.map((sale: any) => ({
+    ...sale,
+    user_email:
+      sale.user_email || userEmailMap[sale.user_id] || sale.user_id || "unknown",
+  }));
+
+  return jsonSuccess(enrichedSales);
 }
 
 export async function POST(req: Request) {

@@ -111,7 +111,7 @@ export function StandardFieldManager({ businessType }: StandardFieldManagerProps
         </p>
 
         {errorMessage ? (
-          <div className="mb-4 rounded border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
+          <div className="mb-4 rounded border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-800">
             {errorMessage}
           </div>
         ) : null}

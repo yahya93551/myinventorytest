@@ -22,7 +22,7 @@ export async function searchProducts(
 ) {
   let dbQuery = supabaseAdmin
     .from("products")
-    .select("*")
+    .select("id, name, category, price, stock, notes")
     .eq("tenant_id", tenantId)
     .limit(limit);
 

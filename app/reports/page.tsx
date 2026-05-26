@@ -21,7 +21,7 @@ export default function ReportsPage() {
   const { loading } = useRequireAuth();
   const { dark } = useTheme();
 
-  const [sales, setSales] = useState<Sale[]>([]);
+  const [sales, setSales] = useState<Array<Sale & { user_email?: string; user_id?: string }>>([]);
   const [filter, setFilter] = useState<"7d" | "30d" | "all">("all");
   const [loadingSales, setLoadingSales] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -33,7 +33,7 @@ export default function ReportsPage() {
       setError(null);
 
       try {
-        const response = await apiGet<Sale[]>("/api/sales?limit=500");
+        const response = await apiGet<Sale[]>("/api/sales?limit=100");
 
         const mapped: Sale[] = (response.data || []).map(
           (sale: any) => ({
@@ -174,16 +174,12 @@ export default function ReportsPage() {
 
   // ================= PER USER =================
   const perUser = useMemo(() => {
-    const map: Record<string, number> =
-      {};
+    const map: Record<string, number> = {};
 
     filteredSales.forEach((sale: any) => {
-      const user =
-        sale.user_id || "unknown";
+      const user = sale.user_email || sale.user_id || "unknown";
 
-      map[user] =
-        (map[user] || 0) +
-        Number(sale.total || 0);
+      map[user] = (map[user] || 0) + Number(sale.total || 0);
     });
 
     return map;
@@ -333,7 +329,7 @@ export default function ReportsPage() {
               </p>
 
               {/* FILTERS */}
-              <div className="flex gap-2 mt-4">
+              <div className="flex flex-wrap gap-2 mt-4 items-center">
                 <button
                   onClick={() =>
                     setFilter("7d")
@@ -371,6 +367,13 @@ export default function ReportsPage() {
                   }`}
                 >
                   ALL
+                </button>
+
+                <button
+                  onClick={() => setFilter("all")}
+                  className="ml-auto rounded-full border border-theme px-4 py-2 text-sm font-semibold text-theme-primary hover:bg-theme-card transition"
+                >
+                  View all
                 </button>
               </div>
             </div>

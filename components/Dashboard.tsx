@@ -1,5 +1,6 @@
 ﻿//app/components/Dashboard.tsx
 "use client";
+import Link from "next/link";
 import { useInventory } from "../hooks/useInventory";
 import { useCustomFields } from "../hooks/useCustomFields";
 import StatsCards from "./StatsCards";
@@ -55,7 +56,7 @@ export default function Dashboard() {
           </p>
         </div>
 
-        <div className="rounded-2xl border border-theme bg-theme-card/95 px-6 py-4 text-white shadow-card">
+        <div className="rounded-2xl border border-theme bg-theme-card/95 px-6 py-4 text-black shadow-card">
           <p className="text-sm text-theme-secondary">Categories</p>
           <p className="text-2xl font-bold">{categoryCount}</p>
         </div>
@@ -119,6 +120,15 @@ export default function Dashboard() {
               })}
             </div>
           )}
+
+          <div className="mt-4 text-right">
+            <Link
+              href="/reports"
+              className="inline-flex items-center justify-center rounded-full bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-400 transition"
+            >
+              View all
+            </Link>
+          </div>
         </div>
       </div>
     </div>
