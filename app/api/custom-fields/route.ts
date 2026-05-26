@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { getServerTenantContext, jsonError, jsonSuccess } from "@/lib/api";
+import { getServerTenantContext, requireRole, jsonError, jsonSuccess } from "@/lib/api";
 
 const CUSTOM_FIELDS_TABLE_NAME = "custom_fields";
 
@@ -140,14 +140,11 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const tenantContext = await getServerTenantContext(req);
-  if ("error" in tenantContext) {
-    return jsonError(tenantContext.error, tenantContext.status);
+  const tenantContextOrError = await requireRole(req, ["owner"]);
+  if ("error" in tenantContextOrError) {
+    return jsonError(tenantContextOrError.error, tenantContextOrError.status);
   }
-
-  if (tenantContext.role !== "owner") {
-    return jsonError("Only owners can create custom fields", 403);
-  }
+  const tenantContext = tenantContextOrError;
 
   let payload: unknown;
   try {
@@ -209,14 +206,11 @@ export async function POST(req: Request) {
 }
 
 export async function PATCH(req: Request) {
-  const tenantContext = await getServerTenantContext(req);
-  if ("error" in tenantContext) {
-    return jsonError(tenantContext.error, tenantContext.status);
+  const tenantContextOrError = await requireRole(req, ["owner"]);
+  if ("error" in tenantContextOrError) {
+    return jsonError(tenantContextOrError.error, tenantContextOrError.status);
   }
-
-  if (tenantContext.role !== "owner") {
-    return jsonError("Only owners can update custom fields", 403);
-  }
+  const tenantContext = tenantContextOrError;
 
   let payload: unknown;
   try {
@@ -282,14 +276,11 @@ export async function PATCH(req: Request) {
 }
 
 export async function DELETE(req: Request) {
-  const tenantContext = await getServerTenantContext(req);
-  if ("error" in tenantContext) {
-    return jsonError(tenantContext.error, tenantContext.status);
+  const tenantContextOrError = await requireRole(req, ["owner"]);
+  if ("error" in tenantContextOrError) {
+    return jsonError(tenantContextOrError.error, tenantContextOrError.status);
   }
-
-  if (tenantContext.role !== "owner") {
-    return jsonError("Only owners can delete custom fields", 403);
-  }
+  const tenantContext = tenantContextOrError;
 
   let payload: unknown = null;
   try {

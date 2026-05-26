@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { getServerTenantContext, jsonError, jsonSuccess, logAudit } from "@/lib/api";
+import { getServerTenantContext, requireRole, jsonError, jsonSuccess, logAudit } from "@/lib/api";
 
 const RestockSchema = z.object({
   id: z.string().uuid(),
@@ -8,15 +8,12 @@ const RestockSchema = z.object({
 });
 
 export async function POST(req: Request) {
-  const tenantContext = await getServerTenantContext(req);
-  if ("error" in tenantContext) {
-    return jsonError(tenantContext.error, tenantContext.status);
+  // Require owner role
+  const tenantContextOrError = await requireRole(req, ["owner"]);
+  if ("error" in tenantContextOrError) {
+    return jsonError(tenantContextOrError.error, tenantContextOrError.status);
   }
-
-  // Only tenant owners may restock products
-  if (tenantContext.role !== "owner") {
-    return jsonError("Only tenant owners can restock products", 403);
-  }
+  const tenantContext = tenantContextOrError;
 
   let payload: unknown;
   try {

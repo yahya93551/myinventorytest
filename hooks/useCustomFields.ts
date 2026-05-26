@@ -25,7 +25,20 @@ export function useBusinessSettings() {
     queryKey: ["business_settings"],
     queryFn: async () => {
       const response = await apiGet<BusinessSettings>("/api/business-settings");
-      return response.data || { business_type: "custom", description: null };
+      return response.data || {
+        id: "",
+        tenant_id: "",
+        business_type: "custom",
+        description: undefined,
+        business_name: null,
+        business_address: null,
+        business_contact_name: null,
+        business_contact_phone: null,
+        business_contact_email: null,
+        business_website: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      } as BusinessSettings;
     },
     staleTime: 1000 * 60 * 5, // 5 minutes
   });

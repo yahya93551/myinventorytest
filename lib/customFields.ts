@@ -1,7 +1,7 @@
 import { CustomField } from "@/types";
 
-export const requiredSystemFieldNames = ["name", "category"];
-export const alwaysShowSystemFields = ["name", "category", "price"];
+export const requiredSystemFieldNames: string[] = [];
+export const alwaysShowSystemFields: string[] = [];
 
 export const fallbackSystemFields: CustomField[] = [
   {
@@ -94,12 +94,7 @@ export function mergeSystemFields(customFields: CustomField[] = []) {
 
 export function getVisibleSystemFields(customFields: CustomField[] = []) {
   return mergeSystemFields(customFields)
-    .filter(
-      (field) =>
-        field.is_visible ||
-        field.is_required ||
-        alwaysShowSystemFields.includes(field.field_name)
-    )
+    .filter((field) => field.is_visible)
     .sort((a, b) => a.field_order - b.field_order);
 }
 
@@ -116,12 +111,6 @@ export function getVisibleTableFields(customFields: CustomField[] = []) {
     ...visibleCustomFields,
     ...mergeSystemFields(customFields),
   ]
-    .filter(
-      (field) =>
-        !field.is_system ||
-        field.is_visible ||
-        field.is_required ||
-        requiredSystemFieldNames.includes(field.field_name)
-    )
+    .filter((field) => !field.is_system || field.is_visible)
     .sort((a, b) => a.field_order - b.field_order);
 }

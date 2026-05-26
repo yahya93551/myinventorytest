@@ -1,6 +1,6 @@
 ﻿import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { getServerTenantContext, jsonError, jsonSuccess, logAudit } from "@/lib/api";
+import { getServerTenantContext, requireRole, jsonError, jsonSuccess, logAudit } from "@/lib/api";
 
 const missingColumnRegex = /Could not find the '(.+?)' column of 'products'/;
 
@@ -87,15 +87,12 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    // Phase 1: Context & Authorization
-    const tenantContext = await getServerTenantContext(req);
-    if ("error" in tenantContext) {
-      return jsonError(tenantContext.error, tenantContext.status);
+    // Phase 1: Context & Authorization (require owner or accountant)
+    const tenantContextOrError = await requireRole(req, ["owner", "accountant"]);
+    if ("error" in tenantContextOrError) {
+      return jsonError(tenantContextOrError.error, tenantContextOrError.status);
     }
-
-    if (!["owner", "accountant"].includes(tenantContext.role)) {
-      return jsonError("Only owners or accountants can create products", 403);
-    }
+    const tenantContext = tenantContextOrError;
 
     // Phase 2: Parse Request Body
     let payload: unknown;
@@ -115,6 +112,29 @@ export async function POST(req: Request) {
     }
 
     const { name, category, cost_price, price, stock, custom_data } = parseResult.data;
+
+    // Sanitize custom_data: only allow keys that correspond to visible custom fields for this tenant.
+    let sanitizedCustomData = custom_data || {};
+    try {
+      const { data: tenantCustomFields, error: cfError } = await supabaseAdmin
+        .from("custom_fields")
+        .select("field_name, is_system, is_visible")
+        .eq("tenant_id", tenantContext.tenantId);
+
+      if (!cfError && Array.isArray(tenantCustomFields)) {
+        const allowedCustomKeys = tenantCustomFields
+          .filter((f: any) => !f.is_system && f.is_visible)
+          .map((f: any) => f.field_name);
+
+        sanitizedCustomData = Object.keys(sanitizedCustomData || {}).reduce((acc: any, k) => {
+          if (allowedCustomKeys.includes(k)) acc[k] = (sanitizedCustomData as any)[k];
+          return acc;
+        }, {} as Record<string, unknown>);
+      }
+    } catch (e) {
+      // If anything goes wrong reading custom fields, fall back to submitted custom_data (non-destructive)
+      sanitizedCustomData = custom_data || {};
+    }
 
     // Phase 4: Type Safety Check (before DB insert)
     if (typeof name !== "string" || !name.trim()) {
@@ -145,7 +165,7 @@ export async function POST(req: Request) {
       cost_price,
       price,
       stock,
-      custom_data: custom_data || {},
+      custom_data: sanitizedCustomData || {},
       tenant_id: tenantContext.tenantId,
       user_id: tenantContext.userId,
       created_by: tenantContext.userId,
@@ -236,8 +256,10 @@ export async function PATCH(req: Request) {
     return jsonError(tenantContext.error, tenantContext.status);
   }
 
-  // Allow 'sales' users to update `stock` only. Owners/accountants can update all fields.
-  const role = tenantContext.role;
+  // Only owners and accountants can edit products
+  if (!["owner", "accountant"].includes(tenantContext.role)) {
+    return jsonError("Only owners or accountants can update products", 403);
+  }
 
   let payload: unknown;
   try {
@@ -252,20 +274,6 @@ export async function PATCH(req: Request) {
   }
 
   const { id, updates } = parseResult.data;
-
-  // If the user is a 'sales' role, restrict updates to only the `stock` field
-  if (role === "sales") {
-    const keys = Object.keys(updates);
-    const nonStock = keys.filter((k) => k !== "stock");
-    if (nonStock.length > 0) {
-      return jsonError("Sales users can only update stock", 403);
-    }
-  } else {
-    // For other roles (owner/accountant) we require manager permissions
-    if (!["owner", "accountant"].includes(role)) {
-      return jsonError("Only owners or accountants can update products", 403);
-    }
-  }
 
   const { data: product, error: productError } = await supabaseAdmin
     .from("products")
@@ -360,14 +368,12 @@ export async function PATCH(req: Request) {
 }
 
 export async function DELETE(req: Request) {
-  const tenantContext = await getServerTenantContext(req);
-  if ("error" in tenantContext) {
-    return jsonError(tenantContext.error, tenantContext.status);
+  // require owner or accountant to delete products
+  const tenantContextOrError = await requireRole(req, ["owner", "accountant"]);
+  if ("error" in tenantContextOrError) {
+    return jsonError(tenantContextOrError.error, tenantContextOrError.status);
   }
-
-  if (!["owner", "accountant"].includes(tenantContext.role)) {
-    return jsonError("Only owners or accountants can delete products", 403);
-  }
+  const tenantContext = tenantContextOrError;
 
   let payload: unknown;
   try {

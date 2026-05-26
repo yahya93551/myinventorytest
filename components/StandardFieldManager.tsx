@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiPatch } from "@/lib/apiClient";
 import { CustomField } from "@/types";
-import { requiredSystemFieldNames, alwaysShowSystemFields } from "@/lib/customFields";
 
 interface StandardFieldManagerProps {
   businessType?: string;
@@ -27,22 +26,58 @@ export function StandardFieldManager({ businessType }: StandardFieldManagerProps
   const isLoading = customFieldsQuery.isLoading;
   const systemFields = customFields.filter((field) => field.is_system).sort((a, b) => a.field_order - b.field_order);
 
-  // Update visibility mutation
+  // Update visibility mutation with optimistic UI update
   const updateVisibilityMutation = useMutation({
     mutationFn: async ({ id, is_visible }: { id: string; is_visible: boolean }) => {
       const response = await apiPatch<CustomField>("/api/standard-fields", {
         id,
         updates: { is_visible },
       });
+      if (!response.data) {
+        throw new Error("Failed to update field visibility");
+      }
       return response.data;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["standard_fields"] });
-      queryClient.refetchQueries({ queryKey: ["custom_fields"] });
-      setErrorMessage(null);
+    onMutate: async ({ id, is_visible }) => {
+      await queryClient.cancelQueries({ queryKey: ["standard_fields"] });
+      await queryClient.cancelQueries({ queryKey: ["custom_fields"] });
+
+      const previousStandardFields = queryClient.getQueryData<CustomField[]>(["standard_fields"]);
+      const previousCustomFields = queryClient.getQueryData<CustomField[]>(["custom_fields"]);
+
+      if (previousStandardFields) {
+        queryClient.setQueryData<CustomField[]>(["standard_fields"], previousStandardFields.map((field) =>
+          field.id === id ? { ...field, is_visible } : field
+        ));
+      }
+
+      if (previousCustomFields) {
+        queryClient.setQueryData<CustomField[]>(["custom_fields"], previousCustomFields.map((field) =>
+          field.id === id ? { ...field, is_visible } : field
+        ));
+      }
+
+      return { previousStandardFields, previousCustomFields };
     },
-    onError: (error: Error) => {
+    onError: (error: Error, variables, context: any) => {
       setErrorMessage(error.message);
+      if (context?.previousStandardFields) {
+        queryClient.setQueryData(["standard_fields"], context.previousStandardFields);
+      }
+      if (context?.previousCustomFields) {
+        queryClient.setQueryData(["custom_fields"], context.previousCustomFields);
+      }
+    },
+    onSuccess: (updatedField) => {
+      queryClient.setQueryData<CustomField[]>(["standard_fields"], (fields) => {
+        if (!fields) return fields;
+        return fields.map((field) => (field.id === updatedField.id ? updatedField : field));
+      });
+      queryClient.setQueryData<CustomField[]>(["custom_fields"], (fields) => {
+        if (!fields) return fields;
+        return fields.map((field) => (field.id === updatedField.id ? updatedField : field));
+      });
+      setErrorMessage(null);
     },
   });
 
@@ -72,7 +107,7 @@ export function StandardFieldManager({ businessType }: StandardFieldManagerProps
         </h4>
 
         <p className="text-theme-secondary text-sm mb-4">
-          Toggle standard fields on or off for inventory use. Required fields are always enabled and remain visible.
+          Toggle standard fields on or off for inventory use. All standard fields can now be controlled freely.
         </p>
 
         {errorMessage ? (
@@ -99,27 +134,15 @@ export function StandardFieldManager({ businessType }: StandardFieldManagerProps
                   <td className="p-3 text-theme-secondary">{field.field_name}</td>
                   <td className="p-3 text-theme-secondary">{field.field_type}</td>
                   <td className="p-3 text-center">
-                    {(() => {
-                      const isAlwaysVisible = alwaysShowSystemFields.includes(field.field_name);
-                      const isRequired = requiredSystemFieldNames.includes(field.field_name) || field.is_required;
-                      const disabled = isAlwaysVisible || isRequired;
-                      return (
-                        <label className="inline-flex items-center gap-2 justify-center">
-                          <input
-                            type="checkbox"
-                            checked={field.is_visible || disabled}
-                            disabled={disabled}
-                            onChange={(e) => !disabled && updateVisibilityMutation.mutate({ id: field.id, is_visible: e.target.checked })}
-                            className="w-4 h-4 rounded border border-theme bg-theme-input cursor-pointer disabled:cursor-not-allowed"
-                          />
-                          {isAlwaysVisible ? (
-                            <span className="text-xs text-theme-secondary">Always visible</span>
-                          ) : isRequired ? (
-                            <span className="text-xs text-theme-secondary">Required</span>
-                          ) : null}
-                        </label>
-                      );
-                    })()}
+                    <label className="inline-flex items-center gap-2 justify-center">
+                      <input
+                        type="checkbox"
+                        checked={field.is_visible}
+                        onChange={(e) => updateVisibilityMutation.mutate({ id: field.id, is_visible: e.target.checked })}
+                        className="w-4 h-4 rounded border border-theme bg-theme-input cursor-pointer"
+                      />
+                      <span className="text-xs text-theme-secondary">Visible</span>
+                    </label>
                   </td>
                   <td className="p-3 text-center text-theme-secondary">Visibility only</td>
                 </tr>

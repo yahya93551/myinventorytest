@@ -107,6 +107,24 @@ export async function getServerTenantContext(
   };
 }
 
+/**
+ * Require that the requester has one of the allowed roles for the tenant.
+ * Returns the ServerTenantContext on success, or an error object { error, status }.
+ */
+export async function requireRole(
+  req: Request,
+  allowedRoles: string[]
+): Promise<ServerTenantContext | { error: string; status: number }> {
+  const ctx = await getServerTenantContext(req);
+  if ("error" in ctx) return ctx;
+
+  if (!allowedRoles.includes(ctx.role)) {
+    return { error: "Forbidden: insufficient role", status: 403 };
+  }
+
+  return ctx;
+}
+
 export async function getTenantIdForUser(userId: string) {
   const { data, error } = await supabaseAdmin
     .from("tenant_members")
