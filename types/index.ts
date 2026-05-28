@@ -36,7 +36,9 @@ export type SaleMetadata = {
 export const CategorySchema = z.string().min(1, 'Category name required').max(50, 'Category name too long');
 
 // Types inferred from schemas
-export type Product = z.infer<typeof ProductSchema>;
+export type Product = z.infer<typeof ProductSchema> & {
+  allocated_quantity?: number;
+};
 export type Sale = z.infer<typeof SaleSchema>;
 export type Category = z.infer<typeof CategorySchema>;
 

@@ -82,7 +82,25 @@ export async function GET(req: Request) {
     return jsonError(error.message, 500);
   }
 
-  return jsonSuccess({ products: data ?? [], count: count ?? 0 });
+  const { data: allocations, error: allocationError } = await supabaseAdmin
+    .from("inventory_takes")
+    .select("product_id, remaining_quantity")
+    .eq("tenant_id", tenantContext.tenantId)
+    .eq("user_id", tenantContext.userId)
+    .gt("remaining_quantity", 0);
+
+  const allocationMap = (allocations || []).reduce<Record<string, number>>((acc, allocation: any) => {
+    if (!allocation?.product_id) return acc;
+    acc[allocation.product_id] = (acc[allocation.product_id] || 0) + (allocation.remaining_quantity || 0);
+    return acc;
+  }, {});
+
+  const productsWithAllocation = (data || []).map((product: any) => ({
+    ...product,
+    allocated_quantity: allocationMap[product.id] ?? 0,
+  }));
+
+  return jsonSuccess({ products: productsWithAllocation, count: count ?? 0 });
 }
 
 export async function POST(req: Request) {

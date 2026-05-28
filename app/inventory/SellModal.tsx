@@ -16,6 +16,7 @@ type Props = {
   setSellQty: (qty: number) => void;
   setSellItem: (item: Product | null) => void;
   confirmSell: (metadata?: SaleMeta) => Promise<boolean | void> | void;
+  tenantRole: string;
 };
 
 export default function SellModal({
@@ -24,6 +25,7 @@ export default function SellModal({
   setSellQty,
   setSellItem,
   confirmSell,
+  tenantRole,
 }: Props) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,7 +34,6 @@ export default function SellModal({
   const [customerName, setCustomerName] = useState("");
   const [customerAddress, setCustomerAddress] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
-  const [goodsLoaded, setGoodsLoaded] = useState(false);
 
   const { data: businessSettings } = useBusinessSettings();
 
@@ -44,15 +45,8 @@ export default function SellModal({
       setCustomerPhone("");
       setPrintAfterSale(false);
       setError(null);
-      setGoodsLoaded(false);
     }
   }, [sellItem]);
-
-  useEffect(() => {
-    if (goodsLoaded) {
-      setGoodsLoaded(false);
-    }
-  }, [sellQty]);
 
   if (!sellItem) return null;
 
@@ -60,8 +54,9 @@ export default function SellModal({
   const formattedDate = now.toLocaleString("so-SO", {
     timeZone: "Africa/Mogadishu",
   });
+  const availableToSell = tenantRole === "sales" ? sellItem.allocated_quantity ?? 0 : sellItem.stock;
   const total = sellQty * sellItem.price;
-  const canConfirm = sellQty >= 1 && sellQty <= sellItem.stock;
+  const canConfirm = sellQty >= 1 && sellQty <= availableToSell;
 
   const printReceipt = () => {
     if (typeof window === "undefined") return;
@@ -123,23 +118,6 @@ export default function SellModal({
     printWindow.print();
   };
 
-  const logLoadAction = async () => {
-    try {
-      await apiPost('/api/activity/log', {
-        action: 'LOAD',
-        entity: 'product',
-        entity_id: sellItem?.id,
-        details: {
-          productName: sellItem?.name,
-          quantity: sellQty,
-          stockAvailable: sellItem?.stock,
-        },
-      });
-    } catch (err) {
-      console.warn('Unable to track load activity', err);
-    }
-  };
-
   const handleConfirm = async () => {
     if (isProcessing) return;
     if (!canConfirm) {
@@ -158,8 +136,6 @@ export default function SellModal({
         customer_phone: customerPhone || undefined,
       });
 
-      // Only keep modal open if confirmSell explicitly returns false
-      // If it returns undefined (void) or true, we assume success and close
       if (result === false) {
         setIsProcessing(false);
         return;
@@ -169,7 +145,6 @@ export default function SellModal({
         printReceipt();
       }
 
-      // Success: close modal
       setSellItem(null);
     } catch (error) {
       console.error("Sale error:", error);
@@ -184,7 +159,7 @@ export default function SellModal({
       <div className="border border-theme bg-theme-card p-6 rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto text-theme-primary">
         <h2 className="text-xl mb-2">Sell Product</h2>
         <p className="text-theme-secondary mb-1">
-          {sellItem.name} — Stock: {sellItem.stock}
+          {sellItem.name} — Available: {availableToSell}
         </p>
         <p className="text-xs text-theme-secondary mb-3">Date: {formattedDate}</p>
 
@@ -192,24 +167,13 @@ export default function SellModal({
           <p className="text-sm font-semibold mb-2">Invoice & Customer</p>
           <p className="text-xs text-theme-secondary mb-2">Invoice #: {orderId}</p>
           <p className="text-xs text-theme-secondary mb-3">
-            Load the selected quantity first, then confirm the sale.
+            {tenantRole === "sales"
+              ? "You can only sell the quantity you have taken from stock."
+              : "Enter invoice details and confirm the sale."}
           </p>
-          <button
-            type="button"
-            onClick={async () => {
-              if (!canConfirm) {
-                setError("Please enter a valid quantity within available stock.");
-                return;
-              }
-
-              setGoodsLoaded(true);
-              await logLoadAction();
-            }}
-            disabled={isProcessing || goodsLoaded}
-            className="mb-4 rounded-2xl bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-500 disabled:opacity-50"
-          >
-            {goodsLoaded ? "Quantity loaded" : "Load quantity details"}
-          </button>
+          <div className="mb-3 text-sm text-theme-primary">
+            Available to sell: {availableToSell}
+          </div>
           <label className="block text-sm text-theme-secondary mb-2">
             Customer name
             <input
@@ -249,13 +213,13 @@ export default function SellModal({
           className="p-2 rounded bg-theme-input w-full mb-2 text-theme-primary"
           type="number"
           min={1}
-          max={sellItem.stock}
+          max={availableToSell}
           value={sellQty}
           onChange={(e) => {
             const value = Number(e.target.value);
             const nextQty = Number.isNaN(value)
               ? 1
-              : Math.max(1, Math.min(value, sellItem.stock));
+              : Math.max(1, Math.min(value, availableToSell));
 
             setError(null);
             setSellQty(nextQty);
@@ -275,7 +239,7 @@ export default function SellModal({
         </label>
 
         <p className="text-xs text-theme-secondary mb-3">
-          Enter a quantity between 1 and {sellItem.stock}.
+          Enter a quantity between 1 and {availableToSell}.
         </p>
 
         {error && (
@@ -295,9 +259,9 @@ export default function SellModal({
           <button
             onClick={handleConfirm}
             className="bg-green-600 px-4 py-2 rounded-xl disabled:opacity-50"
-            disabled={isProcessing || !canConfirm || !goodsLoaded}
+            disabled={isProcessing || !canConfirm}
           >
-            {isProcessing ? "Processing..." : goodsLoaded ? "Confirm Sell" : "Load goods first"}
+            {isProcessing ? "Processing..." : "Confirm Sell"}
           </button>
         </div>
       </div>

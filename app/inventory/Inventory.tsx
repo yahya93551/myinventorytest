@@ -8,6 +8,8 @@ import BulkSellModal from "./BulkSellModal";
 
 import AddProductForm from "./components/AddProductForm";
 import RestockModal from "./components/RestockModal";
+import LoadModal from "./components/LoadModal";
+import DropModal from "./components/DropModal";
 import EditProductModal from "./components/EditProductModal";
 import { getVisibleSystemFieldNames } from "@/lib/customFields";
 import { apiGet } from "@/lib/apiClient";
@@ -44,6 +46,8 @@ type InventoryProps = {
     customer_phone?: string;
   }) => Promise<boolean>;
   addProduct: (product: ProductForm) => Promise<boolean>;
+  loadProduct: (id: string, quantity: number, reason?: string) => Promise<boolean>;
+  dropProduct: (id: string, quantity: number) => Promise<boolean>;
   
   // Pagination
   currentPage: number;
@@ -62,6 +66,8 @@ export default function Inventory(props: InventoryProps) {
     updateProduct,
     deleteProduct,
     restockProduct,
+    loadProduct,
+    dropProduct,
     sellItem,
     sellQty,
     setSellQty,
@@ -87,6 +93,11 @@ export default function Inventory(props: InventoryProps) {
   const [editItem, setEditItem] = useState<Product | null>(null);
   const [restockItem, setRestockItem] = useState<Product | null>(null);
   const [restockAmount, setRestockAmount] = useState(1);
+  const [loadItem, setLoadItem] = useState<Product | null>(null);
+  const [loadAmount, setLoadAmount] = useState(1);
+  const [loadNote, setLoadNote] = useState("");
+  const [dropItem, setDropItem] = useState<Product | null>(null);
+  const [dropAmount, setDropAmount] = useState(1);
   const [bulkSellOpen, setBulkSellOpen] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
@@ -257,6 +268,64 @@ export default function Inventory(props: InventoryProps) {
     setRestockAmount(1);
   };
 
+  const openLoadModal = (product: Product) => {
+    setLoadItem(product);
+    setLoadAmount(1);
+    setLoadNote("");
+  };
+
+  const saveLoad = async () => {
+    if (!loadItem) return;
+
+    if (loadAmount <= 0) {
+      showMessage("error", "Quantity must be greater than 0");
+      return;
+    }
+
+    if (loadAmount > loadItem.stock) {
+      showMessage("error", "Quantity cannot exceed available stock");
+      return;
+    }
+
+    const success = await loadProduct(loadItem.id, loadAmount, loadNote);
+
+    if (success) {
+      showMessage("success", "Stock taken successfully");
+    } else {
+      showMessage("error", "Failed to take stock from product");
+    }
+
+    setLoadItem(null);
+    setLoadAmount(1);
+    setLoadNote("");
+  };
+
+  const openDropModal = (product: Product) => {
+    setDropItem(product);
+    setDropAmount(1);
+  };
+
+  const saveDrop = async () => {
+    if (!dropItem) return;
+
+    const available = dropItem.allocated_quantity ?? 0;
+    if (dropAmount <= 0 || dropAmount > available) {
+      showMessage("error", "Quantity must be between 1 and the taken stock amount");
+      return;
+    }
+
+    const success = await dropProduct(dropItem.id, dropAmount);
+
+    if (success) {
+      showMessage("success", "Taken stock dropped successfully");
+    } else {
+      showMessage("error", "Failed to drop taken stock");
+    }
+
+    setDropItem(null);
+    setDropAmount(1);
+  };
+
   return (
     <div className="w-full space-y-8 px-2 sm:px-4 lg:px-6">
 
@@ -382,10 +451,17 @@ export default function Inventory(props: InventoryProps) {
             openSell={openSell}
             onEdit={setEditItem}
             onRestock={openRestockModal}
+            onLoad={openLoadModal}
+            onDrop={openDropModal}
             onDelete={deleteProductHandler}
             canEdit={tenantRole === 'owner' || tenantRole === 'accountant'}
             canDelete={tenantRole === 'owner' || tenantRole === 'accountant'}
             canRestock={tenantRole === 'owner'}
+            canLoad={
+              tenantRole === 'accountant' ||
+              tenantRole === 'sales'
+            }
+            tenantRole={tenantRole}
           />
         </div>
       </section>
@@ -440,6 +516,7 @@ export default function Inventory(props: InventoryProps) {
         setSellQty={setSellQty}
         setSellItem={setSellItem}
         confirmSell={confirmSell}
+        tenantRole={tenantRole}
       />
 
       <BulkSellModal
@@ -464,6 +541,24 @@ export default function Inventory(props: InventoryProps) {
         setRestockAmount={setRestockAmount}
         setRestockItem={setRestockItem}
         saveRestock={saveRestock}
+      />
+
+      <LoadModal
+        loadItem={loadItem}
+        loadAmount={loadAmount}
+        loadNote={loadNote}
+        setLoadAmount={setLoadAmount}
+        setLoadNote={setLoadNote}
+        setLoadItem={setLoadItem}
+        saveLoad={saveLoad}
+      />
+
+      <DropModal
+        dropItem={dropItem}
+        dropAmount={dropAmount}
+        setDropAmount={setDropAmount}
+        setDropItem={setDropItem}
+        saveDrop={saveDrop}
       />
     </div>
   );

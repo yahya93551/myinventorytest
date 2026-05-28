@@ -1,5 +1,5 @@
 import { ProductWithCustomData, CustomField } from "../../types";
-import { ShoppingCart, Plus, Edit, Trash2 } from "lucide-react";
+import { ShoppingCart, Plus, Minus, Edit, Trash2 } from "lucide-react";
 import { getVisibleTableFields } from "@/lib/customFields";
 
 export default function ProductTable({
@@ -8,22 +8,30 @@ export default function ProductTable({
   openSell,
   onEdit,
   onRestock,
+  onLoad,
+  onDrop,
   onDelete,
   loading = false,
   canEdit = true,
   canDelete = true,
   canRestock = false,
+  canLoad = false,
+  tenantRole = "",
 }: {
   products?: ProductWithCustomData[];
   customFields?: CustomField[];
   openSell: (product: ProductWithCustomData) => void;
   onEdit?: (product: ProductWithCustomData) => void;
   onRestock?: (product: ProductWithCustomData) => void;
+  onLoad?: (product: ProductWithCustomData) => void;
+  onDrop?: (product: ProductWithCustomData) => void;
   onDelete?: (id: string) => void;
   loading?: boolean;
   canEdit?: boolean;
   canDelete?: boolean;
   canRestock?: boolean;
+  canLoad?: boolean;
+  tenantRole?: string;
 }) {
   const allVisibleFields = getVisibleTableFields(customFields);
 
@@ -137,17 +145,29 @@ export default function ProductTable({
                 ))}
 
                 <td className="p-3 flex flex-wrap gap-2">
-                  <button
-                    onClick={() => p.stock > 0 && openSell(p)}
-                    className={`flex items-center gap-1 text-xs ${
-                      p.stock === 0 ? "text-gray-500 cursor-not-allowed" : "text-green-400 hover:text-green-300"
-                    } transition`}
-                    disabled={p.stock === 0}
-                    title={p.stock === 0 ? "Out of stock" : "Sell this product"}
-                  >
-                    <ShoppingCart className="w-3 h-3 sm:w-4 sm:h-4" />
-                    Sell
-                  </button>
+                  {(() => {
+                    const available = tenantRole === "sales" ? p.allocated_quantity ?? 0 : p.stock;
+                    const disabled = available === 0;
+                    return (
+                      <button
+                        onClick={() => !disabled && openSell(p)}
+                        className={`flex items-center gap-1 text-xs ${
+                          disabled ? "text-gray-500 cursor-not-allowed" : "text-green-400 hover:text-green-300"
+                        } transition`}
+                        disabled={disabled}
+                        title={
+                          disabled
+                            ? tenantRole === "sales"
+                              ? "No taken stock available"
+                              : "Out of stock"
+                            : "Sell this product"
+                        }
+                      >
+                        <ShoppingCart className="w-3 h-3 sm:w-4 sm:h-4" />
+                        Sell
+                      </button>
+                    );
+                  })()}
 
                   {canRestock && (
                     <button
@@ -157,6 +177,42 @@ export default function ProductTable({
                     >
                       <Plus className="w-3 h-3 sm:w-4 sm:h-4" />
                       Load Goods
+                    </button>
+                  )}
+
+                  {canLoad && (
+                    <button
+                      onClick={() => onLoad?.(p)}
+                      disabled={p.stock === 0}
+                      className={`text-xs flex items-center gap-1 transition ${
+                        p.stock === 0
+                          ? "text-gray-500 cursor-not-allowed"
+                          : "text-amber-400 hover:text-amber-300"
+                      }`}
+                      title={p.stock === 0 ? "Out of stock" : "Take from stock"}
+                    >
+                      <Minus className="w-3 h-3 sm:w-4 sm:h-4" />
+                      Take From Stock
+                    </button>
+                  )}
+
+                  {canLoad && tenantRole === "sales" && onDrop && (
+                    <button
+                      onClick={() => onDrop(p)}
+                      disabled={(p.allocated_quantity ?? 0) === 0}
+                      className={`text-xs flex items-center gap-1 transition ${
+                        (p.allocated_quantity ?? 0) === 0
+                          ? "text-gray-500 cursor-not-allowed"
+                          : "text-red-400 hover:text-red-300"
+                      }`}
+                      title={
+                        (p.allocated_quantity ?? 0) === 0
+                          ? "No taken stock available to drop"
+                          : "Drop taken stock and restore it to inventory"
+                      }
+                    >
+                      <Trash2 className="w-3 h-3 sm:w-4 sm:h-4" />
+                      Drop Taken
                     </button>
                   )}
 

@@ -143,6 +143,36 @@ export function useInventory() {
     },
   });
 
+  // ================= LOAD PRODUCT MUTATION =================
+  const loadProductMutation = useMutation({
+    mutationFn: async ({ id, quantity, reason }: { id: string; quantity: number; reason?: string }) => {
+      if (quantity <= 0) {
+        throw new Error("Quantity must be greater than zero");
+      }
+
+      await apiPost<void>("/api/products/load", { id, quantity, reason });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+    },
+  });
+
+  // ================= DROP TAKEN STOCK MUTATION =================
+  const dropProductMutation = useMutation({
+    mutationFn: async ({ id, quantity }: { id: string; quantity: number }) => {
+      if (!id) {
+        throw new Error("Product not specified");
+      }
+      if (quantity <= 0) {
+        throw new Error("Quantity to drop must be greater than zero");
+      }
+      await apiPost<void>("/api/products/drop", { id, quantity });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+    },
+  });
+
   // ================= SELL PRODUCT MUTATION =================
   const sellProductMutation = useMutation({
     mutationFn: async ({ productId, quantity, metadata }: { productId: string; quantity: number; metadata?: SaleMetadata }) => {
@@ -155,7 +185,8 @@ export function useInventory() {
         throw new Error("Product not found");
       }
 
-      if (product.stock < quantity) {
+      const availableQuantity = product.allocated_quantity ?? product.stock;
+      if (availableQuantity < quantity) {
         throw new Error("Insufficient stock for this sale");
       }
 
@@ -192,6 +223,14 @@ export function useInventory() {
       const missing = normalizedItems.find((item) => !products.some((p) => p.id === item.productId));
       if (missing) {
         throw new Error(`Product not found: ${missing.productId}`);
+      }
+
+      for (const item of normalizedItems) {
+        const product = products.find((p) => p.id === item.productId);
+        const availableQuantity = product?.allocated_quantity ?? product?.stock ?? 0;
+        if (availableQuantity < item.quantity) {
+          throw new Error(`Insufficient stock for ${product?.name || item.productId}`);
+        }
       }
 
       await apiPost<void>("/api/sales", {
@@ -320,6 +359,24 @@ export function useInventory() {
     }
   };
 
+  const loadProduct = async (id: string, quantity: number, reason?: string): Promise<boolean> => {
+    try {
+      await loadProductMutation.mutateAsync({ id, quantity, reason });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const dropProduct = async (productId: string, quantity: number): Promise<boolean> => {
+    try {
+      await dropProductMutation.mutateAsync({ id: productId, quantity });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   const sellProduct = async (
     productId: string,
     quantity: number,
@@ -424,5 +481,7 @@ export function useInventory() {
     setSellItem,
     openSell,
     confirmSell,
+    loadProduct,
+    dropProduct,
   };
 }

@@ -24,14 +24,15 @@ export async function GET(req: Request) {
   }
 
   const url = new URL(req.url);
-  const limit = Number(url.searchParams.get("limit") || "200");
+  const limit = Number(url.searchParams.get("limit") || "100");
+  const safeLimit = Math.min(Math.max(limit, 1), 100);
 
   const { data, error } = await supabaseAdmin
     .from("sales")
     .select("id, product_id, product_name, quantity, total, order_id, customer_name, customer_address, customer_phone, user_id, created_by, created_at")
     .eq("tenant_id", tenantContext.tenantId)
     .order("created_at", { ascending: false })
-    .limit(limit);
+    .limit(safeLimit);
 
   if (error) {
     return jsonError(error.message, 500);
@@ -128,7 +129,9 @@ export async function POST(req: Request) {
   );
 
   const rollback: Array<{ id: string; stock: number }> = [];
+  const allocationRollback: Array<{ id: string; quantity: number }> = [];
   const productRows: Array<{ id: string; name: string; price: number; quantity: number }> = [];
+  const isSalesUser = tenantContext.role === "sales";
 
   const rollbackStock = async () => {
     for (const rollbackItem of rollback) {
@@ -147,6 +150,36 @@ export async function POST(req: Request) {
     }
   };
 
+  const rollbackAllocations = async () => {
+    for (const rollbackItem of allocationRollback) {
+      const { data: takeRecord, error: takeError } = await supabaseAdmin
+        .from("inventory_takes")
+        .select("remaining_quantity")
+        .eq("id", rollbackItem.id)
+        .single();
+
+      if (takeError || !takeRecord) {
+        console.error("Sales route: rollback allocation failed to load record", {
+          rollbackItem,
+          takeError,
+        });
+        continue;
+      }
+
+      const { error: updateError } = await supabaseAdmin
+        .from("inventory_takes")
+        .update({ remaining_quantity: takeRecord.remaining_quantity + rollbackItem.quantity })
+        .eq("id", rollbackItem.id);
+
+      if (updateError) {
+        console.error("Sales route: rollback allocation failed", {
+          rollbackItem,
+          updateError,
+        });
+      }
+    }
+  };
+
   for (const item of normalized) {
     const { data: product, error: productError } = await supabaseAdmin
       .from("products")
@@ -159,38 +192,97 @@ export async function POST(req: Request) {
       if (rollback.length > 0) {
         await rollbackStock();
       }
+      if (allocationRollback.length > 0) {
+        await rollbackAllocations();
+      }
       return jsonError(productError?.message || "Product not found", 404);
     }
 
-    if (product.stock < item.quantity) {
-      if (rollback.length > 0) {
-        await rollbackStock();
+    if (isSalesUser) {
+      const { data: allocations, error: allocationsError } = await supabaseAdmin
+        .from("inventory_takes")
+        .select("id, remaining_quantity")
+        .eq("tenant_id", tenantContext.tenantId)
+        .eq("user_id", tenantContext.userId)
+        .eq("product_id", item.product_id)
+        .gt("remaining_quantity", 0)
+        .order("created_at", { ascending: true });
+
+      if (allocationsError) {
+        if (rollback.length > 0) {
+          await rollbackStock();
+        }
+        if (allocationRollback.length > 0) {
+          await rollbackAllocations();
+        }
+        return jsonError(allocationsError.message, 500);
       }
-      return jsonError(`Insufficient stock for ${product.name}`, 400);
+
+      const totalAvailable = (allocations || []).reduce((sum: number, allocation: any) => sum + (allocation.remaining_quantity || 0), 0);
+      if (totalAvailable < item.quantity) {
+        if (rollback.length > 0) {
+          await rollbackStock();
+        }
+        if (allocationRollback.length > 0) {
+          await rollbackAllocations();
+        }
+        return jsonError(`Insufficient taken stock for ${product.name}`, 400);
+      }
+
+      let remainingToConsume = item.quantity;
+      for (const allocation of allocations || []) {
+        if (remainingToConsume <= 0) break;
+        const consume = Math.min(allocation.remaining_quantity, remainingToConsume);
+        const { error: allocationUpdateError } = await supabaseAdmin
+          .from("inventory_takes")
+          .update({ remaining_quantity: allocation.remaining_quantity - consume })
+          .eq("id", allocation.id);
+
+        if (allocationUpdateError) {
+          if (rollback.length > 0) {
+            await rollbackStock();
+          }
+          if (allocationRollback.length > 0) {
+            await rollbackAllocations();
+          }
+          return jsonError(allocationUpdateError.message || "Failed to consume taken stock", 500);
+        }
+
+        allocationRollback.push({ id: allocation.id, quantity: consume });
+        remainingToConsume -= consume;
+      }
+    } else {
+      if (product.stock < item.quantity) {
+        if (rollback.length > 0) {
+          await rollbackStock();
+        }
+        return jsonError(`Insufficient stock for ${product.name}`, 400);
+      }
+
+      const { data: updatedProducts, error: updateError } = await supabaseAdmin
+        .from("products")
+        .update({ stock: product.stock - item.quantity })
+        .eq("id", item.product_id)
+        .eq("tenant_id", tenantContext.tenantId)
+        .gte("stock", item.quantity)
+        .select();
+
+      if (updateError || !updatedProducts?.length) {
+        console.error("Sales route: failed to reserve stock", {
+          productId: item.product_id,
+          tenantId: tenantContext.tenantId,
+          quantity: item.quantity,
+          updateError,
+        });
+        if (rollback.length > 0) {
+          await rollbackStock();
+        }
+        return jsonError(updateError?.message || "Failed to reserve stock", 500);
+      }
+
+      rollback.push({ id: product.id, stock: product.stock });
     }
 
-    const { data: updatedProducts, error: updateError } = await supabaseAdmin
-      .from("products")
-      .update({ stock: product.stock - item.quantity })
-      .eq("id", item.product_id)
-      .eq("tenant_id", tenantContext.tenantId)
-      .gte("stock", item.quantity)
-      .select();
-
-    if (updateError || !updatedProducts?.length) {
-      console.error("Sales route: failed to reserve stock", {
-        productId: item.product_id,
-        tenantId: tenantContext.tenantId,
-        quantity: item.quantity,
-        updateError,
-      });
-      if (rollback.length > 0) {
-        await rollbackStock();
-      }
-      return jsonError(updateError?.message || "Failed to reserve stock", 500);
-    }
-
-    rollback.push({ id: product.id, stock: product.stock });
     productRows.push({ id: product.id, name: product.name, price: Number(product.price), quantity: item.quantity });
   }
 
