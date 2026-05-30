@@ -86,7 +86,7 @@ export function CustomFieldsManager({ businessType }: CustomFieldsManagerProps) 
     },
   });
 
-  // Update visibility mutation
+  // Update visibility mutation with optimistic UI update
   const updateVisibilityMutation = useMutation({
     mutationFn: async ({ id, is_visible }: { id: string; is_visible: boolean }) => {
       const response = await apiPatch<CustomField>("/api/custom-fields", {
@@ -95,12 +95,34 @@ export function CustomFieldsManager({ businessType }: CustomFieldsManagerProps) 
       });
       return response.data;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["custom_fields"] });
-      setErrorMessage(null);
+    onMutate: async ({ id, is_visible }) => {
+      await queryClient.cancelQueries({ queryKey: ["custom_fields"] });
+
+      const previousCustomFields = queryClient.getQueryData<CustomField[]>(["custom_fields"]);
+      if (previousCustomFields) {
+        queryClient.setQueryData<CustomField[]>(["custom_fields"],
+          previousCustomFields.map((field) =>
+            field.id === id ? { ...field, is_visible } : field
+          )
+        );
+      }
+
+      return { previousCustomFields };
     },
-    onError: (error: Error) => {
+    onError: (error: Error, variables, context: any) => {
       setErrorMessage(error.message);
+      if (context?.previousCustomFields) {
+        queryClient.setQueryData(["custom_fields"], context.previousCustomFields);
+      }
+    },
+    onSuccess: (updatedField) => {
+      queryClient.setQueryData<CustomField[]>(["custom_fields"], (fields) => {
+        if (!fields) return fields;
+        return fields.map((field) =>
+          field.id === updatedField.id ? updatedField : field
+        );
+      });
+      setErrorMessage(null);
     },
   });
 
@@ -232,8 +254,9 @@ export function CustomFieldsManager({ businessType }: CustomFieldsManagerProps) 
                       <input
                         type="checkbox"
                         checked={field.is_visible}
+                        disabled={updateVisibilityMutation.isPending}
                         onChange={(e) => updateVisibilityMutation.mutate({ id: field.id, is_visible: e.target.checked })}
-                        className="w-4 h-4 rounded border border-theme bg-theme-input cursor-pointer"
+                        className="w-4 h-4 rounded border border-theme bg-theme-input cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
                       />
                     </td>
                     <td className="p-3 text-center flex justify-center gap-2">

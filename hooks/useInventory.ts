@@ -185,11 +185,6 @@ export function useInventory() {
         throw new Error("Product not found");
       }
 
-      const availableQuantity = product.allocated_quantity ?? product.stock;
-      if (availableQuantity < quantity) {
-        throw new Error("Insufficient stock for this sale");
-      }
-
       await apiPost<void>("/api/sales", {
         product_id: productId,
         quantity,
@@ -223,14 +218,6 @@ export function useInventory() {
       const missing = normalizedItems.find((item) => !products.some((p) => p.id === item.productId));
       if (missing) {
         throw new Error(`Product not found: ${missing.productId}`);
-      }
-
-      for (const item of normalizedItems) {
-        const product = products.find((p) => p.id === item.productId);
-        const availableQuantity = product?.allocated_quantity ?? product?.stock ?? 0;
-        if (availableQuantity < item.quantity) {
-          throw new Error(`Insufficient stock for ${product?.name || item.productId}`);
-        }
       }
 
       await apiPost<void>("/api/sales", {
@@ -308,18 +295,14 @@ export function useInventory() {
 
   const confirmSell = async (metadata?: SaleMetadata): Promise<boolean> => {
     if (!sellItem) return false;
-    try {
-      await sellProductMutation.mutateAsync({
-        productId: sellItem.id,
-        quantity: sellQty,
-        metadata,
-      });
-      setSellItem(null);
-      setSellQty(1);
-      return true;
-    } catch {
-      return false;
-    }
+    await sellProductMutation.mutateAsync({
+      productId: sellItem.id,
+      quantity: sellQty,
+      metadata,
+    });
+    setSellItem(null);
+    setSellQty(1);
+    return true;
   };
 
   // ================= COMPATIBILITY WRAPPERS =================

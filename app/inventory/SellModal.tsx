@@ -137,7 +137,7 @@ export default function SellModal({
       });
 
       if (result === false) {
-        setIsProcessing(false);
+        setError("Sale could not be completed. Please verify the quantity and try again.");
         return;
       }
 
@@ -148,7 +148,8 @@ export default function SellModal({
       setSellItem(null);
     } catch (error) {
       console.error("Sale error:", error);
-      setError("Unable to complete sale. Please try again.");
+      const message = error instanceof Error ? error.message : "Unable to complete sale. Please try again.";
+      setError(message);
     } finally {
       setIsProcessing(false);
     }
