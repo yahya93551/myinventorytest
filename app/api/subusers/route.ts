@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireActiveSubscription } from "@/lib/api";
 import {
   checkRateLimit,
   getRateLimitIdentifier,
@@ -113,6 +114,10 @@ export async function GET(req: Request) {
   }
 
   const { tenantId } = auth;
+  const subscriptionCheck = await requireActiveSubscription(tenantId);
+  if ("error" in subscriptionCheck) {
+    return NextResponse.json({ error: subscriptionCheck.error }, { status: subscriptionCheck.status });
+  }
 
   const { data, error } = await supabaseAdmin
     .from("tenant_members")
@@ -132,6 +137,11 @@ export async function POST(req: Request) {
   const auth = await authorizeOwner(authHeader);
   if ("error" in auth) {
     return NextResponse.json({ error: auth.error }, { status: auth.status || 401 });
+  }
+
+  const subscriptionCheck = await requireActiveSubscription(auth.tenantId);
+  if ("error" in subscriptionCheck) {
+    return NextResponse.json({ error: subscriptionCheck.error }, { status: subscriptionCheck.status });
   }
 
   const payload = await req.json();

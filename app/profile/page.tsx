@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
 import { useRequireAuth, logout } from "@/hooks/useRequireAuth";
 import { useTheme } from "@/lib/theme-context";
+import { useSubscription } from "@/hooks/useSubscription";
 import { apiGet, apiPost } from "@/lib/apiClient";
 import { BusinessSettings } from "@/types";
 import { supabase } from "@/lib/supabase";
@@ -34,6 +36,7 @@ export default function ProfilePage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordMessage, setPasswordMessage] = useState("");
   const [passwordLoading, setPasswordLoading] = useState(false);
+  const { isActive: subscriptionActive, loading: subscriptionLoading } = useSubscription();
   const router = useRouter();
 
   const handleLogout = async () => {
@@ -62,6 +65,12 @@ export default function ProfilePage() {
 
   useEffect(() => {
     const loadBusinessSettings = async () => {
+      if (subscriptionLoading) return;
+      if (!subscriptionActive) {
+        setBusinessLoading(false);
+        return;
+      }
+
       setBusinessLoading(true);
       try {
         const result = await apiGet<BusinessSettings>("/api/business-settings");
@@ -97,6 +106,12 @@ export default function ProfilePage() {
   const handleSaveBusinessInfo = async () => {
     setBusinessMessage("");
     setBusinessSaving(true);
+
+    if (!subscriptionActive) {
+      setBusinessMessage("Active subscription required to save business information.");
+      setBusinessSaving(false);
+      return;
+    }
 
     try {
       await apiPost<BusinessSettings>("/api/business-settings", {
@@ -187,6 +202,13 @@ export default function ProfilePage() {
   useEffect(() => {
     const loadSubUsers = async () => {
       if (tenantRole !== "owner") return;
+      if (subscriptionLoading) return;
+      if (!subscriptionActive) {
+        setSubUsers([]);
+        setSubUserMessage("Subscription required to manage sub-users. Request one from Settings.");
+        setSubUserLoading(false);
+        return;
+      }
 
       setSubUserLoading(true);
       setSubUserMessage("");
@@ -381,6 +403,17 @@ export default function ProfilePage() {
             {businessSaving ? "Saving..." : "Save Business Info"}
           </button>
 
+          {subscriptionLoading ? (
+            <p className="mt-4 text-sm text-theme-secondary">Checking subscription status...</p>
+          ) : !subscriptionActive ? (
+            <div className="mt-4 rounded-3xl border border-yellow-400/30 bg-yellow-500/10 p-4 text-yellow-100">
+              <p className="font-semibold">Active subscription required</p>
+              <p className="mt-2 text-sm text-yellow-100/80">
+                Your tenant must have an active subscription to update business information. Request one from <Link href="/settings" className="font-semibold text-cyan-100 underline">Settings → Subscription</Link>.
+              </p>
+            </div>
+          ) : null}
+
           {businessMessage && (
             <p className="mt-4 text-sm text-theme-secondary">{businessMessage}</p>
           )}
@@ -444,40 +477,55 @@ export default function ProfilePage() {
             <h2 className="text-2xl font-semibold">Manage Sub-users</h2>
             <p className="text-sm text-theme-secondary">Create accountants or sales users for this account.</p>
 
-            <div className="mt-6 grid gap-4 sm:grid-cols-3">
-              <input
-                value={newSubUserEmail}
-                onChange={(e) => setNewSubUserEmail(e.target.value)}
-                placeholder="Sub-user email"
-                className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
-              />
-              <input
-                type="password"
-                value={newSubUserPassword}
-                onChange={(e) => setNewSubUserPassword(e.target.value)}
-                placeholder="Password"
-                className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
-              />
-              <select
-                value={newSubUserRole}
-                onChange={(e) => setNewSubUserRole(e.target.value as "accountant" | "sales")}
-                className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
-              >
-                <option value="sales">Sales</option>
-                <option value="accountant">Accountant</option>
-              </select>
-            </div>
+            {subscriptionLoading ? (
+              <div className="mt-6 rounded-3xl border border-theme bg-theme-input p-4 text-theme-secondary">
+                <p>Checking subscription status...</p>
+              </div>
+            ) : !subscriptionActive ? (
+              <div className="mt-6 rounded-3xl border border-yellow-400/30 bg-yellow-500/10 p-4 text-yellow-100">
+                <p className="font-semibold">Active subscription required</p>
+                <p className="mt-2 text-sm text-yellow-100/80">
+                  You must have an active subscription before creating sub-users. Request one from <Link href="/settings" className="font-semibold text-cyan-100 underline">Settings → Subscription</Link>.
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="mt-6 grid gap-4 sm:grid-cols-3">
+                  <input
+                    value={newSubUserEmail}
+                    onChange={(e) => setNewSubUserEmail(e.target.value)}
+                    placeholder="Sub-user email"
+                    className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
+                  />
+                  <input
+                    type="password"
+                    value={newSubUserPassword}
+                    onChange={(e) => setNewSubUserPassword(e.target.value)}
+                    placeholder="Password"
+                    className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
+                  />
+                  <select
+                    value={newSubUserRole}
+                    onChange={(e) => setNewSubUserRole(e.target.value as "accountant" | "sales")}
+                    className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
+                  >
+                    <option value="sales">Sales</option>
+                    <option value="accountant">Accountant</option>
+                  </select>
+                </div>
 
-            <button
-              onClick={createSubUser}
-              disabled={subUserLoading}
-              className="mt-4 rounded-2xl bg-cyan-500 px-4 py-3 text-sm font-semibold text-slate-950 hover:opacity-90 disabled:opacity-50"
-            >
-              {subUserLoading ? "Creating..." : "Create Sub-user"}
-            </button>
+                <button
+                  onClick={createSubUser}
+                  disabled={subUserLoading}
+                  className="mt-4 rounded-2xl bg-cyan-500 px-4 py-3 text-sm font-semibold text-slate-950 hover:opacity-90 disabled:opacity-50"
+                >
+                  {subUserLoading ? "Creating..." : "Create Sub-user"}
+                </button>
 
-            {subUserMessage && (
-              <p className="mt-4 text-sm text-theme-secondary">{subUserMessage}</p>
+                {subUserMessage && (
+                  <p className="mt-4 text-sm text-theme-secondary">{subUserMessage}</p>
+                )}
+              </>
             )}
 
             <div className="mt-8">

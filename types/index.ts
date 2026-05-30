@@ -50,7 +50,7 @@ export type BulkSaleItem = {
   quantity: number;
 };
 
-export type TenantRole = 'owner' | 'accountant' | 'sales';
+export type TenantRole = 'owner' | 'accountant' | 'sales' | 'admin';
 
 export interface TenantMember {
   user_id: string;
@@ -59,6 +59,25 @@ export interface TenantMember {
   role: TenantRole;
   active: boolean;
   created_at: string;
+}
+
+// Subscription Types
+export type SubscriptionStatus = 'active' | 'inactive' | 'pending' | 'expired';
+
+export interface Subscription {
+  id: string;
+  tenant_id: string;
+  status: SubscriptionStatus;
+  monthly_fee: number;
+  billing_date: string | null;
+  next_billing_date: string | null;
+  active_until: string | null;
+  requested_at: string | null;
+  approved_at: string | null;
+  approved_by: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 // API Response types

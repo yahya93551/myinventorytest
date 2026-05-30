@@ -6,6 +6,7 @@ import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { useTenantRole } from "@/hooks/useTenantRole";
 import { useTheme } from "@/lib/theme-context";
 import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/apiClient";
+import { useSubscription } from "@/hooks/useSubscription";
 import DebtModal, { DebtFormValues } from "../../components/DebtModal";
 import DebtCard, { DebtRecord } from "../../components/DebtCard";
 import Button from "../../components/Button";
@@ -38,6 +39,7 @@ export default function DebtsPage() {
   const { dark } = useTheme();
   const { loading: authLoading } = useRequireAuth();
   const { data: roleData, isLoading: roleLoading, isError: roleIsError, error: roleError } = useTenantRole();
+  const { isActive: subscriptionActive, loading: subscriptionLoading } = useSubscription();
   const [debts, setDebts] = useState<StoredDebt[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalInitial, setModalInitial] = useState<Partial<DebtFormValues> | undefined>(undefined);
@@ -171,12 +173,28 @@ export default function DebtsPage() {
     }
   };
 
-  if (authLoading || roleLoading || loading) {
+  if (authLoading || roleLoading || subscriptionLoading || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white">
         <div className="flex items-center gap-3">
           <span className="h-5 w-5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
           <p>Loading debts...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (isOwner && !subscriptionActive) {
+    return (
+      <div className={`flex min-h-screen items-start flex-col lg:flex-row ${dark ? "theme-dark" : "theme-light"}`}>
+        <Sidebar />
+        <div className="flex-1 p-6">
+          <div className="mx-auto max-w-3xl rounded-3xl border border-yellow-200 bg-yellow-50 p-8 text-yellow-900 shadow-sm">
+            <h1 className="text-3xl font-bold">Subscription required</h1>
+            <p className="mt-4 text-sm text-yellow-800">
+              Debt management requires an active tenant subscription. Please request a subscription in Settings.
+            </p>
+          </div>
         </div>
       </div>
     );

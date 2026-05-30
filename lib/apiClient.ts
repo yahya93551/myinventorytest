@@ -116,9 +116,15 @@ export async function registerCurrentSession() {
     setStoredSessionUserId(currentUserId);
   }
 
-  const expiresAt = session.expires_at
+  let expiresAt = session.expires_at
     ? new Date(session.expires_at * 1000).toISOString()
     : new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  // Ensure expiresAt is in the future. If Supabase provided an expired timestamp,
+  // fall back to 24 hours from now to avoid server-side constraint failures.
+  const now = Date.now();
+  if (new Date(expiresAt).getTime() <= now) {
+    expiresAt = new Date(now + 24 * 60 * 60 * 1000).toISOString();
+  }
 
   try {
     await apiPost('/api/auth/session', {

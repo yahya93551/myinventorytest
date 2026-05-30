@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { getServerTenantContext, jsonError, jsonSuccess } from "@/lib/api";
+import { getServerTenantContext, jsonError, jsonSuccess, requireActiveSubscription } from "@/lib/api";
 
 const BusinessSettingsSchema = z.object({
   business_type: z.enum(['pharmacy', 'ngo', 'warehouse', 'supermarket', 'retail_shop', 'distributor', 'custom']),
@@ -17,6 +17,11 @@ export async function GET(req: Request) {
   const tenantContext = await getServerTenantContext(req);
   if ("error" in tenantContext) {
     return jsonError(tenantContext.error, tenantContext.status);
+  }
+
+  const subscriptionCheck = await requireActiveSubscription(tenantContext.tenantId);
+  if ("error" in subscriptionCheck) {
+    return jsonError(subscriptionCheck.error, subscriptionCheck.status);
   }
 
   const { data, error } = await supabaseAdmin
@@ -49,6 +54,11 @@ export async function POST(req: Request) {
 
   if (tenantContext.role !== "owner") {
     return jsonError("Only owners can update business settings", 403);
+  }
+
+  const subscriptionCheck = await requireActiveSubscription(tenantContext.tenantId);
+  if ("error" in subscriptionCheck) {
+    return jsonError(subscriptionCheck.error, subscriptionCheck.status);
   }
 
   let payload: unknown;

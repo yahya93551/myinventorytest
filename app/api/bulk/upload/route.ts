@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { getServerTenantContext, jsonError, jsonSuccess, logAudit } from "@/lib/api";
+import { getServerTenantContext, jsonError, jsonSuccess, logAudit, requireActiveSubscription } from "@/lib/api";
 
 // Schema for a single product in bulk upload
 const BulkProductSchema = z.object({
@@ -22,6 +22,11 @@ export async function POST(req: Request) {
     const tenantContext = await getServerTenantContext(req);
     if ("error" in tenantContext) {
       return jsonError(tenantContext.error, tenantContext.status);
+    }
+
+    const subCheck = await requireActiveSubscription(tenantContext.tenantId);
+    if ("error" in subCheck) {
+      return jsonError(subCheck.error, subCheck.status);
     }
 
     // Only owner and accountant can bulk upload

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { getServerTenantContext, jsonError, jsonSuccess } from "@/lib/api";
+import { getServerTenantContext, jsonError, jsonSuccess, requireActiveSubscription } from "@/lib/api";
 
 const CategorySchema = z.object({
   name: z.string().trim().min(1, "Category name is required").max(50, "Category name must be 50 characters or less"),
@@ -15,6 +15,11 @@ export async function GET(req: Request) {
   const tenantContext = await getServerTenantContext(req);
   if ("error" in tenantContext) {
     return jsonError(tenantContext.error, tenantContext.status);
+  }
+
+  const subCheck = await requireActiveSubscription(tenantContext.tenantId);
+  if ("error" in subCheck) {
+    return jsonError(subCheck.error, subCheck.status);
   }
 
   const { data, error } = await supabaseAdmin
@@ -34,6 +39,11 @@ export async function POST(req: Request) {
   const tenantContext = await getServerTenantContext(req);
   if ("error" in tenantContext) {
     return jsonError(tenantContext.error, tenantContext.status);
+  }
+
+  const subCheck = await requireActiveSubscription(tenantContext.tenantId);
+  if ("error" in subCheck) {
+    return jsonError(subCheck.error, subCheck.status);
   }
 
   if (!["owner", "accountant"].includes(tenantContext.role)) {
@@ -94,6 +104,11 @@ export async function PATCH(req: Request) {
     return jsonError(tenantContext.error, tenantContext.status);
   }
 
+  const subCheck = await requireActiveSubscription(tenantContext.tenantId);
+  if ("error" in subCheck) {
+    return jsonError(subCheck.error, subCheck.status);
+  }
+
   if (!["owner", "accountant"].includes(tenantContext.role)) {
     return jsonError("Only owners or accountants can edit categories", 403);
   }
@@ -145,6 +160,11 @@ export async function DELETE(req: Request) {
   const tenantContext = await getServerTenantContext(req);
   if ("error" in tenantContext) {
     return jsonError(tenantContext.error, tenantContext.status);
+  }
+
+  const subCheck = await requireActiveSubscription(tenantContext.tenantId);
+  if ("error" in subCheck) {
+    return jsonError(subCheck.error, subCheck.status);
   }
 
   if (!["owner", "accountant"].includes(tenantContext.role)) {

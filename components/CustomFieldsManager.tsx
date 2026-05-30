@@ -117,7 +117,7 @@ export function CustomFieldsManager({ businessType }: CustomFieldsManagerProps) 
     },
     onSuccess: (updatedField) => {
       queryClient.setQueryData<CustomField[]>(["custom_fields"], (fields) => {
-        if (!fields) return fields;
+        if (!fields || !updatedField) return fields;
         return fields.map((field) =>
           field.id === updatedField.id ? updatedField : field
         );

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { getServerTenantContext, jsonError, jsonSuccess, logAudit } from "@/lib/api";
+import { getServerTenantContext, jsonError, jsonSuccess, logAudit, requireActiveSubscription } from "@/lib/api";
 
 const SaleItemSchema = z.object({
   product_id: z.string().uuid(),
@@ -21,6 +21,11 @@ export async function GET(req: Request) {
   const tenantContext = await getServerTenantContext(req);
   if ("error" in tenantContext) {
     return jsonError(tenantContext.error, tenantContext.status);
+  }
+
+  const subCheck = await requireActiveSubscription(tenantContext.tenantId);
+  if ("error" in subCheck) {
+    return jsonError(subCheck.error, subCheck.status);
   }
 
   const url = new URL(req.url);
@@ -79,6 +84,11 @@ export async function POST(req: Request) {
   const tenantContext = await getServerTenantContext(req);
   if ("error" in tenantContext) {
     return jsonError(tenantContext.error, tenantContext.status);
+  }
+
+  const subCheck = await requireActiveSubscription(tenantContext.tenantId);
+  if ("error" in subCheck) {
+    return jsonError(subCheck.error, subCheck.status);
   }
 
   if (!["owner", "sales"].includes(tenantContext.role)) {

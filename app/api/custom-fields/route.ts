@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { getServerTenantContext, requireRole, jsonError, jsonSuccess } from "@/lib/api";
+import { getServerTenantContext, requireRole, jsonError, jsonSuccess, requireActiveSubscription } from "@/lib/api";
 
 const CUSTOM_FIELDS_TABLE_NAME = "custom_fields";
 
@@ -119,6 +119,10 @@ export async function GET(req: Request) {
   if ("error" in tenantContext) {
     return jsonError(tenantContext.error, tenantContext.status);
   }
+  const subCheck = await requireActiveSubscription(tenantContext.tenantId);
+  if ("error" in subCheck) {
+    return jsonError(subCheck.error, subCheck.status);
+  }
 
   // Ensure system fields are initialized for this tenant
   await initializeSystemFieldsForTenant(tenantContext.tenantId, tenantContext.userId);
@@ -145,6 +149,11 @@ export async function POST(req: Request) {
     return jsonError(tenantContextOrError.error, tenantContextOrError.status);
   }
   const tenantContext = tenantContextOrError;
+
+  const subCheck = await requireActiveSubscription(tenantContext.tenantId);
+  if ("error" in subCheck) {
+    return jsonError(subCheck.error, subCheck.status);
+  }
 
   let payload: unknown;
   try {
@@ -211,6 +220,11 @@ export async function PATCH(req: Request) {
     return jsonError(tenantContextOrError.error, tenantContextOrError.status);
   }
   const tenantContext = tenantContextOrError;
+
+  const subCheck = await requireActiveSubscription(tenantContext.tenantId);
+  if ("error" in subCheck) {
+    return jsonError(subCheck.error, subCheck.status);
+  }
 
   let payload: unknown;
   try {
@@ -281,6 +295,11 @@ export async function DELETE(req: Request) {
     return jsonError(tenantContextOrError.error, tenantContextOrError.status);
   }
   const tenantContext = tenantContextOrError;
+
+  const subCheck = await requireActiveSubscription(tenantContext.tenantId);
+  if ("error" in subCheck) {
+    return jsonError(subCheck.error, subCheck.status);
+  }
 
   let payload: unknown = null;
   try {

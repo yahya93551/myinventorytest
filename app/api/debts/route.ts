@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { getServerTenantContext, jsonError, jsonSuccess, requireRole } from "@/lib/api";
+import { getServerTenantContext, jsonError, jsonSuccess, requireRole, requireActiveSubscription } from "@/lib/api";
 
 const NewDebtSchema = z.object({
   customer_name: z.string().trim().min(1, "Customer name is required"),
@@ -27,6 +27,11 @@ export async function GET(req: Request) {
   }
   const tenantContext = tenantContextOrError;
 
+  const subCheck = await requireActiveSubscription(tenantContext.tenantId);
+  if ("error" in subCheck) {
+    return jsonError(subCheck.error, subCheck.status);
+  }
+
   const { data, error } = await supabaseAdmin
     .from("debts")
     .select("id, customer_name, customer_phone, amount, note, date, paid, created_at")
@@ -46,6 +51,11 @@ export async function POST(req: Request) {
     return jsonError(tenantContextOrError.error, tenantContextOrError.status);
   }
   const tenantContext = tenantContextOrError;
+
+  const subCheck = await requireActiveSubscription(tenantContext.tenantId);
+  if ("error" in subCheck) {
+    return jsonError(subCheck.error, subCheck.status);
+  }
 
   let payload: unknown;
   try {
@@ -90,6 +100,11 @@ export async function PATCH(req: Request) {
     return jsonError(tenantContextOrError.error, tenantContextOrError.status);
   }
   const tenantContext = tenantContextOrError;
+
+  const subCheck = await requireActiveSubscription(tenantContext.tenantId);
+  if ("error" in subCheck) {
+    return jsonError(subCheck.error, subCheck.status);
+  }
 
   let payload: unknown;
   try {
@@ -138,6 +153,11 @@ export async function DELETE(req: Request) {
     return jsonError(tenantContextOrError.error, tenantContextOrError.status);
   }
   const tenantContext = tenantContextOrError;
+
+  const subCheck = await requireActiveSubscription(tenantContext.tenantId);
+  if ("error" in subCheck) {
+    return jsonError(subCheck.error, subCheck.status);
+  }
 
   let payload: unknown;
   try {

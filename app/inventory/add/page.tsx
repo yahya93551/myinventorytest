@@ -9,8 +9,7 @@ import AddProductForm from "../components/AddProductForm";
 import BulkUploadProducts from "@/components/BulkUploadProducts";
 import { apiGet, apiPost } from "@/lib/apiClient";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
-import { useCustomFields } from "@/hooks/useCustomFields";
-import { useTheme } from "@/lib/theme-context";
+import { useCustomFields } from "@/hooks/useCustomFields";import { useSubscription } from "@/hooks/useSubscription";import { useTheme } from "@/lib/theme-context";
 import { getVisibleSystemFieldNames } from "@/lib/customFields";
 
 type Product = {
@@ -26,6 +25,7 @@ type Product = {
 export default function AddPage() {
   const { loading } = useRequireAuth();
   const { dark } = useTheme();
+  const { isActive: subscriptionActive, loading: subscriptionLoading } = useSubscription();
 
   const router = useRouter();
 
@@ -155,25 +155,37 @@ export default function AddPage() {
       setIsSubmitting(false);
     };
 
-  // ================= THEME =================
-  const theme = dark
-    ? "bg-slate-950 text-slate-100"
-    : "bg-slate-100 text-slate-950";
-
-  // ================= AUTH LOADING =================
-  if (loading) {
+  if (loading || subscriptionLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white">
         <div className="flex items-center gap-3">
           <span className="h-5 w-5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-
-          <p>
-            Checking authentication...
-          </p>
+          <p>Checking authentication...</p>
         </div>
       </div>
     );
   }
+
+  if (!subscriptionActive) {
+    return (
+      <div className={`flex min-h-screen items-start flex-col lg:flex-row ${dark ? "theme-dark" : "theme-light"}`}>
+        <Sidebar />
+        <div className="flex-1 p-6">
+          <div className="mx-auto max-w-3xl rounded-3xl border border-yellow-200 bg-yellow-50 p-8 text-yellow-900 shadow-sm">
+            <h1 className="text-3xl font-bold">Subscription required</h1>
+            <p className="mt-4 text-sm text-yellow-800">
+              You can only add products once the tenant has an active subscription. Please request access from Settings.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const theme = dark
+    ? "bg-slate-950 text-slate-100"
+    : "bg-slate-100 text-slate-950";
+  
 
   return (
     <div

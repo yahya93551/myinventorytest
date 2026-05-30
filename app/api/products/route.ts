@@ -1,6 +1,6 @@
 ﻿import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { getServerTenantContext, requireRole, jsonError, jsonSuccess, logAudit } from "@/lib/api";
+import { getServerTenantContext, requireRole, jsonError, jsonSuccess, logAudit, requireActiveSubscription } from "@/lib/api";
 
 const missingColumnRegex = /Could not find the '(.+?)' column of 'products'/;
 
@@ -66,6 +66,12 @@ export async function GET(req: Request) {
     return jsonError(tenantContext.error, tenantContext.status);
   }
 
+  // Check subscription status
+  const subCheck = await requireActiveSubscription(tenantContext.tenantId);
+  if ("error" in subCheck) {
+    return jsonError(subCheck.error, subCheck.status);
+  }
+
   const url = new URL(req.url);
   const page = Math.max(1, Number(url.searchParams.get("page") || "1"));
   const perPage = Math.min(100, Math.max(1, Number(url.searchParams.get("per_page") || "10")));
@@ -111,6 +117,12 @@ export async function POST(req: Request) {
       return jsonError(tenantContextOrError.error, tenantContextOrError.status);
     }
     const tenantContext = tenantContextOrError;
+
+    // Check subscription status
+    const subCheck = await requireActiveSubscription(tenantContext.tenantId);
+    if ("error" in subCheck) {
+      return jsonError(subCheck.error, subCheck.status);
+    }
 
     // Phase 2: Parse Request Body
     let payload: unknown;
@@ -279,6 +291,12 @@ export async function PATCH(req: Request) {
     return jsonError("Only owners or accountants can update products", 403);
   }
 
+  // Check subscription status
+  const subCheck = await requireActiveSubscription(tenantContext.tenantId);
+  if ("error" in subCheck) {
+    return jsonError(subCheck.error, subCheck.status);
+  }
+
   let payload: unknown;
   try {
     payload = await req.json();
@@ -392,6 +410,12 @@ export async function DELETE(req: Request) {
     return jsonError(tenantContextOrError.error, tenantContextOrError.status);
   }
   const tenantContext = tenantContextOrError;
+
+  // Check subscription status
+  const subCheck = await requireActiveSubscription(tenantContext.tenantId);
+  if ("error" in subCheck) {
+    return jsonError(subCheck.error, subCheck.status);
+  }
 
   let payload: unknown;
   try {

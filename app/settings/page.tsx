@@ -6,11 +6,14 @@ import { useRouter } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
 import { useTheme } from "@/lib/theme-context";
 import { useRequireAuth, logout } from "@/hooks/useRequireAuth";
+import { useSubscription } from "@/hooks/useSubscription";
 import { BusinessSettingsForm } from "@/components/BusinessSettingsForm";
 import { CustomFieldsManager } from "@/components/CustomFieldsManager";
 import { StandardFieldManager } from "@/components/StandardFieldManager";
+import { SubscriptionStatus } from "@/components/SubscriptionStatus";
+import { AdminSubscriptionManager } from "@/components/AdminSubscriptionManager";
 import { supabase } from "@/lib/supabase";
-import { Shield, Lock, Monitor, User, Building2, ListChecks, Layers, PlusCircle, Settings2, ChevronRight } from "lucide-react";
+import { Shield, Lock, Monitor, User, Building2, ListChecks, Layers, PlusCircle, Settings2, ChevronRight, CreditCard } from "lucide-react";
 
 export default function SettingsPage() {
   const { user, loading } = useRequireAuth();
@@ -23,9 +26,10 @@ export default function SettingsPage() {
   const [subUserMessage, setSubUserMessage] = useState<string>("");
   const [setupError, setSetupError] = useState<string>("");
   const [subUserLoading, setSubUserLoading] = useState(false);
-  const [activeSection, setActiveSection] = useState<"owner" | "system" | "subuser" | "business" | "customfields" | "standardfields">("owner");
+  const [activeSection, setActiveSection] = useState<"owner" | "system" | "subuser" | "business" | "customfields" | "standardfields" | "subscription">("owner");
   const [businessType, setBusinessType] = useState<string>("custom");
   const router = useRouter();
+  const { isActive: subscriptionActive, loading: subscriptionLoading } = useSubscription();
 
   const quickActions = [
     {
@@ -50,6 +54,7 @@ export default function SettingsPage() {
 
   const settingTabs = [
     { id: "owner", label: "Owner Settings", icon: User },
+    { id: "subscription", label: "Subscription", icon: CreditCard },
     { id: "business", label: "Business Type", icon: Building2 },
     { id: "standardfields", label: "Standard Fields", icon: ListChecks },
     { id: "customfields", label: "Custom Fields", icon: Layers },
@@ -107,6 +112,16 @@ export default function SettingsPage() {
     const loadSubUsers = async () => {
       if (tenantRole !== "owner") return;
 
+      // Don't attempt to load if subscription status is still resolving
+      if (subscriptionLoading) return;
+
+      // If subscription is inactive, show helpful message instead of attempting fetch
+      if (!subscriptionActive) {
+        setSubUsers([]);
+        setSubUserMessage("Subscription required to manage sub-users.");
+        return;
+      }
+
       setSubUserLoading(true);
       setSubUserMessage("");
 
@@ -120,6 +135,12 @@ export default function SettingsPage() {
             Authorization: `Bearer ${token}`,
           },
         });
+
+        if (res.status === 403) {
+          setSubUsers([]);
+          setSubUserMessage("Subscription required to manage sub-users.");
+          return;
+        }
 
         const result = await res.json();
         if (!res.ok) {
@@ -136,7 +157,7 @@ export default function SettingsPage() {
     };
 
     loadSubUsers();
-  }, [tenantRole]);
+  }, [tenantRole, subscriptionActive, subscriptionLoading]);
 
   const createSubUser = async () => {
     if (!newSubUserEmail || !newSubUserPassword) {
@@ -231,7 +252,7 @@ export default function SettingsPage() {
                 <button
                   key={tab.id}
                   type="button"
-                  onClick={() => setActiveSection(tab.id as "owner" | "system" | "subuser" | "business" | "customfields" | "standardfields")}
+                  onClick={() => setActiveSection(tab.id as "owner" | "system" | "subuser" | "business" | "customfields" | "standardfields" | "subscription")}
                   className={`group flex items-center gap-3 rounded-3xl border px-4 py-4 text-left text-sm font-semibold transition ${selected ? "border-transparent bg-cyan-500 text-slate-950 shadow-[0_10px_30px_-18px_rgba(6,182,212,0.8)]" : "border-theme bg-theme-card text-theme-secondary hover:border-white/30 hover:bg-theme-surface"}`}
                 >
                   <span className={`grid h-11 w-11 place-items-center rounded-2xl border ${selected ? "border-transparent bg-cyan-500 text-slate-950" : "border-white/10 bg-theme-input text-cyan-300"}`}>
@@ -295,6 +316,17 @@ CREATE TABLE IF NOT EXISTS tenant_members (
             </section>
           )}
 
+          {activeSection === "subscription" && (
+            <section className="rounded-3xl border border-theme bg-theme-card p-6">
+              <h2 className="text-2xl font-semibold text-theme-primary mb-4">Subscription Management</h2>
+              {tenantRole === "admin" ? (
+                <AdminSubscriptionManager />
+              ) : (
+                <SubscriptionStatus />
+              )}
+            </section>
+          )}
+
           {activeSection === "system" && (
             <section className="rounded-3xl border border-theme bg-theme-card p-6">
               <h2 className="text-2xl font-semibold text-theme-primary">System Controls</h2>
@@ -326,6 +358,15 @@ CREATE TABLE IF NOT EXISTS tenant_members (
                 <div className="mt-6 rounded-3xl border border-yellow-400/30 bg-yellow-500/10 p-6 text-yellow-100">
                   <p className="font-semibold">Owner access required</p>
                   <p className="mt-2 text-sm text-yellow-100/80">Only the tenant owner can create sub-users. Your current role is <span className="font-medium">{tenantRole || "Member"}</span>.</p>
+                </div>
+              ) : subscriptionLoading ? (
+                <div className="mt-6 rounded-3xl border border-theme bg-theme-input p-6 text-theme-secondary">
+                  <p>Checking subscription status...</p>
+                </div>
+              ) : !subscriptionActive ? (
+                <div className="mt-6 rounded-3xl border border-yellow-400/30 bg-yellow-500/10 p-6 text-yellow-100">
+                  <p className="font-semibold">Active subscription required</p>
+                  <p className="mt-2 text-sm text-yellow-100/80">Your tenant needs an active subscription before you can create sub-users.</p>
                 </div>
               ) : (
                 <>
@@ -398,7 +439,23 @@ CREATE TABLE IF NOT EXISTS tenant_members (
 
           {activeSection === "business" && (
             <section className="rounded-3xl border border-theme bg-theme-card p-6">
-              <BusinessSettingsForm onBusinessTypeChange={setBusinessType} />
+              {tenantRole !== "owner" ? (
+                <div className="rounded-3xl border border-yellow-400/30 bg-yellow-500/10 p-6 text-yellow-100">
+                  <p className="font-semibold">Owner access required</p>
+                  <p className="mt-2 text-sm text-yellow-100/80">Only the tenant owner can manage business settings.</p>
+                </div>
+              ) : subscriptionLoading ? (
+                <div className="rounded-3xl border border-theme bg-theme-input p-6 text-theme-secondary">
+                  <p>Checking subscription status...</p>
+                </div>
+              ) : !subscriptionActive ? (
+                <div className="rounded-3xl border border-yellow-400/30 bg-yellow-500/10 p-6 text-yellow-100">
+                  <p className="font-semibold">Active subscription required</p>
+                  <p className="mt-2 text-sm text-yellow-100/80">Your tenant needs an active subscription to update business settings.</p>
+                </div>
+              ) : (
+                <BusinessSettingsForm onBusinessTypeChange={setBusinessType} />
+              )}
             </section>
           )}
 
@@ -408,6 +465,15 @@ CREATE TABLE IF NOT EXISTS tenant_members (
                 <div className="rounded-3xl border border-yellow-400/30 bg-yellow-500/10 p-6 text-yellow-100">
                   <p className="font-semibold">Owner access required</p>
                   <p className="mt-2 text-sm text-yellow-100/80">Only the tenant owner can manage standard fields. Your current role is <span className="font-medium">{tenantRole || "Member"}</span>.</p>
+                </div>
+              ) : subscriptionLoading ? (
+                <div className="rounded-3xl border border-theme bg-theme-input p-6 text-theme-secondary">
+                  <p>Checking subscription status...</p>
+                </div>
+              ) : !subscriptionActive ? (
+                <div className="rounded-3xl border border-yellow-400/30 bg-yellow-500/10 p-6 text-yellow-100">
+                  <p className="font-semibold">Active subscription required</p>
+                  <p className="mt-2 text-sm text-yellow-100/80">Your tenant needs an active subscription to manage standard fields.</p>
                 </div>
               ) : (
                 <StandardFieldManager businessType={businessType} />
@@ -421,6 +487,15 @@ CREATE TABLE IF NOT EXISTS tenant_members (
                 <div className="rounded-3xl border border-yellow-400/30 bg-yellow-500/10 p-6 text-yellow-100">
                   <p className="font-semibold">Owner access required</p>
                   <p className="mt-2 text-sm text-yellow-100/80">Only the tenant owner can manage custom fields. Your current role is <span className="font-medium">{tenantRole || "Member"}</span>.</p>
+                </div>
+              ) : subscriptionLoading ? (
+                <div className="rounded-3xl border border-theme bg-theme-input p-6 text-theme-secondary">
+                  <p>Checking subscription status...</p>
+                </div>
+              ) : !subscriptionActive ? (
+                <div className="rounded-3xl border border-yellow-400/30 bg-yellow-500/10 p-6 text-yellow-100">
+                  <p className="font-semibold">Active subscription required</p>
+                  <p className="mt-2 text-sm text-yellow-100/80">Your tenant needs an active subscription to manage custom fields.</p>
                 </div>
               ) : (
                 <CustomFieldsManager businessType={businessType} />

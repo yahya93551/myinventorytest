@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { getServerTenantContext, requireRole, jsonError, jsonSuccess, logAudit } from "@/lib/api";
+import { getServerTenantContext, requireRole, jsonError, jsonSuccess, logAudit, requireActiveSubscription } from "@/lib/api";
 
 const LoadSchema = z.object({
   id: z.string().uuid(),
@@ -14,6 +14,11 @@ export async function POST(req: Request) {
     return jsonError(tenantContextOrError.error, tenantContextOrError.status);
   }
   const tenantContext = tenantContextOrError;
+
+  const subCheck = await requireActiveSubscription(tenantContext.tenantId);
+  if ("error" in subCheck) {
+    return jsonError(subCheck.error, subCheck.status);
+  }
 
   let payload: unknown;
   try {

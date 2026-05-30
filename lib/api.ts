@@ -125,6 +125,33 @@ export async function requireRole(
   return ctx;
 }
 
+/**
+ * Check if a tenant has an active subscription
+ * Returns success if active, or an error object if not
+ */
+export async function requireActiveSubscription(
+  tenantId: string
+): Promise<{ success: true } | { error: string; status: number }> {
+  const { data: subscription, error } = await supabaseAdmin
+    .from("tenant_subscriptions")
+    .select("status")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  if (error) {
+    return { error: "Failed to check subscription status", status: 500 };
+  }
+
+  if (!subscription || subscription.status !== "active") {
+    return {
+      error: "Subscription required. Please request access or upgrade your subscription.",
+      status: 403
+    };
+  }
+
+  return { success: true };
+}
+
 export async function getTenantIdForUser(userId: string) {
   const { data, error } = await supabaseAdmin
     .from("tenant_members")

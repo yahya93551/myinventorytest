@@ -53,17 +53,32 @@ export async function POST(req: NextRequest) {
       return jsonError('Session ID is required to register a session', 400);
     }
 
-    let expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    const now = new Date();
+    // Default to 24 hours from now
+    let expiresAtDate = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    // Use a small buffer for last_activity to avoid DB clock precision races
+    const lastActivityDate = new Date(Date.now() + 1000);
     if (typeof payload.expires_at === 'string' && payload.expires_at) {
       const parsed = new Date(payload.expires_at);
       if (!Number.isNaN(parsed.getTime())) {
-        expiresAt = parsed.toISOString();
+        // Ensure expires_at is not earlier than now. If it is, extend by 24h.
+        if (parsed.getTime() > now.getTime()) {
+          expiresAtDate = parsed;
+        } else {
+          expiresAtDate = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+        }
       }
     }
+    // Ensure expires_at is not earlier than last_activity
+    if (expiresAtDate.getTime() <= lastActivityDate.getTime()) {
+      expiresAtDate = new Date(lastActivityDate.getTime() + 24 * 60 * 60 * 1000);
+    }
+
+    const expiresAt = expiresAtDate.toISOString();
 
     const ipAddress = extractIPAddress(req);
     const userAgent = extractUserAgent(req);
-    const now = new Date().toISOString();
+    const nowIso = lastActivityDate.toISOString();
 
     const { data, error } = await supabaseAdmin
       .from('user_sessions')
@@ -73,7 +88,7 @@ export async function POST(req: NextRequest) {
           session_id: sessionId,
           ip_address: ipAddress,
           user_agent: userAgent,
-          last_activity: now,
+          last_activity: nowIso,
           expires_at: expiresAt,
         },
         { onConflict: 'session_id' }
@@ -82,10 +97,15 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (error) {
-      if (isUserSessionsMissingError(error)) {
-        console.warn('[SESSION] user_sessions table missing. Session tracking registration skipped.');
+      // If the table is missing, or the DB constraint about session dates fires,
+      // treat session tracking as unavailable so the app continues to function.
+      const msg = (error as any)?.message || '';
+      const code = (error as any)?.code || '';
+      if (isUserSessionsMissingError(error) || code === '23514' || msg.includes('check_session_dates') || msg.includes('violates check constraint')) {
+        console.warn('[SESSION] user_sessions table missing or invalid session dates; skipping registration.', error);
         return jsonError('Session tracking is unavailable', 503);
       }
+
       console.error('[SESSION] Failed to register session:', error);
       return jsonError(`Failed to register session: ${error.message || 'Unknown error'}`, 500);
     }
