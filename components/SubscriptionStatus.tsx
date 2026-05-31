@@ -110,49 +110,78 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
 
         {!isActive && subscription?.status !== 'pending' && (
           <>
-            <div className="mt-6 space-y-4 border-t border-theme-input pt-4 text-sm text-theme-secondary">
-              <p className="font-medium text-theme-primary">Payment details</p>
-              <p>Enter your payment information so the admin can verify your subscription request.</p>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <input
-                  value={payerName}
-                  onChange={(e) => setPayerName(e.target.value)}
-                  placeholder="Payer name"
-                  className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
-                />
-                <input
-                  value={paymentPhone}
-                  onChange={(e) => setPaymentPhone(e.target.value)}
-                  placeholder="Phone used to send money"
-                  className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
-                />
-                <input
-                  value={paymentEmail}
-                  onChange={(e) => setPaymentEmail(e.target.value)}
-                  placeholder="Payment email"
-                  className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
-                />
-                <input
-                  value={businessName}
-                  onChange={(e) => setBusinessName(e.target.value)}
-                  placeholder="Business name"
-                  className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
-                />
+            <div className="mt-6 space-y-4 border-t border-theme-input pt-4">
+              <div className="rounded-2xl border border-cyan-300 bg-cyan-50 p-4 text-sm text-cyan-900">
+                <p className="font-semibold">💰 Payment Instructions</p>
+                
+                <div className="mt-3 space-y-2">
+                  <p className="font-medium">Send payment to:</p>
+                  <p className="ml-2 font-mono font-bold text-cyan-700">+252686859656</p>
+                  
+                  <p className="mt-3 font-medium">USSD Payment Methods:</p>
+                  <div className="ml-2 space-y-1 font-mono text-xs">
+                    <p><span className="font-bold">Hormuud:</span> *712*686859656*5#</p>
+                    <p><span className="font-bold">Somnet:</span> *812*686859656*5#</p>
+                  </div>
+                  
+                  <p className="mt-3">
+                    Questions?{' '}
+                    <a
+                      href="https://wa.me/252686859656"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-semibold underline hover:text-cyan-700"
+                    >
+                      Contact us via WhatsApp
+                    </a>
+                  </p>
+                </div>
               </div>
 
-              <input
-                value={paymentReference}
-                onChange={(e) => setPaymentReference(e.target.value)}
-                placeholder="Payment reference / transaction ID"
-                className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
-              />
-              <textarea
-                value={additionalNotes}
-                onChange={(e) => setAdditionalNotes(e.target.value)}
-                placeholder="Additional notes or instructions"
-                className="w-full min-h-[120px] rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
-              />
+              <div className="space-y-4 text-sm text-theme-secondary">
+                <p className="font-medium text-theme-primary">Payment details</p>
+                <p>Enter your payment information so the admin can verify your subscription request.</p>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <input
+                    value={payerName}
+                    onChange={(e) => setPayerName(e.target.value)}
+                    placeholder="Payer name"
+                    className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
+                  />
+                  <input
+                    value={paymentPhone}
+                    onChange={(e) => setPaymentPhone(e.target.value)}
+                    placeholder="Phone used to send money"
+                    className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
+                  />
+                  <input
+                    value={paymentEmail}
+                    onChange={(e) => setPaymentEmail(e.target.value)}
+                    placeholder="Payment email"
+                    className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
+                  />
+                  <input
+                    value={businessName}
+                    onChange={(e) => setBusinessName(e.target.value)}
+                    placeholder="Business name"
+                    className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
+                  />
+                </div>
+
+                <input
+                  value={paymentReference}
+                  onChange={(e) => setPaymentReference(e.target.value)}
+                  placeholder="Payment reference / transaction ID"
+                  className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
+                />
+                <textarea
+                  value={additionalNotes}
+                  onChange={(e) => setAdditionalNotes(e.target.value)}
+                  placeholder="Additional notes or instructions"
+                  className="w-full min-h-[120px] rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
+                />
+              </div>
             </div>
 
             <Button
