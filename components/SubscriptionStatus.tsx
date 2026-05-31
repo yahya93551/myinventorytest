@@ -88,22 +88,18 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
             <span className="font-medium">Monthly Fee:</span> ${subscription?.monthly_fee || 5.0}/month
           </p>
 
-          {isActive && (
-            <>
-              <p className="text-gray-600">
-                <span className="font-medium">Active Until:</span>{' '}
-                {subscription?.active_until
-                  ? new Date(subscription.active_until).toLocaleDateString()
-                  : 'N/A'}
-              </p>
-              <p className="text-gray-600">
-                <span className="font-medium">Next Billing Date:</span>{' '}
-                {subscription?.next_billing_date
-                  ? new Date(subscription.next_billing_date).toLocaleDateString()
-                  : 'N/A'}
-              </p>
-            </>
-          )}
+          <p className="text-gray-600">
+            <span className="font-medium">Active Until:</span>{' '}
+            {subscription?.active_until
+              ? new Date(subscription.active_until).toLocaleDateString()
+              : 'N/A'}
+          </p>
+          <p className="text-gray-600">
+            <span className="font-medium">Next Billing Date:</span>{' '}
+            {subscription?.next_billing_date
+              ? new Date(subscription.next_billing_date).toLocaleDateString()
+              : 'N/A'}
+          </p>
 
           {subscription?.status === 'pending' && (
             <p className="text-yellow-700 bg-yellow-50 p-2 rounded">
