@@ -506,7 +506,7 @@ export default function ReportsPage() {
               Recent Sales
             </h3>
 
-            <table className="w-full min-w-[700px] text-left">
+            <table className="w-full min-w-175 text-left">
               <thead className="text-theme-secondary">
                 <tr>
                   <th className="pb-3">

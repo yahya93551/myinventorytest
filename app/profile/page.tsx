@@ -36,6 +36,7 @@ export default function ProfilePage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordMessage, setPasswordMessage] = useState("");
   const [passwordLoading, setPasswordLoading] = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
   const { isActive: subscriptionActive, loading: subscriptionLoading } = useSubscription();
   const router = useRouter();
 
@@ -328,6 +329,112 @@ export default function ProfilePage() {
           <div className="mt-8 text-sm text-theme-secondary">Use the Logout button in the sidebar to sign out.</div>
         </div>
 
+          <div className="mt-10 rounded-2xl border border-theme bg-theme-card p-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-2xl font-semibold">Change Password</h2>
+              <p className="text-sm text-theme-secondary mt-1">Update your account password securely from your profile.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowPasswordModal(true)}
+              className="rounded-2xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:opacity-90"
+            >
+              Change Password
+            </button>
+          </div>
+          {!showPasswordModal && passwordMessage && (
+            <p className="mt-4 text-sm text-theme-secondary">{passwordMessage}</p>
+          )}
+        </div>
+
+        {showPasswordModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-4">
+            <div className="w-full max-w-2xl rounded-3xl border border-theme bg-theme-card p-6 shadow-xl">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-2xl font-semibold">Change Password</h2>
+                  <p className="text-sm text-theme-secondary mt-1">Enter your current password and choose a secure new password.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowPasswordModal(false);
+                    setCurrentPassword("");
+                    setNewPassword("");
+                    setConfirmPassword("");
+                    setPasswordMessage("");
+                  }}
+                  className="text-sm font-semibold text-theme-secondary hover:text-theme-primary"
+                >
+                  Close
+                </button>
+              </div>
+
+              <div className="mt-6 grid gap-4">
+                <div>
+                  <label className="block text-sm text-theme-secondary mb-2">Current Password</label>
+                  <input
+                    type="password"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    placeholder="Enter your current password"
+                    className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-theme-secondary mb-2">New Password</label>
+                  <input
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Enter new password"
+                    className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-theme-secondary mb-2">Confirm New Password</label>
+                  <input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Confirm new password"
+                    className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
+                  />
+                </div>
+              </div>
+
+              <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowPasswordModal(false);
+                    setCurrentPassword("");
+                    setNewPassword("");
+                    setConfirmPassword("");
+                    setPasswordMessage("");
+                  }}
+                  className="rounded-2xl border border-theme px-4 py-3 text-sm font-semibold text-theme-primary hover:bg-theme-input"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleUpdatePassword}
+                  disabled={passwordLoading}
+                  className="rounded-2xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
+                >
+                  {passwordLoading ? "Updating..." : "Update Password"}
+                </button>
+              </div>
+
+              {passwordMessage && (
+                <p className="mt-4 text-sm text-theme-secondary">{passwordMessage}</p>
+              )}
+            </div>
+          </div>
+        )}
+
         <div className="mt-10 rounded-2xl border border-theme bg-theme-card p-6">
           <h2 className="text-2xl font-semibold">Business Information</h2>
           <p className="text-sm text-theme-secondary mt-1">Register or update your business name, address, and contact details.</p>
@@ -421,141 +528,6 @@ export default function ProfilePage() {
             <p className="mt-3 text-sm text-yellow-100/80">Only the tenant owner can update business information.</p>
           )}
         </div>
-
-        <div className="mt-10 rounded-2xl border border-theme bg-theme-card p-6">
-          <h2 className="text-2xl font-semibold">Change Password</h2>
-          <p className="text-sm text-theme-secondary mt-1">Update your account password securely from your profile.</p>
-
-          <div className="mt-6 grid gap-4">
-            <div>
-              <label className="block text-sm text-theme-secondary mb-2">Current Password</label>
-              <input
-                type="password"
-                value={currentPassword}
-                onChange={(e) => setCurrentPassword(e.target.value)}
-                placeholder="Enter your current password"
-                className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-theme-secondary mb-2">New Password</label>
-              <input
-                type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="Enter new password"
-                className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-theme-secondary mb-2">Confirm New Password</label>
-              <input
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="Confirm new password"
-                className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
-              />
-            </div>
-          </div>
-
-          <button
-            onClick={handleUpdatePassword}
-            disabled={passwordLoading}
-            className="mt-4 w-full rounded-2xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
-          >
-            {passwordLoading ? "Updating..." : "Update Password"}
-          </button>
-
-          {passwordMessage && (
-            <p className="mt-4 text-sm text-theme-secondary">{passwordMessage}</p>
-          )}
-        </div>
-
-        {tenantRole === "owner" && (
-          <div className="mt-10 rounded-2xl border border-theme bg-theme-card p-6">
-            <h2 className="text-2xl font-semibold">Manage Sub-users</h2>
-            <p className="text-sm text-theme-secondary">Create accountants or sales users for this account.</p>
-
-            {subscriptionLoading ? (
-              <div className="mt-6 rounded-3xl border border-theme bg-theme-input p-4 text-theme-secondary">
-                <p>Checking subscription status...</p>
-              </div>
-            ) : !subscriptionActive ? (
-              <div className="mt-6 rounded-3xl border border-yellow-400/30 bg-yellow-500/10 p-4 text-yellow-100">
-                <p className="font-semibold">Active subscription required</p>
-                <p className="mt-2 text-sm text-yellow-100/80">
-                  You must have an active subscription before creating sub-users. Request one from <Link href="/settings" className="font-semibold text-cyan-100 underline">Settings → Subscription</Link>.
-                </p>
-              </div>
-            ) : (
-              <>
-                <div className="mt-6 grid gap-4 sm:grid-cols-3">
-                  <input
-                    value={newSubUserEmail}
-                    onChange={(e) => setNewSubUserEmail(e.target.value)}
-                    placeholder="Sub-user email"
-                    className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
-                  />
-                  <input
-                    type="password"
-                    value={newSubUserPassword}
-                    onChange={(e) => setNewSubUserPassword(e.target.value)}
-                    placeholder="Password"
-                    className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
-                  />
-                  <select
-                    value={newSubUserRole}
-                    onChange={(e) => setNewSubUserRole(e.target.value as "accountant" | "sales")}
-                    className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
-                  >
-                    <option value="sales">Sales</option>
-                    <option value="accountant">Accountant</option>
-                  </select>
-                </div>
-
-                <button
-                  onClick={createSubUser}
-                  disabled={subUserLoading}
-                  className="mt-4 rounded-2xl bg-cyan-500 px-4 py-3 text-sm font-semibold text-slate-950 hover:opacity-90 disabled:opacity-50"
-                >
-                  {subUserLoading ? "Creating..." : "Create Sub-user"}
-                </button>
-
-                {subUserMessage && (
-                  <p className="mt-4 text-sm text-theme-secondary">{subUserMessage}</p>
-                )}
-              </>
-            )}
-
-            <div className="mt-8">
-              <h3 className="text-lg font-semibold">Team members</h3>
-              {subUserLoading && !subUsers.length ? (
-                <p className="mt-3 text-sm text-theme-secondary">Loading sub-users...</p>
-              ) : subUsers.length === 0 ? (
-                <p className="mt-3 text-sm text-theme-secondary">No sub-users found.</p>
-              ) : (
-                <div className="mt-4 space-y-3">
-                  {subUsers.map((member) => (
-                    <div key={member.user_id} className="rounded-2xl border border-theme bg-theme-card p-4">
-                      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                          <p className="text-sm text-theme-secondary">Email</p>
-                          <p className="font-medium">{member.user_email}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm text-theme-secondary">Role</p>
-                          <p className="font-medium capitalize">{member.role}</p>
-                        </div>
-                      </div>
-                      <p className="mt-3 text-sm text-theme-secondary">Added: {new Date(member.created_at).toLocaleString()}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
       </main>
     </div>
   );

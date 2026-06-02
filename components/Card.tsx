@@ -6,6 +6,7 @@ interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
   hover?: boolean;
   interactive?: boolean;
   compact?: boolean;
+  size?: "sm" | "md" | "lg";
 }
 
 export default function Card({
@@ -13,19 +14,23 @@ export default function Card({
   interactive = false,
   className = "",
   compact = false,
+  size = "md",
   children,
   ...props
 }: CardProps) {
+  const sizeClasses = {
+    sm: "card-compact",
+    md: "card-standard",
+    lg: "card-lg",
+  };
+
+  const finalClasses = interactive 
+    ? `${sizeClasses[size]} card-interactive` 
+    : `${sizeClasses[size]} ${hover ? "hover:shadow-hover hover:bg-theme-surface" : ""}`;
+
   return (
     <div
-      className={`
-        rounded-2xl border border-theme bg-theme-card
-        backdrop-blur-xl ${compact ? "p-3" : "p-6"} shadow-card
-        transition-all duration-200
-        ${hover ? "hover:border-theme hover:bg-theme-surface" : ""}
-        ${interactive ? "cursor-pointer hover:shadow-2xl" : ""}
-        ${className}
-      `}
+      className={`${finalClasses} ${className}`}
       {...props}
     >
       {children}

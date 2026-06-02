@@ -47,72 +47,86 @@ export default function Dashboard() {
     .slice(0, 5);
 
   return (
-    <div>
-      <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+    <div className="page-section">
+      <div className="section-header">
         <div>
-          <h2 className="text-3xl font-semibold">Dashboard</h2>
-          <p className="text-theme-secondary mt-2">
+          <h2 className="text-h1 text-theme-primary">Dashboard</h2>
+          <p className="text-body-sm text-theme-secondary mt-2">
             Inventory overview, cash flow, and report summaries.
           </p>
         </div>
 
-        <div className="rounded-2xl border border-theme bg-theme-card/95 px-6 py-4 text-black shadow-card">
-          <p className="text-sm text-theme-secondary">Categories</p>
-          <p className="text-2xl font-bold">{categoryCount}</p>
+        <div className="card-standard inline-flex items-center gap-6 max-w-sm">
+          <div>
+            <p className="text-body-sm text-theme-secondary">Total Categories</p>
+            <p className="text-h3 font-bold text-cyan-400 mt-1">{categoryCount}</p>
+          </div>
+          <div className="h-12 w-px bg-theme-surface"></div>
         </div>
       </div>
 
       <StatsCards products={products} visibleFieldNames={visibleSystemFieldNames} />
 
-      <div className="mt-6 grid gap-4 xl:grid-cols-2">
-        <div className="rounded-2xl border border-theme bg-theme-card/90 p-6 shadow-card">
-          <h3 className="text-xl font-semibold mb-4">Cash Flow</h3>
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* Cash Flow Section */}
+        <div className="card-standard">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-h3 font-semibold text-theme-primary">Cash Flow</h3>
+            <div className="badge-primary">Overview</div>
+          </div>
+          
           <div className="grid gap-3 sm:grid-cols-2">
             {costPriceVisible && (
-              <div className="rounded-2xl border border-theme bg-theme-card p-4">
-                <p className="text-sm text-theme-secondary">Total Cost Value</p>
-                <p className="text-2xl font-bold">${totalCost.toFixed(2)}</p>
+              <div className="card-compact bg-theme-surface">
+                <p className="text-body-sm text-theme-secondary">Total Cost Value</p>
+                <p className="text-h4 font-bold text-theme-primary mt-2">${totalCost.toFixed(2)}</p>
               </div>
             )}
             {priceVisible && (
-              <div className="rounded-2xl border border-theme bg-theme-card p-4">
-                <p className="text-sm text-theme-secondary">Inventory Sell Value</p>
-                <p className="text-2xl font-bold">${totalSellValue.toFixed(2)}</p>
+              <div className="card-compact bg-theme-surface">
+                <p className="text-body-sm text-theme-secondary">Inventory Sell Value</p>
+                <p className="text-h4 font-bold text-cyan-400 mt-2">${totalSellValue.toFixed(2)}</p>
               </div>
             )}
             {profitVisible && (
-              <div className="rounded-2xl border border-theme bg-theme-card p-4">
-                <p className="text-sm text-theme-secondary">Potential Profit</p>
-                <p className="text-2xl font-bold">${totalProfit.toFixed(2)}</p>
+              <div className="card-compact bg-theme-surface">
+                <p className="text-body-sm text-theme-secondary">Potential Profit</p>
+                <p className="text-h4 font-bold text-green-400 mt-2">${totalProfit.toFixed(2)}</p>
               </div>
             )}
-            <div className="rounded-2xl border border-theme bg-theme-card p-4">
-              <p className="text-sm text-theme-secondary">Last Sale</p>
-              <p className="text-2xl font-bold">{lastSaleDate}</p>
+            <div className="card-compact bg-theme-surface">
+              <p className="text-body-sm text-theme-secondary">Last Sale</p>
+              <p className="text-h4 font-bold text-theme-primary mt-2">{lastSaleDate}</p>
             </div>
           </div>
         </div>
 
-        <div className="rounded-2xl border border-theme bg-theme-card/90 p-6 shadow-card">
-          <h3 className="text-xl font-semibold mb-4">Report</h3>
+        {/* Recent Reports Section */}
+        <div className="card-standard">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-h3 font-semibold text-theme-primary">Recent Sales</h3>
+            <div className="badge-neutral">Latest {Math.min(5, sales.length)}</div>
+          </div>
+          
           {sales.length === 0 ? (
-            <p className="text-theme-secondary">No sales have been recorded yet.</p>
+            <div className="py-8 text-center">
+              <p className="text-theme-secondary">No sales recorded yet</p>
+              <p className="text-theme-muted text-sm mt-1">Sales will appear here once recorded</p>
+            </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-2 max-h-64 overflow-y-auto">
               {sales.slice(0, 5).map((sale) => {
                 const saleDate = getSaleDate(sale);
                 return (
-                  <div key={sale.id} className="rounded-2xl border border-theme bg-theme-card p-4">
-                    <div className="flex items-center justify-between gap-4">
-                      <div>
-                        <p className="font-semibold">{getProductName(sale)}</p>
-                        <p className="text-sm text-theme-secondary">
-                          {sale.quantity} units
-                        </p>
+                  <div key={sale.id} className="card-compact bg-theme-surface hover:bg-theme-card transition-colors">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <p className="font-semibold text-theme-primary">{getProductName(sale)}</p>
+                        <p className="text-body-sm text-theme-secondary">{sale.quantity} units</p>
                       </div>
-                      <p className="text-lg font-bold">${sale.total}</p>
+                      <p className="text-lg font-bold text-cyan-400">${sale.total}</p>
                     </div>
-                    <p className="text-sm text-theme-secondary mt-2">
+                    <p className="text-xs text-theme-muted mt-2">
                       {saleDate ? saleDate.toLocaleString() : "No date"}
                     </p>
                   </div>
@@ -121,12 +135,12 @@ export default function Dashboard() {
             </div>
           )}
 
-          <div className="mt-4 text-right">
+          <div className="mt-4 pt-4 border-t border-theme">
             <Link
               href="/reports"
-              className="inline-flex items-center justify-center rounded-full bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-400 transition"
+              className="inline-flex items-center gap-2 text-cyan-400 hover:text-cyan-300 transition-colors text-sm font-semibold"
             >
-              View all
+              View all sales →
             </Link>
           </div>
         </div>

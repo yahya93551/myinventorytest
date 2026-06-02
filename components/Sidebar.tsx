@@ -46,14 +46,14 @@ export default function Sidebar() {
     : "bg-white/95 text-slate-950 border-slate-200 shadow-sm";
 
   const navClass = (active: boolean) =>
-    `w-full text-left px-3 py-3 rounded-2xl transition duration-200 flex items-center gap-3 ${
+    `w-full text-left px-4 py-3 rounded-xl transition-all duration-200 flex items-center gap-3 font-medium ${
       active
         ? dark
-          ? "bg-white/15 text-white shadow-[0_12px_40px_-20px_rgba(255,255,255,0.25)]"
-          : "bg-slate-200 text-slate-950 shadow-sm"
+          ? "bg-cyan-500/20 text-cyan-300 shadow-lg shadow-cyan-500/10"
+          : "bg-cyan-500/15 text-cyan-700"
         : dark
         ? "text-slate-300 hover:bg-white/10 hover:text-white"
-        : "text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+        : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
     }`;
 
   return (
@@ -74,10 +74,13 @@ export default function Sidebar() {
         />
       )}
 
+      {/* PLACEHOLDER FOR DESKTOP LAYOUT */}
+      <div className={`hidden lg:block flex-shrink-0 ${collapsed ? "w-16" : "w-64"}`} />
+
       {/* SIDEBAR */}
       <div
         className={`
-          fixed lg:static z-50 top-0 left-0 h-full max-h-screen
+          fixed z-50 top-0 left-0 h-full lg:h-screen max-h-screen flex-shrink-0
           ${collapsed ? "w-16" : "w-64"}
           ${sidebarBaseClasses}
           backdrop-blur-xl
@@ -203,22 +206,24 @@ export default function Sidebar() {
           </Link>
         </div>
 
-        {/* THEME */}
-        <button
-          onClick={() => setDark(!dark)}
-          className="mt-6 w-full rounded-xl border border-theme bg-theme-card py-2 text-theme-secondary transition hover:bg-theme-surface flex items-center justify-center gap-2"
-        >
-          {dark ? <Sun className="w-5 h-5 sm:w-6 sm:h-6" /> : <Moon className="w-5 h-5 sm:w-6 sm:h-6" />}
-          {!collapsed && <span>Toggle Theme</span>}
-        </button>
+        {/* THEME TOGGLE & LOGOUT */}
+        <div className="mt-6 pt-6 border-t border-theme space-y-2">
+          <button
+            onClick={() => setDark(!dark)}
+            className="w-full btn-md btn-secondary flex items-center justify-center gap-2"
+          >
+            {dark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+            {!collapsed && <span>{dark ? "Light Mode" : "Dark Mode"}</span>}
+          </button>
 
-        <button
-          onClick={handleLogout}
-          className="mt-3 w-full bg-red-600 py-2 rounded-xl flex items-center justify-center gap-2"
-        >
-          <X className="w-5 h-5 sm:w-6 sm:h-6" />
-          {!collapsed && <span>Logout</span>}
-        </button>
+          <button
+            onClick={handleLogout}
+            className="w-full btn-md btn-danger flex items-center justify-center gap-2"
+          >
+            <X className="w-5 h-5" />
+            {!collapsed && <span>Logout</span>}
+          </button>
+        </div>
       </div>
     </>
   );

@@ -2,12 +2,14 @@
 
 import type { ReactNode } from "react";
 import { Product } from "@/types";
-import { Package, DollarSign } from "lucide-react";
+import { Package, DollarSign, TrendingUp, Zap } from "lucide-react";
 
 type StatsCard = {
   title: string;
   value: string | number;
   icon: ReactNode;
+  subtext?: string;
+  trend?: "up" | "down";
 };
 
 export default function StatsCards({ products, visibleFieldNames }: { products: Product[]; visibleFieldNames?: string[] }) {
@@ -15,6 +17,7 @@ export default function StatsCards({ products, visibleFieldNames }: { products: 
   const totalCost = products.reduce((acc, p) => acc + (p.cost_price ?? 0) * p.stock, 0);
   const totalSellValue = products.reduce((acc, p) => acc + p.price * p.stock, 0);
   const potentialProfit = Math.max(0, totalSellValue - totalCost);
+  const profitMargin = totalSellValue > 0 ? ((potentialProfit / totalSellValue) * 100).toFixed(1) : "0";
 
   const showCost = visibleFieldNames ? visibleFieldNames.includes("cost_price") : true;
   const showSell = visibleFieldNames ? visibleFieldNames.includes("price") : true;
@@ -24,7 +27,8 @@ export default function StatsCards({ products, visibleFieldNames }: { products: 
     {
       title: "Total Products",
       value: total,
-      icon: <Package className="w-6 h-6 sm:w-7 sm:h-7" />,
+      icon: <Package className="w-5 h-5" />,
+      subtext: "In inventory",
     },
   ];
 
@@ -32,15 +36,17 @@ export default function StatsCards({ products, visibleFieldNames }: { products: 
     cards.push({
       title: "Inventory Cost",
       value: `$${totalCost.toFixed(2)}`,
-      icon: <DollarSign className="w-6 h-6 sm:w-7 sm:h-7" />,
+      icon: <DollarSign className="w-5 h-5" />,
+      subtext: "Total cost value",
     });
   }
 
   if (showSell) {
     cards.push({
-      title: "Inventory Sell Value",
+      title: "Sell Value",
       value: `$${totalSellValue.toFixed(2)}`,
-      icon: <DollarSign className="w-6 h-6 sm:w-7 sm:h-7" />,
+      icon: <Zap className="w-5 h-5" />,
+      subtext: "If sold today",
     });
   }
 
@@ -48,26 +54,39 @@ export default function StatsCards({ products, visibleFieldNames }: { products: 
     cards.push({
       title: "Potential Profit",
       value: `$${potentialProfit.toFixed(2)}`,
-      icon: <DollarSign className="w-6 h-6 sm:w-7 sm:h-7" />,
+      icon: <TrendingUp className="w-5 h-5" />,
+      subtext: `${profitMargin}% margin`,
+      trend: "up",
     });
   }
 
-  const Card = ({ title, value, icon }: any) => (
-    <div className="rounded-2xl border border-theme bg-theme-card backdrop-blur-xl p-5 shadow-card flex items-center gap-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-2xl hover:bg-theme-surface">
-      <div className="p-3 rounded-xl bg-cyan-500/15 text-cyan-300 flex items-center justify-center">
-        {icon}
+  const StatCard = ({ title, value, icon, subtext, trend }: StatsCard) => (
+    <div className="card-standard hover:shadow-hover hover:bg-theme-surface group">
+      <div className="flex items-start justify-between">
+        <div className="flex-1">
+          <p className="text-body-sm text-theme-secondary font-medium">{title}</p>
+          <h2 className="text-h3 font-bold text-theme-primary mt-2">{value}</h2>
+          {subtext && (
+            <p className="text-body-sm text-theme-muted mt-1">{subtext}</p>
+          )}
+        </div>
+        <div className="p-3 rounded-xl bg-cyan-500/15 text-cyan-300 flex items-center justify-center shrink-0 group-hover:bg-cyan-500/25 transition-all duration-200">
+          {icon}
+        </div>
       </div>
-      <div>
-        <p className="text-theme-secondary text-sm font-medium">{title}</p>
-        <h2 className="text-2xl font-bold text-theme-primary mt-1">{value}</h2>
-      </div>
+      {trend === "up" && (
+        <div className="mt-3 flex items-center gap-1 text-green-400 text-xs font-semibold">
+          <TrendingUp className="w-4 h-4" />
+          Positive trend
+        </div>
+      )}
     </div>
   );
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+    <div className="grid-cards mb-8">
       {cards.map((card) => (
-        <Card key={card.title} title={card.title} value={card.value} icon={card.icon} />
+        <StatCard key={card.title} {...card} />
       ))}
     </div>
   );

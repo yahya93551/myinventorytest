@@ -179,7 +179,7 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
                   value={additionalNotes}
                   onChange={(e) => setAdditionalNotes(e.target.value)}
                   placeholder="Additional notes or instructions"
-                  className="w-full min-h-[120px] rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
+                  className="w-full min-h-30 rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
                 />
               </div>
             </div>

@@ -153,7 +153,7 @@ export default function Inventory({ products, setProducts, categories }: any) {
       {/* TABLE (dynamic columns based on Owner visibility settings) */}
       <div className="bg-white/10 rounded-2xl overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[600px]">
+          <table className="w-full min-w-150">
             <thead className="bg-white/5">
               <tr>
                 {/* build header from visible fields */}
@@ -295,7 +295,7 @@ export default function Inventory({ products, setProducts, categories }: any) {
 
               <button
                 onClick={save}
-                className="bg-gradient-to-r from-purple-500 to-indigo-500 px-4 py-2 rounded-xl"
+                className="bg-linear-to-r from-purple-500 to-indigo-500 px-4 py-2 rounded-xl"
               >
                 Save
               </button>

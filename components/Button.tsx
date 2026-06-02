@@ -2,8 +2,8 @@
 
 import React from "react";
 
-type ButtonVariant = "primary" | "secondary" | "danger" | "ghost";
-type ButtonSize = "sm" | "md" | "lg";
+type ButtonVariant = "primary" | "secondary" | "danger" | "ghost" | "success" | "warning";
+type ButtonSize = "sm" | "md" | "lg" | "xl";
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
@@ -13,19 +13,6 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   fullWidth?: boolean;
 }
 
-const variantClasses: Record<ButtonVariant, string> = {
-  primary: "bg-cyan-500 hover:bg-cyan-600 text-white shadow-sm shadow-cyan-500/20",
-  secondary: "bg-slate-700 hover:bg-slate-600 text-white shadow-sm shadow-slate-900/15",
-  danger: "bg-red-600 hover:bg-red-700 text-white shadow-sm shadow-red-500/20",
-  ghost: "bg-transparent hover:bg-theme-surface text-theme-secondary border border-theme",
-};
-
-const sizeClasses: Record<ButtonSize, string> = {
-  sm: "px-3 py-1.5 text-sm rounded-lg",
-  md: "px-4 py-2 text-base rounded-xl",
-  lg: "px-6 py-3 text-lg rounded-xl",
-};
-
 export default function Button({
   variant = "primary",
   size = "md",
@@ -34,24 +21,50 @@ export default function Button({
   fullWidth = false,
   disabled,
   children,
+  className = "",
   ...props
 }: ButtonProps) {
+  const baseClasses = "btn-base";
+  
+  const variantClasses: Record<ButtonVariant, string> = {
+    primary: "btn-primary",
+    secondary: "btn-secondary",
+    danger: "btn-danger",
+    ghost: "btn-ghost",
+    success: "btn-success",
+    warning: "btn-warning",
+  };
+
+  const sizeClasses: Record<ButtonSize, string> = {
+    sm: "btn-sm",
+    md: "btn-md",
+    lg: "btn-lg",
+    xl: "btn-xl",
+  };
+
   return (
     <button
       disabled={loading || disabled}
       className={`
-        flex items-center gap-2 font-medium
-        transition-all duration-200 ease-out
-        disabled:opacity-50 disabled:cursor-not-allowed
+        ${baseClasses}
         ${variantClasses[variant]}
         ${sizeClasses[size]}
         ${fullWidth ? "w-full justify-center" : ""}
-        focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-cyan-500
+        ${className}
       `}
       {...props}
     >
-      {loading ? <span className="animate-spin">⌛</span> : icon}
-      {children}
+      {loading ? (
+        <>
+          <span className="inline-block animate-spin">⌛</span>
+          {children && <span>{children}</span>}
+        </>
+      ) : (
+        <>
+          {icon && <span className="shrink-0">{icon}</span>}
+          {children}
+        </>
+      )}
     </button>
   );
 }
