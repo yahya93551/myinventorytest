@@ -66,6 +66,33 @@ export async function logAuditTrail(
     const endpoint = entry.endpoint || new URL(request?.url || '').pathname;
 
     // Store in database
+
+    // If this is a LOGIN action, avoid noisy repeated logins (e.g., page refreshes)
+    if (entry.action === 'LOGIN' && entry.performedBy) {
+      try {
+        const { data: lastLogin } = await supabaseAdmin
+          .from('activity_logs')
+          .select('created_at')
+          .eq('tenant_id', entry.tenantId)
+          .eq('performed_by', entry.performedBy)
+          .eq('action', 'LOGIN')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (lastLogin && (lastLogin as any).created_at) {
+          const lastTime = new Date((lastLogin as any).created_at).getTime();
+          // Skip if last login logged within 5 minutes
+          if (Date.now() - lastTime < 5 * 60 * 1000) {
+            return true;
+          }
+        }
+      } catch (e) {
+        // If this check fails, continue to attempt logging as normal
+        console.error('[AUDIT] Failed to check last LOGIN timestamp:', e);
+      }
+    }
+
     const { error } = await supabaseAdmin
       .from('activity_logs')
       .insert({
@@ -84,8 +111,37 @@ export async function logAuditTrail(
       });
 
     if (error) {
-      console.error('[AUDIT] Failed to log:', error);
-      return false;
+      // Log detailed info to make failures visible in server logs
+      console.error('[AUDIT] Failed to insert activity_logs row. Error:', error, 'Payload:', {
+        tenant_id: entry.tenantId,
+        performed_by: entry.performedBy,
+        action: entry.action,
+        entity: entry.entity,
+        entity_id: entry.entityId || null,
+      });
+
+      // Try a minimal fallback insert to avoid issues from optional fields
+      try {
+        const { error: fallbackError } = await supabaseAdmin
+          .from('activity_logs')
+          .insert({
+            tenant_id: entry.tenantId,
+            performed_by: entry.performedBy,
+            action: entry.action,
+            entity: entry.entity,
+            created_at: new Date().toISOString(),
+          });
+
+        if (fallbackError) {
+          console.error('[AUDIT] Fallback insert failed:', fallbackError);
+          return false;
+        }
+
+        return true;
+      } catch (fallbackEx) {
+        console.error('[AUDIT] Exception during fallback insert:', fallbackEx);
+        return false;
+      }
     }
 
     return true;

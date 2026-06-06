@@ -1,6 +1,7 @@
 //app/inventory/components/AddProductForm.tsx
 "use client";
 
+import { useState } from "react";
 import { CustomField } from "../../../types";
 import { CustomFieldInput } from "@/components/CustomFieldInput";
 import { getVisibleSystemFields } from "@/lib/customFields";
@@ -21,7 +22,7 @@ type Props = {
   customFields?: CustomField[];
   customData?: Record<string, any>;
   setCustomData?: (data: Record<string, any>) => void;
-  addProductHandler: () => void;
+  addProductHandler: (imageFile?: File | null) => void;
 };
 
 export default function AddProductForm({
@@ -230,6 +231,26 @@ export default function AddProductForm({
     }
   };
 
+  // Image file local state (optional)
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0] ?? null;
+    setImageFile(f);
+    
+    // Show preview immediately
+    if (f) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreview(reader.result as string);
+      };
+      reader.readAsDataURL(f);
+    } else {
+      setImagePreview(null);
+    }
+  };
+
   return (
     <div className="w-full rounded-3xl border border-theme bg-theme-card p-4 sm:p-6 lg:p-8 shadow-soft">
       {/* Header */}
@@ -297,14 +318,25 @@ export default function AddProductForm({
       </div>
 
       {/* Footer */}
-      <div className="mt-8 flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-3">
-        <button
-          type="button"
-          onClick={addProductHandler}
-          className="inline-flex items-center justify-center rounded-2xl bg-theme-accent px-6 py-3 text-sm font-semibold text-slate-950 shadow-lg transition-all duration-200 hover:bg-cyan-400 hover:scale-[1.02] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/40"
-        >
-          + Add Product
-        </button>
+      <div className="mt-8 flex flex-col gap-3">
+        <label className="block text-sm font-semibold text-theme-primary">Product image (optional)</label>
+        <div className="flex items-center gap-4">
+          <input type="file" accept="image/*" onChange={handleFileChange} className="flex-1" />
+          {imagePreview && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={imagePreview} alt="preview" className="w-16 h-16 object-cover rounded" />
+          )}
+        </div>
+
+        <div className="mt-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-3">
+          <button
+            type="button"
+            onClick={() => addProductHandler(imageFile)}
+            className="inline-flex items-center justify-center rounded-2xl bg-theme-accent px-6 py-3 text-sm font-semibold text-slate-950 shadow-lg transition-all duration-200 hover:bg-cyan-400 hover:scale-[1.02] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/40"
+          >
+            + Add Product
+          </button>
+        </div>
       </div>
     </div>
   );

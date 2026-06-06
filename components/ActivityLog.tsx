@@ -230,9 +230,7 @@ export default function ActivityLog({
                 <div className="text-xs text-theme-secondary space-x-3">
                   <span>{formatDate(activity.created_at)}</span>
                   <span>•</span>
-                  <span>
-                    By: <span className="font-semibold text-theme">{(activity as any).performed_by_email || activity.performed_by}</span>
-                  </span>
+                  <span>By: <span className="font-semibold text-theme">{(activity as any).performed_by_email || activity.performed_by}</span></span>
                   {activity.ip_address && activity.ip_address !== "unknown" && (
                     <span title={activity.ip_address}>IP: {activity.ip_address}</span>
                   )}

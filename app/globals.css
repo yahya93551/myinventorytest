@@ -38,6 +38,7 @@
   --text-primary: #f8fafc;
   --text-secondary: rgba(248, 250, 252, 0.72);
   --text-muted: rgba(248, 250, 252, 0.58);
+  color-scheme: dark;
 }
 
 .theme-light {
@@ -51,6 +52,7 @@
   --text-primary: #0f172a;
   --text-secondary: #64748b;
   --text-muted: #94a3b8;
+  color-scheme: light;
 }
 
 .theme-dark,
@@ -187,6 +189,43 @@ body {
   .select-base:focus {
     border-color: #06b6d4;
     box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.2);
+  }
+
+  select,
+  .select-base {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-color: var(--surface) !important;
+    color: var(--text-primary) !important;
+  }
+
+  select,
+  select option,
+  select optgroup {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    color-scheme: dark !important;
+    background: var(--surface) !important;
+    color: var(--text-primary) !important;
+    accent-color: var(--color-accent-primary) !important;
+  }
+
+  .inventory-filter-select,
+  .inventory-filter-select option,
+  .inventory-filter-select optgroup {
+    color-scheme: light !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  .inventory-filter-select option:hover,
+  .inventory-filter-select option:focus,
+  .inventory-filter-select option:active,
+  .inventory-filter-select option:checked {
+    background: #f3f4f6 !important;
+    color: #000000 !important;
   }
 
   /* ===== BUTTONS ===== */

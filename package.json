@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "ensure-bucket": "node scripts/create_product_images_bucket.js",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",

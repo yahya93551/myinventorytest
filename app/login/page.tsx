@@ -1,19 +1,41 @@
 ﻿"use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { registerCurrentSession } from "@/lib/apiClient";
-import { CheckCircle2, Lock, Mail, ShieldCheck, Sparkles, Zap } from "lucide-react";
+import { CheckCircle2, Lock, Mail, Phone, ShieldCheck, Sparkles, Zap } from "lucide-react";
+import { createPhoneFallbackEmail, isPhoneNumber, normalizePhoneNumber } from "@/lib/auth";
+
+const countryOptions = [
+  { code: "+252", country: "Somalia", flag: "🇸🇴" },
+  { code: "+1", country: "United States", flag: "🇺🇸" },
+  { code: "+44", country: "United Kingdom", flag: "🇬🇧" },
+  { code: "+61", country: "Australia", flag: "🇦🇺" },
+  { code: "+91", country: "India", flag: "🇮🇳" },
+  { code: "+49", country: "Germany", flag: "🇩🇪" },
+  { code: "+33", country: "France", flag: "🇫🇷" },
+  { code: "+7", country: "Russia", flag: "🇷🇺" },
+  { code: "+250", country: "Rwanda", flag: "🇷🇼" },
+  { code: "+254", country: "Kenya", flag: "🇰🇪" },
+  { code: "+234", country: "Nigeria", flag: "🇳🇬" },
+];
 
 export default function LoginPage() {
   const [mode, setMode] = useState<"login" | "signup">("login");
-  const [email, setEmail] = useState("");
+  const [signupMethod, setSignupMethod] = useState<"email" | "phone">("email");
+  const [identifier, setIdentifier] = useState("");
+  const [countryCode, setCountryCode] = useState("+1");
+  const [countryDropdownOpen, setCountryDropdownOpen] = useState(false);
+  const [countryQuery, setCountryQuery] = useState("");
+  const countryMenuRef = useRef<HTMLDivElement | null>(null);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [otp, setOtp] = useState("");
   const [message, setMessage] = useState<string>("");
   const [messageType, setMessageType] = useState<"error" | "success">("error");
   const [loading, setLoading] = useState(false);
+  const [otpSent, setOtpSent] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -36,30 +58,83 @@ export default function LoginPage() {
     };
   }, [router]);
 
+  useEffect(() => {
+    if (mode !== "signup") {
+      setSignupMethod("email");
+      setOtpSent(false);
+      setOtp("");
+      setIdentifier("");
+      setCountryCode("+1");
+      setCountryDropdownOpen(false);
+      setCountryQuery("");
+    }
+  }, [mode]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (countryMenuRef.current && !countryMenuRef.current.contains(event.target as Node)) {
+        setCountryDropdownOpen(false);
+      }
+    };
+
+    window.addEventListener("mousedown", handleClickOutside);
+    return () => window.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   const validate = () => {
-    if (!email.trim() || !password) {
+    const trimmedIdentifier = identifier.trim();
+
+    if (!trimmedIdentifier || !password) {
       setMessageType("error");
-      setMessage("Email and password are required.");
+      setMessage("Email or phone and password are required.");
       return false;
     }
 
-    const emailValid = /\S+@\S+\.\S+/.test(email);
-    if (!emailValid) {
-      setMessageType("error");
-      setMessage("Please enter a valid email address.");
-      return false;
+    if (mode === "login") {
+      const isEmail = /\S+@\S+\.\S+/.test(trimmedIdentifier);
+      const isPhone = isPhoneNumber(trimmedIdentifier);
+
+      if (!isEmail && !isPhone) {
+        setMessageType("error");
+        setMessage("Please enter a valid email address or phone number.");
+        return false;
+      }
     }
 
-    if (password.length < 6) {
-      setMessageType("error");
-      setMessage("Password must be at least 6 characters.");
-      return false;
-    }
+    if (mode === "signup") {
+      if (signupMethod === "email") {
+        const emailValid = /\S+@\S+\.\S+/.test(trimmedIdentifier);
+        if (!emailValid) {
+          setMessageType("error");
+          setMessage("Please enter a valid email address.");
+          return false;
+        }
+      } else {
+        const phoneValue = `${countryCode}${trimmedIdentifier}`;
+        if (!isPhoneNumber(phoneValue)) {
+          setMessageType("error");
+          setMessage("Please enter a valid phone number.");
+          return false;
+        }
 
-    if (mode === "signup" && password !== confirmPassword) {
-      setMessageType("error");
-      setMessage("Passwords do not match.");
-      return false;
+        if (!otp.trim()) {
+          setMessageType("error");
+          setMessage("Enter the SMS verification code sent to your phone.");
+          return false;
+        }
+      }
+
+      if (password.length < 6) {
+        setMessageType("error");
+        setMessage("Password must be at least 6 characters.");
+        return false;
+      }
+
+      if (password !== confirmPassword) {
+        setMessageType("error");
+        setMessage("Passwords do not match.");
+        return false;
+      }
     }
 
     return true;
@@ -70,8 +145,13 @@ export default function LoginPage() {
     setLoading(true);
     setMessage("");
 
+    const trimmedIdentifier = identifier.trim();
+    const authIdentifier = isPhoneNumber(trimmedIdentifier)
+      ? createPhoneFallbackEmail(trimmedIdentifier)
+      : trimmedIdentifier;
+
     const { data, error } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
+      email: authIdentifier,
       password,
     });
 
@@ -94,10 +174,72 @@ export default function LoginPage() {
     }
   };
 
+  const sendOtp = async () => {
+    const trimmedPhone = identifier.trim();
+    const phoneValue = `${countryCode}${trimmedPhone}`;
+    if (!isPhoneNumber(phoneValue)) {
+      setMessageType("error");
+      setMessage("Please enter a valid phone number to receive the verification code.");
+      return;
+    }
+
+    setLoading(true);
+    setMessage("");
+
+    try {
+      const res = await fetch("/api/auth/phone/send-otp", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ phone: normalizePhoneNumber(phoneValue) }),
+      });
+
+      const text = await res.text();
+      let result: { error?: string; message?: string } = {};
+
+      try {
+        result = JSON.parse(text);
+      } catch {
+        result.error = text || "Failed to send verification code.";
+      }
+
+      setLoading(false);
+
+      if (!res.ok) {
+        setMessageType("error");
+        setMessage(result.error || "Failed to send verification code.");
+        return;
+      }
+
+      setOtpSent(true);
+      setMessageType("success");
+      setMessage(result.message || "Verification code sent to your phone.");
+    } catch (error) {
+      setLoading(false);
+      setMessageType("error");
+      setMessage("Failed to send verification code. Please try again.");
+      console.error(error);
+    }
+  };
+
   const signup = async () => {
     if (!validate()) return;
     setLoading(true);
     setMessage("");
+
+    const trimmedIdentifier = identifier.trim();
+    const payload: Record<string, unknown> = {
+      password,
+    };
+
+    if (signupMethod === "email") {
+      payload.email = trimmedIdentifier;
+    } else {
+      const phoneValue = `${countryCode}${trimmedIdentifier}`;
+      payload.phone = normalizePhoneNumber(phoneValue);
+      payload.otp = otp.trim();
+    }
 
     try {
       const res = await fetch("/api/signup", {
@@ -105,10 +247,7 @@ export default function LoginPage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          email: email.trim(),
-          password,
-        }),
+        body: JSON.stringify(payload),
       });
 
       const result = await res.json();
@@ -121,10 +260,14 @@ export default function LoginPage() {
       }
 
       setMessageType("success");
-      setMessage("Account created successfully. Please log in.");
+      setMessage(result.data?.message || "Account created successfully. Please log in.");
       setMode("login");
+      setSignupMethod("email");
+      setIdentifier("");
       setPassword("");
       setConfirmPassword("");
+      setOtp("");
+      setOtpSent(false);
     } catch (error) {
       setLoading(false);
       setMessageType("error");
@@ -132,6 +275,20 @@ export default function LoginPage() {
       console.error(error);
     }
   };
+
+  const inputPlaceholder =
+    mode === "login"
+      ? "Email or phone"
+      : signupMethod === "phone"
+      ? "Phone number"
+      : "Email";
+
+  const Icon =
+    mode === "signup" && signupMethod === "phone"
+      ? Phone
+      : mode === "login" && isPhoneNumber(identifier.trim())
+      ? Phone
+      : Mail;
 
   return (
     <main className="min-h-screen bg-slate-950 text-white">
@@ -221,6 +378,33 @@ export default function LoginPage() {
                 </button>
               </div>
 
+              {mode === "signup" && (
+                <div className="mb-6 flex gap-3 rounded-3xl border border-white/10 bg-slate-900/80 p-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSignupMethod("email");
+                      setOtpSent(false);
+                      setOtp("");
+                    }}
+                    className={`flex-1 rounded-3xl py-3 text-sm font-semibold transition ${signupMethod === "email" ? "bg-cyan-500 text-slate-950" : "text-slate-400 hover:text-white"}`}
+                  >
+                    Email
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSignupMethod("phone");
+                      setOtpSent(false);
+                      setOtp("");
+                    }}
+                    className={`flex-1 rounded-3xl py-3 text-sm font-semibold transition ${signupMethod === "phone" ? "bg-cyan-500 text-slate-950" : "text-slate-400 hover:text-white"}`}
+                  >
+                    Phone
+                  </button>
+                </div>
+              )}
+
               {message && (
                 <div className={`mb-6 rounded-3xl border px-4 py-3 text-sm ring-1 ${messageType === "error"
                   ? "border-rose-500/20 bg-rose-500/10 text-rose-100 ring-rose-500/20"
@@ -230,17 +414,108 @@ export default function LoginPage() {
               )}
 
               <div className="space-y-4">
-                <div className="relative">
-                  <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-cyan-300/80">
-                    <Mail className="h-5 w-5" />
-                  </span>
-                  <input
-                    className="w-full rounded-[28px] border border-white/10 bg-slate-950/80 py-4 pl-14 pr-4 text-sm text-white placeholder:text-slate-500 shadow-sm shadow-cyan-500/10 outline-none transition focus:border-cyan-300/60 focus:bg-slate-900 focus:ring-2 focus:ring-cyan-500/20"
-                    placeholder="Email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                  />
-                </div>
+                {mode === "signup" && signupMethod === "phone" ? (
+                  <div className="relative" ref={countryMenuRef}>
+                    <div className="grid gap-3 sm:grid-cols-[200px_minmax(0,1fr)] items-center">
+                      <button
+                        type="button"
+                        onClick={() => setCountryDropdownOpen((open) => !open)}
+                        aria-haspopup="listbox"
+                        aria-expanded={countryDropdownOpen}
+                        className="flex items-center gap-3 rounded-[28px] border border-white/10 bg-slate-900/95 px-4 py-3 text-left text-sm text-white shadow-sm transition hover:border-cyan-300/40 w-full"
+                      >
+                        <span className="text-lg">{countryOptions.find((opt) => opt.code === countryCode)?.flag || "🌐"}</span>
+                        <span className="ml-2 font-medium text-slate-100">{countryCode}</span>
+                        <span className="ml-3 truncate text-sm text-slate-200">{countryOptions.find((opt) => opt.code === countryCode)?.country}</span>
+                        <span className="ml-auto text-slate-400">▾</span>
+                      </button>
+
+                      <div className="relative">
+                        <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-cyan-300/80">
+                          <Phone className="h-5 w-5" />
+                        </span>
+                        <input
+                          type="tel"
+                          inputMode="tel"
+                          className="w-full rounded-[28px] border border-white/10 bg-slate-900/95 py-4 pl-14 pr-4 text-sm text-white placeholder:text-slate-500 shadow-sm outline-none transition focus:border-cyan-300/60 focus:ring-2 focus:ring-cyan-500/20"
+                          placeholder="Phone number"
+                          value={identifier}
+                          onChange={(e) => setIdentifier(e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    {countryDropdownOpen && (
+                      <div className="absolute left-0 right-0 z-30 mt-1 max-h-80 overflow-hidden rounded-2xl border border-white/10 bg-slate-900/95 shadow-[0_30px_80px_-30px_rgba(2,6,23,0.8)]">
+                        <div className="px-3 py-2">
+                          <div className="relative">
+                            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">🔍</span>
+                            <input
+                              className="w-full rounded-xl border border-white/6 bg-slate-900/90 px-10 py-2 text-sm text-white placeholder:text-slate-500 outline-none focus:border-cyan-300/60 focus:ring-2 focus:ring-cyan-500/20"
+                              placeholder="Search country..."
+                              value={countryQuery}
+                              onChange={(e) => setCountryQuery(e.target.value)}
+                            />
+                          </div>
+                        </div>
+                        <div className="max-h-64 overflow-y-auto" role="listbox" aria-label="Country codes">
+                          {countryOptions
+                            .filter((option) => `${option.country} ${option.code}`.toLowerCase().includes(countryQuery.toLowerCase()))
+                            .map((option) => {
+                              const selected = option.code === countryCode;
+                              return (
+                                <button
+                                  key={option.code}
+                                  type="button"
+                                  onClick={() => {
+                                    setCountryCode(option.code);
+                                    setCountryQuery("");
+                                    setCountryDropdownOpen(false);
+                                  }}
+                                  className={`flex w-full items-center gap-3 px-4 py-3 text-left text-sm transition ${
+                                    selected
+                                      ? 'bg-cyan-500/10 text-white font-semibold ring-1 ring-cyan-400/10'
+                                      : 'text-slate-200 hover:bg-slate-800/60'
+                                  }`}
+                                >
+                                  <span className="text-lg">{option.flag}</span>
+                                  <span className="truncate">{option.country}</span>
+                                  <span className="ml-auto text-slate-400">{option.code}</span>
+                                </button>
+                              );
+                            })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-cyan-300/80">
+                      <Icon className="h-5 w-5" />
+                    </span>
+                    <input
+                      className="w-full rounded-[28px] border border-white/10 bg-slate-950/80 py-4 pl-14 pr-4 text-sm text-white placeholder:text-slate-500 shadow-sm shadow-cyan-500/10 outline-none transition focus:border-cyan-300/60 focus:bg-slate-900 focus:ring-2 focus:ring-cyan-500/20"
+                      placeholder={inputPlaceholder}
+                      type={mode === "signup" && signupMethod === "phone" ? "tel" : "text"}
+                      value={identifier}
+                      onChange={(e) => setIdentifier(e.target.value)}
+                    />
+                  </div>
+                )}
+
+                {mode === "signup" && signupMethod === "phone" && (
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={sendOtp}
+                      disabled={loading || !isPhoneNumber(`${countryCode}${identifier.trim()}`)}
+                      className="inline-flex flex-1 items-center justify-center rounded-[28px] border border-cyan-500/20 bg-cyan-500/10 px-4 py-3 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-500/15 disabled:pointer-events-none disabled:opacity-60"
+                    >
+                      {otpSent ? "Resend OTP" : "Send OTP"}
+                    </button>
+                    <span className="text-xs text-slate-400">SMS verification required</span>
+                  </div>
+                )}
 
                 <div className="relative">
                   <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-cyan-300/80">
@@ -266,6 +541,21 @@ export default function LoginPage() {
                       placeholder="Confirm Password"
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
+                    />
+                  </div>
+                )}
+
+                {mode === "signup" && signupMethod === "phone" && (
+                  <div className="relative">
+                    <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-cyan-300/80">
+                      <ShieldCheck className="h-5 w-5" />
+                    </span>
+                    <input
+                      type="text"
+                      className="w-full rounded-[28px] border border-white/10 bg-slate-950/80 py-4 pl-14 pr-4 text-sm text-white placeholder:text-slate-500 shadow-sm shadow-cyan-500/10 outline-none transition focus:border-cyan-300/60 focus:bg-slate-900 focus:ring-2 focus:ring-cyan-500/20"
+                      placeholder="Verification code"
+                      value={otp}
+                      onChange={(e) => setOtp(e.target.value)}
                     />
                   </div>
                 )}

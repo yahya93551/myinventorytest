@@ -38,10 +38,25 @@ export async function checkSubscriptionStatus(tenantId: string): Promise<Subscri
       };
     }
 
-    const isActive = subscription.status === 'active';
+    let isActive = false;
+    let status = subscription.status;
+
+    if (subscription.status === 'active') {
+      if (subscription.active_until) {
+        const activeUntilDate = new Date(subscription.active_until);
+        if (activeUntilDate >= new Date()) {
+          isActive = true;
+        } else {
+          status = 'expired';
+        }
+      } else {
+        isActive = true;
+      }
+    }
+
     return {
       isActive,
-      status: subscription.status,
+      status,
       subscription,
       error: null,
     };

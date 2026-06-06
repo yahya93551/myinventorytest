@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Product, CustomField } from "../../../types";
+import { supabase } from "@/lib/supabase";
 import { CustomFieldInput } from "@/components/CustomFieldInput";
 import { getVisibleSystemFields } from "@/lib/customFields";
 
@@ -8,7 +9,7 @@ type Props = {
   categories: string[];
   customFields?: CustomField[];
   setEditItem: (item: Product | null) => void;
-  saveEdit: (product: Product) => void;
+  saveEdit: (id: string, updates: Partial<Product>) => void;
 };
 
 export default function EditProductModal({
@@ -27,6 +28,8 @@ export default function EditProductModal({
   const [canEditCostPrice, setCanEditCostPrice] = useState(false);
   const [canEditPrice, setCanEditPrice] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
 
   const visibleStandardFields = getVisibleSystemFields(customFields);
 
@@ -52,7 +55,7 @@ export default function EditProductModal({
     });
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!name.trim()) {
       setError("Product name is required.");
       return;
@@ -94,15 +97,79 @@ export default function EditProductModal({
       return;
     }
 
-    saveEdit({
-      ...editItem,
-      name: name.trim(),
-      category,
-      cost_price: canEditCostPrice ? (costPrice === "" ? 0 : costPrice) : (editItem as any).cost_price,
-      price: canEditPrice ? (price === "" ? 0 : price) : editItem.price,
-      stock,
-      custom_data: customData,
-    });
+    const updates: Partial<Product> = {};
+    const normalizedName = name.trim();
+    const normalizedCategory = category.trim();
+    const normalizedCostPrice = canEditCostPrice ? (costPrice === "" ? 0 : costPrice) : undefined;
+    const normalizedPrice = canEditPrice ? (price === "" ? 0 : price) : undefined;
+
+    if (normalizedName && normalizedName !== editItem.name) {
+      updates.name = normalizedName;
+    }
+
+    if (normalizedCategory && normalizedCategory !== editItem.category) {
+      updates.category = normalizedCategory;
+    }
+
+    if (canEditCostPrice && normalizedCostPrice !== undefined && normalizedCostPrice !== (editItem as any).cost_price) {
+      updates.cost_price = normalizedCostPrice;
+    }
+
+    if (canEditPrice && normalizedPrice !== undefined && normalizedPrice !== editItem.price) {
+      updates.price = normalizedPrice;
+    }
+
+    if (stock !== editItem.stock) {
+      updates.stock = stock;
+    }
+
+    if (JSON.stringify(customData) !== JSON.stringify(editItem.custom_data || {})) {
+      updates.custom_data = customData;
+    }
+
+    if (imageFile) {
+      try {
+        const filePath = `products/${Date.now()}_${imageFile.name}`;
+        const { error: uploadError } = await supabase.storage
+          .from('product-images')
+          .upload(filePath, imageFile, { upsert: false });
+
+        if (uploadError) {
+          console.warn('Image upload failed:', uploadError.message);
+          if (Object.keys(updates).length === 0) {
+            setError('Image upload failed. Please try again.');
+            return;
+          }
+        } else {
+          const { data: urlData } = await supabase.storage
+            .from('product-images')
+            .getPublicUrl(filePath);
+
+          if (!urlData?.publicUrl) {
+            console.warn('Failed to get public URL for uploaded image.');
+            if (Object.keys(updates).length === 0) {
+              setError('Image upload failed. Please try again.');
+              return;
+            }
+          } else {
+            updates.image_url = urlData.publicUrl;
+          }
+        }
+      } catch (err) {
+        console.warn('Image upload failed:', err);
+        if (Object.keys(updates).length === 0) {
+          setError('Image upload failed. Please try again.');
+          return;
+        }
+      }
+    }
+
+    if (Object.keys(updates).length === 0) {
+      setError("No changes detected.");
+      return;
+    }
+
+    saveEdit(editItem.id, updates);
   };
 
   return (
@@ -237,20 +304,50 @@ export default function EditProductModal({
             ))}
         </div>
 
+        <div className="mt-4 col-span-full">
+          <label className="block text-sm text-theme-secondary mb-2">Product image (optional)</label>
+          <div className="flex items-start gap-4">
+            <div>
+              {imagePreview ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={imagePreview} alt="new preview" className="w-20 h-20 object-cover rounded-lg" />
+              ) : editItem.image_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={editItem.image_url} alt={editItem.name} className="w-20 h-20 object-cover rounded-lg" />
+              ) : (
+                <div className="w-20 h-20 bg-gray-100 rounded-lg flex items-center justify-center text-xs text-gray-400">No image</div>
+              )}
+            </div>
+            <input type="file" accept="image/*" onChange={(e) => {
+              const f = e.target.files?.[0] ?? null;
+              setImageFile(f);
+              if (f) {
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                  setImagePreview(reader.result as string);
+                };
+                reader.readAsDataURL(f);
+              }
+            }} />
+          </div>
+        </div>
+
         {error && <p className="mb-4 text-sm text-red-300">{error}</p>}
 
         <div className="flex justify-end gap-3">
           <button
+            type="button"
             onClick={() => setEditItem(null)}
-            className="rounded-xl border border-theme px-4 py-2 text-theme-secondary"
+            className="rounded-xl border border-theme px-4 py-2 text-theme-secondary transition hover:bg-theme-surface"
           >
             Cancel
           </button>
           <button
+            type="button"
             onClick={handleSave}
-            className="rounded-xl bg-green-600 px-4 py-2 text-white"
+            className="rounded-xl bg-green-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500"
           >
-            Save
+            Save changes
           </button>
         </div>
       </div>
@@ -269,7 +366,8 @@ export default function EditProductModal({
           background: var(--surface-card);
           padding: 24px;
           border-radius: 12px;
-          width: 420px;
+          width: min(95vw, 420px);
+          max-width: 100%;
           color: var(--text-primary);
         }
       `}</style>

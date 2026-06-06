@@ -30,6 +30,7 @@ const ProductCreateSchema = z.object({
     .int("Stock must be an integer")
     .nonnegative("Stock cannot be negative")
     .default(0),
+  image_url: z.string().url("Image URL must be valid").optional(),
   custom_data: z.record(z.string(), z.unknown()).optional(),
 });
 
@@ -43,6 +44,7 @@ const ProductUpdateSchema = z.object({
     .int("Stock must be an integer")
     .nonnegative("Stock cannot be negative")
     .optional(),
+  image_url: z.string().url("Image URL must be valid").optional(),
   custom_data: z.record(z.string(), z.unknown()).optional(),
 }).refine(
   (data) => Object.keys(data).length > 0,
@@ -141,7 +143,7 @@ export async function POST(req: Request) {
       return jsonError(errorMessages, 422);
     }
 
-    const { name, category, cost_price, price, stock, custom_data } = parseResult.data;
+    const { name, category, cost_price, price, stock, image_url, custom_data } = parseResult.data;
 
     // Sanitize custom_data: only allow keys that correspond to visible custom fields for this tenant.
     let sanitizedCustomData = custom_data || {};
@@ -195,6 +197,7 @@ export async function POST(req: Request) {
       cost_price,
       price,
       stock,
+      image_url,
       custom_data: sanitizedCustomData || {},
       tenant_id: tenantContext.tenantId,
       user_id: tenantContext.userId,

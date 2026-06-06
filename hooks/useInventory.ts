@@ -114,7 +114,11 @@ export function useInventory() {
       await apiPatch<void>("/api/products", { id, updates });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["products"] });
+      queryClient.invalidateQueries({ queryKey: ["products"], exact: false });
+      queryClient.invalidateQueries({ queryKey: ["products", currentPage] });
+    },
+    onError: (error) => {
+      console.error("[useInventory] updateProduct failed:", error);
     },
   });
 

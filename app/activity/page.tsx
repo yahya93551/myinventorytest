@@ -117,7 +117,12 @@ export default function ActivityPage() {
               <div className="text-theme-secondary mt-2">Only the tenant owner can view activity logs.</div>
             </Card>
           ) : (
-            <ActivityLog perPage={20} action={selectedAction || undefined} entity={selectedEntity || undefined} performedBy={performedBy || undefined} />
+            <ActivityLog
+              perPage={20}
+              action={selectedAction || undefined}
+              entity={selectedEntity || undefined}
+              performedBy={performedBy || undefined}
+            />
           )}
         </div>
       </div>

@@ -43,7 +43,7 @@ export default function InventoryPage() {
   return (
     <div className={`flex min-h-screen items-start flex-col lg:flex-row ${dark ? "theme-dark" : "theme-light"}`}>
       <Sidebar />
-      <div className="flex-1 p-4 sm:p-6">
+      <div className="flex-1 min-w-0 p-4 sm:p-6">
         <Inventory {...inventory} customFields={customFields} />
       </div>
     </div>

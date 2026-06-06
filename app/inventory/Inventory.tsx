@@ -13,6 +13,7 @@ import DropModal from "./components/DropModal";
 import EditProductModal from "./components/EditProductModal";
 import { getVisibleSystemFieldNames } from "@/lib/customFields";
 import { apiGet } from "@/lib/apiClient";
+import { supabase } from "@/lib/supabase";
 
 
 type InventoryProps = {
@@ -24,7 +25,7 @@ type InventoryProps = {
     error: string | null;
   };
 
-  updateProduct: (id: string, updates: Partial<Product>) => Promise<boolean>;
+  updateProduct: (id: string, updates: Partial<ProductForm>) => Promise<boolean>;
   deleteProduct: (id: string) => Promise<boolean>;
   restockProduct: (id: string, amount: number) => Promise<boolean>;
 
@@ -106,6 +107,7 @@ export default function Inventory(props: InventoryProps) {
     text: string;
   } | null>(null);
   const [tenantRole, setTenantRole] = useState<string>("");
+  const [storageBucketExists, setStorageBucketExists] = useState<boolean | null>(null);
 
   const visibleStandardFieldNames = getVisibleSystemFieldNames(customFields);
   const totalProducts = products.length;
@@ -136,10 +138,28 @@ export default function Inventory(props: InventoryProps) {
     loadTenantRole();
   }, []);
 
+  // Lightweight check to detect whether the `product-images` storage bucket exists.
+  useEffect(() => {
+    (async () => {
+      try {
+        const { error } = await supabase.storage.from('product-images').list('', { limit: 1 });
+        if (error) {
+          console.warn('Storage bucket check:', error.message);
+          setStorageBucketExists(false);
+        } else {
+          setStorageBucketExists(true);
+        }
+      } catch (err) {
+        console.warn('Storage bucket check error:', err);
+        setStorageBucketExists(false);
+      }
+    })();
+  }, []);
+
   // =====================================================
   // ✅ API FUNCTION
   // =====================================================
-  const addProductHandler = async () => {
+  const addProductHandler = async (imageFile?: File | null) => {
     if (!name.trim()) {
       showMessage("error", "Product name is required");
       return;
@@ -183,6 +203,41 @@ export default function Inventory(props: InventoryProps) {
       return;
     }
 
+    let imageUrl: string | undefined;
+
+    if (imageFile) {
+      if (storageBucketExists === false) {
+        console.warn('Skipping image upload: product-images bucket missing');
+        showMessage('error', 'Image upload skipped: storage bucket not found');
+      } else {
+        try {
+          const filePath = `products/${Date.now()}_${imageFile.name}`;
+          const { error: uploadError } = await supabase.storage
+            .from('product-images')
+            .upload(filePath, imageFile, { upsert: false });
+
+          if (uploadError) {
+            console.warn('Image upload skipped:', uploadError.message);
+            showMessage('error', 'Image upload failed (product created without image).');
+          } else {
+            const { data: urlData } = await supabase.storage
+              .from('product-images')
+              .getPublicUrl(filePath);
+
+            if (!urlData?.publicUrl) {
+              console.warn('Failed to get public URL for uploaded image.');
+              showMessage('error', 'Image uploaded but URL retrieval failed.');
+            } else {
+              imageUrl = urlData.publicUrl;
+            }
+          }
+        } catch (err) {
+          console.warn('Image upload (non-critical):', err);
+          showMessage('error', 'Image upload failed (product created without image).');
+        }
+      }
+    }
+
     const success = await addProduct({
       name: name.trim(),
       category,
@@ -190,6 +245,7 @@ export default function Inventory(props: InventoryProps) {
       price: parsedPrice,
       stock: parsedStock,
       custom_data: customData,
+      image_url: imageUrl,
     });
 
     if (success) {
@@ -208,8 +264,13 @@ export default function Inventory(props: InventoryProps) {
   // =====================================================
   // EDIT
   // =====================================================
-  const saveEdit = async (data: Product) => {
-    const success = await updateProduct(data.id, data);
+  const saveEdit = async (id: string, updates: Partial<ProductForm>) => {
+    if (Object.keys(updates).length === 0) {
+      showMessage("error", "No changes made to save.");
+      return;
+    }
+
+    const success = await updateProduct(id, updates);
 
     if (success) {
       showMessage("success", "Product updated successfully");
@@ -327,7 +388,7 @@ export default function Inventory(props: InventoryProps) {
   };
 
   return (
-    <div className="w-full space-y-8 px-2 sm:px-4 lg:px-6">
+    <div className="w-full min-w-0 space-y-8 px-2 sm:px-4 lg:px-6">
 
       {loading.isLoading && (
         <div className="p-3 rounded-xl text-sm font-medium bg-sky-500/10 text-sky-200">
@@ -370,35 +431,35 @@ export default function Inventory(props: InventoryProps) {
             <button
               type="button"
               onClick={() => setIsAddModalOpen(true)}
-              className="rounded-2xl bg-theme-accent px-4 py-2 text-sm font-semibold text-slate-950 shadow-sm transition hover:bg-cyan-400"
+              className="rounded-2xl bg-theme-accent px-5 py-3 min-h-[44px] text-sm font-semibold text-slate-950 shadow-sm transition hover:bg-cyan-400"
             >
               + Add Product
             </button>
           )}
           <button
             onClick={() => setBulkSellOpen(true)}
-            className="rounded-2xl border border-theme bg-theme-card px-4 py-2 text-sm font-semibold text-theme-primary transition hover:bg-theme-surface"
+            className="rounded-2xl border border-theme bg-theme-card px-5 py-3 min-h-[44px] text-sm font-semibold text-theme-primary transition hover:bg-theme-surface"
           >
             Sell multiple items
           </button>
         </div>
       </div>
 
-      <div className="grid gap-3 py-4 md:grid-cols-3">
-        <div className="rounded-2xl border-theme bg-theme-card p-5 shadow-soft">
+      <div className="grid grid-cols-1 gap-4 py-4 md:grid-cols-3">
+        <div className="rounded-2xl border-theme bg-theme-card p-4 sm:p-5 shadow-soft">
           <p className="text-sm uppercase tracking-[0.16em] text-theme-secondary">Products</p>
-          <p className="mt-3 text-3xl font-semibold text-theme-primary">{totalProducts}</p>
-          <p className="mt-2 text-sm text-theme-secondary">Total inventory items.</p>
+          <p className="mt-2 text-2xl sm:text-3xl font-semibold text-theme-primary">{totalProducts}</p>
+          <p className="mt-1 text-xs sm:text-sm text-theme-secondary">Total inventory items.</p>
         </div>
-        <div className="rounded-2xl border-theme bg-theme-card p-5 shadow-soft">
+        <div className="rounded-2xl border-theme bg-theme-card p-4 sm:p-5 shadow-soft">
           <p className="text-sm uppercase tracking-[0.16em] text-theme-secondary">Low stock</p>
-          <p className="mt-3 text-3xl font-semibold text-theme-primary">{lowStockCount}</p>
-          <p className="mt-2 text-sm text-theme-secondary">Products below threshold.</p>
+          <p className="mt-2 text-2xl sm:text-3xl font-semibold text-theme-primary">{lowStockCount}</p>
+          <p className="mt-1 text-xs sm:text-sm text-theme-secondary">Products below threshold.</p>
         </div>
-        <div className="rounded-2xl border-theme bg-theme-card p-5 shadow-soft">
+        <div className="rounded-2xl border-theme bg-theme-card p-4 sm:p-5 shadow-soft">
           <p className="text-sm uppercase tracking-[0.16em] text-theme-secondary">Out of stock</p>
-          <p className="mt-3 text-3xl font-semibold text-theme-primary">{outOfStockCount}</p>
-          <p className="mt-2 text-sm text-theme-secondary">Need restocking now.</p>
+          <p className="mt-2 text-2xl sm:text-3xl font-semibold text-theme-primary">{outOfStockCount}</p>
+          <p className="mt-1 text-xs sm:text-sm text-theme-secondary">Need restocking now.</p>
         </div>
       </div>
 
@@ -443,7 +504,7 @@ export default function Inventory(props: InventoryProps) {
 
       {/* TABLE */}
       <section>
-        <div className="rounded-2xl overflow-auto max-h-[65vh] bg-theme-card border border-theme shadow-soft">
+        <div className="rounded-2xl overflow-y-auto max-h-none md:max-h-[65vh] bg-theme-card border border-theme shadow-soft">
           <ProductTable
             products={products}
             customFields={customFields}

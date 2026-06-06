@@ -9,6 +9,7 @@ export const ProductSchema = z.object({
   cost_price: z.number().nonnegative('Cost price cannot be negative'),
   price: z.number().positive('Price must be positive').max(999999, 'Price too high'),
   stock: z.number().int().min(0, 'Stock cannot be negative'),
+  image_url: z.string().optional(),
   user_id: z.string().uuid().optional(),
   custom_data: z.record(z.string(), z.any()).optional(),
 });
