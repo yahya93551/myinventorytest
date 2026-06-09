@@ -124,7 +124,7 @@ export default function ProductTable({
   return (
     <div className="w-full rounded-2xl bg-theme-card border border-theme shadow-soft">
       <div className="border-b border-theme/60 px-4 py-4 sm:px-6">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="flex flex-wrap items-center gap-3">
           <div className="relative flex-1 min-w-0">
             <label htmlFor="inventory-search" className="sr-only">
               Search inventory
@@ -141,7 +141,7 @@ export default function ProductTable({
             />
           </div>
 
-          <div className="relative flex shrink-0 items-center sm:ml-3">
+          <div className="relative flex shrink-0 items-center">
             <label htmlFor="inventory-filter" className="sr-only">
               Stock status filter
             </label>
@@ -346,41 +346,41 @@ export default function ProductTable({
               filteredProducts.map((product) => (
                 <tr key={product.id} className="border-t border-theme">
                   <td className="px-4 py-4">
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center justify-center">
                       {product.image_url ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={product.image_url} alt={product.name} className="w-20 h-20 object-cover rounded-lg" />
                       ) : (
-                        <div className="w-20 h-20 bg-gray-100 rounded-lg flex items-center justify-center text-xs text-theme-secondary">No image</div>
+                        <div className="w-20 h-20 bg-theme-surface rounded-lg flex items-center justify-center text-xs text-theme-secondary">No image</div>
                       )}
-
-                      <div>
-                        <h3 className="font-semibold text-lg">{product.name}</h3>
-                        <span className="text-xs text-theme-secondary">{product.category}</span>
-                      </div>
                     </div>
                   </td>
 
                   <td className="px-4 py-4">
-                    <div className="space-y-2">
-                      {/* Selling Price - Primary */}
-                      <div className="flex items-center gap-2 rounded-2xl border border-theme/20 bg-theme/5 p-3">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-green-500/10 text-green-400">
-                          <DollarSign className="w-4 h-4" />
-                        </div>
-                        <div>
-                          <div className="text-xs font-semibold uppercase tracking-[0.15em] text-foreground/60">Selling</div>
+                    <div className="space-y-3">
+                      <div className="space-y-2">
+                        <div className="text-sm font-semibold text-foreground">{product.name}</div>
+                        <span className="inline-flex rounded-full bg-sky-500/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.15em] text-sky-200">
+                          {product.category || "Uncategorized"}
+                        </span>
+                      </div>
+
+                      <div className="rounded-2xl bg-theme-surface p-3">
+                        <div className="space-y-2">
+                          <div className="inline-flex items-center gap-2 text-theme-secondary">
+                            <DollarSign className="w-4 h-4 text-sky-300" />
+                            <span className="text-xs uppercase tracking-[0.15em]">Selling</span>
+                          </div>
                           <div className="text-sm font-semibold text-foreground">${parseFloat(String(product.price ?? 0)).toFixed(2)}</div>
                         </div>
                       </div>
 
-                      {/* Cost Price - Secondary */}
-                      <div className="flex items-center gap-2 rounded-2xl border border-theme/20 bg-theme/5 p-3">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-500/10 text-blue-400">
-                          <Tag className="w-4 h-4" />
-                        </div>
-                        <div>
-                          <div className="text-xs font-semibold uppercase tracking-[0.15em] text-foreground/60">Cost</div>
+                      <div className="rounded-2xl bg-theme-surface p-3">
+                        <div className="space-y-2">
+                          <div className="inline-flex items-center gap-2 text-theme-secondary">
+                            <Tag className="w-4 h-4 text-emerald-300" />
+                            <span className="text-xs uppercase tracking-[0.15em]">Cost</span>
+                          </div>
                           <div className="text-sm font-semibold text-foreground">${parseFloat(String(product.cost_price ?? 0)).toFixed(2)}</div>
                         </div>
                       </div>
@@ -388,52 +388,24 @@ export default function ProductTable({
                   </td>
 
                   <td className="px-4 py-4">
-                    <div className="space-y-2">
-                      {/* Stock Quantity Badge */}
+                    <div className="space-y-2 text-center">
+                      <div className="text-xs uppercase tracking-[0.15em] text-theme-secondary">Stock</div>
                       <div
-                        className={`inline-flex min-w-[44px] h-10 items-center justify-center rounded-2xl px-3 text-sm font-semibold transition-all duration-200 ${
+                        className={`inline-flex w-full items-center justify-center rounded-full px-3 py-2 text-sm font-semibold ${
                           product.stock === 0
-                            ? "bg-red-500/10 text-red-400 border border-red-500/30"
-                            : product.stock <= 5
-                            ? "bg-amber-500/10 text-amber-400 border border-amber-500/30"
-                            : product.stock < 20
-                            ? "bg-yellow-500/10 text-yellow-400 border border-yellow-500/30"
-                            : "bg-green-500/10 text-green-400 border border-green-500/30"
+                            ? "bg-red-500/20 text-red-300"
+                            : product.stock < 10
+                            ? "bg-yellow-500/20 text-yellow-300"
+                            : "bg-green-500/20 text-green-300"
                         }`}
                       >
                         {product.stock}
                       </div>
-
-                      {/* Stock Status Indicator */}
-                      <div className="flex flex-wrap items-center gap-2 text-sm font-semibold">
-                        {product.stock === 0 ? (
-                          <div className="flex items-center gap-1 rounded-full bg-red-500/10 px-2 py-1 text-red-400 border border-red-500/30">
-                            <AlertCircle className="w-3 h-3" />
-                            <span>Out of Stock</span>
-                          </div>
-                        ) : product.stock <= 5 ? (
-                          <div className="flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-1 text-amber-400 border border-amber-500/30">
-                            <AlertCircle className="w-3 h-3 animate-pulse" />
-                            <span>Critical</span>
-                          </div>
-                        ) : product.stock < 20 ? (
-                          <div className="flex items-center gap-1 rounded-full bg-yellow-500/10 px-2 py-1 text-yellow-400 border border-yellow-500/30">
-                            <AlertCircle className="w-3 h-3" />
-                            <span>Low</span>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-1 rounded-full bg-green-500/10 px-2 py-1 text-green-400 border border-green-500/30">
-                            <span className="h-2.5 w-2.5 rounded-full bg-green-400"></span>
-                            <span>In Stock</span>
-                          </div>
-                        )}
-                      </div>
                     </div>
                   </td>
 
-                  <td className="px-6 py-6">
+                  <td className="px-4 py-4">
                     <div className="flex flex-wrap gap-2">
-                      {/* Primary Action: Sell */}
                       <button
                         onClick={() => openSell(product)}
                         className="group inline-flex items-center justify-center gap-2 w-full px-3 py-3 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 text-sm font-semibold text-emerald-300 hover:bg-emerald-500/15 transition min-h-[44px]"
@@ -443,7 +415,6 @@ export default function ProductTable({
                         Sell
                       </button>
 
-                      {/* Secondary Action: Load Goods */}
                       {canRestock && (
                         <button
                           onClick={() => onRestock?.(product)}
@@ -455,7 +426,6 @@ export default function ProductTable({
                         </button>
                       )}
 
-                      {/* Neutral Action: Edit */}
                       {canEdit && (
                         <button
                           onClick={() => onEdit?.(product)}
@@ -467,7 +437,6 @@ export default function ProductTable({
                         </button>
                       )}
 
-                      {/* Destructive Action: Delete */}
                       {canDelete && (
                         <button
                           onClick={() => onDelete?.(product.id)}
