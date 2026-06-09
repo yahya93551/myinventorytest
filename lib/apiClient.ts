@@ -35,6 +35,13 @@ function removeStoredSessionUserId() {
 }
 
 async function getToken() {
+  try {
+    // Refresh session to ensure token is valid
+    await supabase.auth.refreshSession();
+  } catch (err) {
+    console.warn('Session refresh failed:', err);
+  }
+  
   const { data } = await supabase.auth.getSession();
   return data.session?.access_token || null;
 }
