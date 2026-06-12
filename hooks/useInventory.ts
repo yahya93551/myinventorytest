@@ -4,6 +4,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/apiClient";
+import { useTenantRole } from "@/hooks/useTenantRole";
 import {
   BulkSaleItem,
   Product,
@@ -81,6 +82,24 @@ export function useInventory() {
       return response.data || [];
     },
     staleTime: 1000 * 60 * 5,
+  });
+
+  // ================= TENANT ROLE (for owner-only metrics) =================
+  const tenantRoleQuery = useTenantRole();
+
+  // ================= FETCH OWNER METRICS =================
+  const {
+    data: ownerMetricsData,
+    isLoading: ownerMetricsLoading,
+    error: ownerMetricsError,
+  } = useQuery({
+    queryKey: ["ownerMetrics"],
+    enabled: !!tenantRoleQuery.data && tenantRoleQuery.data.role === "owner",
+    queryFn: async () => {
+      const resp = await apiGet<Record<string, any>>("/api/analytics/owner-metrics");
+      return resp.data || {};
+    },
+    staleTime: 1000 * 60 * 2,
   });
 
   // ================= ADD PRODUCT MUTATION =================
@@ -428,6 +447,7 @@ export function useInventory() {
       productsError?.message ||
       salesError?.message ||
       categoriesError?.message ||
+      ownerMetricsError?.message ||
       addCategoryMutation.error?.message ||
       updateCategoryMutation.error?.message ||
       deleteCategoryMutation.error?.message ||
@@ -470,5 +490,6 @@ export function useInventory() {
     confirmSell,
     loadProduct,
     dropProduct,
+    ownerMetrics: ownerMetricsData || null,
   };
 }

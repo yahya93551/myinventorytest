@@ -86,6 +86,7 @@ CREATE TABLE sales (
   customer_name text,
   customer_address text,
   customer_phone text,
+  paid boolean NOT NULL DEFAULT true,
   created_at timestamptz NOT NULL DEFAULT now()
 );
 

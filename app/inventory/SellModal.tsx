@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
-import { apiPost } from "@/lib/apiClient";
 import { Product } from "../../types";
 import { useBusinessSettings } from "@/hooks/useCustomFields";
+import { countryOptions, normalizePhoneNumber, isPhoneNumber, splitPhoneNumber } from "@/lib/auth";
 
 type SaleMeta = {
   order_id?: string;
   customer_name?: string;
   customer_address?: string;
   customer_phone?: string;
+  paid?: boolean;
 };
 
 type Props = {
@@ -34,6 +35,8 @@ export default function SellModal({
   const [customerName, setCustomerName] = useState("");
   const [customerAddress, setCustomerAddress] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
+  const [countryCode, setCountryCode] = useState("+252");
+  const [isPaidSale, setIsPaidSale] = useState(true);
 
   const { data: businessSettings } = useBusinessSettings();
 
@@ -43,7 +46,9 @@ export default function SellModal({
       setCustomerName("");
       setCustomerAddress("");
       setCustomerPhone("");
+      setCountryCode("+252");
       setPrintAfterSale(false);
+      setIsPaidSale(true);
       setError(null);
     }
   }, [sellItem]);
@@ -125,6 +130,19 @@ export default function SellModal({
       return;
     }
 
+    const rawPhone = customerPhone.trim();
+    const phoneValue = rawPhone.startsWith("+") ? rawPhone : `${countryCode}${rawPhone}`;
+
+    if (!isPaidSale && (!customerName.trim() || !rawPhone)) {
+      setError("Customer name and phone are required for unpaid sales.");
+      return;
+    }
+
+    if (rawPhone && !isPhoneNumber(phoneValue)) {
+      setError("Please enter a valid phone number.");
+      return;
+    }
+
     setIsProcessing(true);
     setError(null);
 
@@ -133,7 +151,8 @@ export default function SellModal({
         order_id: orderId,
         customer_name: customerName || undefined,
         customer_address: customerAddress || undefined,
-        customer_phone: customerPhone || undefined,
+        customer_phone: rawPhone ? normalizePhoneNumber(phoneValue) : undefined,
+        paid: isPaidSale,
       });
 
       if (result === false) {
@@ -199,15 +218,64 @@ export default function SellModal({
           </label>
           <label className="block text-sm text-theme-secondary">
             Phone
-            <input
-              className="mt-1 w-full rounded bg-theme-input px-3 py-2 text-theme-primary"
-              type="text"
-              value={customerPhone}
-              onChange={(e) => setCustomerPhone(e.target.value)}
-              disabled={isProcessing}
-              placeholder="Customer phone"
-            />
+            <div className="mt-1 flex gap-2">
+              <select
+                className="w-24 rounded bg-slate-950 px-3 py-2 text-slate-100"
+                value={countryCode}
+                onChange={(e) => setCountryCode(e.target.value)}
+                disabled={isProcessing}
+              >
+                {countryOptions.map((option) => (
+                  <option key={option.code} value={option.code}>
+                    {option.flag} {option.code}
+                  </option>
+                ))}
+              </select>
+              <input
+                className="flex-1 rounded bg-theme-input px-3 py-2 text-theme-primary"
+                type="tel"
+                inputMode="tel"
+                value={customerPhone}
+                onChange={(e) => setCustomerPhone(e.target.value)}
+                disabled={isProcessing}
+                placeholder="Phone number"
+              />
+            </div>
           </label>
+          <div className="mt-4 rounded-2xl border border-theme bg-theme-surface p-3">
+            <p className="text-sm font-semibold text-theme-primary mb-2">Payment status</p>
+            <div className="flex flex-wrap gap-4 text-sm text-theme-secondary">
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="salePaid"
+                  value="paid"
+                  checked={isPaidSale}
+                  disabled={isProcessing}
+                  onChange={() => setIsPaidSale(true)}
+                  className="h-4 w-4 rounded border-theme bg-theme-input"
+                />
+                Paid
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="salePaid"
+                  value="unpaid"
+                  checked={!isPaidSale}
+                  disabled={isProcessing}
+                  onChange={() => setIsPaidSale(false)}
+                  className="h-4 w-4 rounded border-theme bg-theme-input"
+                />
+                Pay later (create debt)
+              </label>
+            </div>
+            {!isPaidSale && (
+              <p className="mt-2 text-xs text-amber-300">
+                Customer name and phone number are required for unpaid sales.
+              </p>
+            )}
+          </div>
         </div>
 
         <input

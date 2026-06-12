@@ -28,6 +28,7 @@ export default function SettingsPage() {
   const [subUserLoading, setSubUserLoading] = useState(false);
   const [activeSection, setActiveSection] = useState<"owner" | "system" | "subuser" | "business" | "customfields" | "standardfields" | "subscription">("owner");
   const [businessType, setBusinessType] = useState<string>("custom");
+  const [quickActionsOpen, setQuickActionsOpen] = useState(false);
   const router = useRouter();
   const { isActive: subscriptionActive, loading: subscriptionLoading } = useSubscription();
 
@@ -302,30 +303,44 @@ export default function SettingsPage() {
 
             {/* Quick Actions */}
             <div>
-              <h2 className="text-lg font-semibold text-theme-primary mb-4">Quick Actions</h2>
-              <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-                {quickActions.map((action) => {
-                  const Icon = action.icon;
-                  return (
-                    <Link
-                      key={action.title}
-                      href={action.href}
-                      className="group card-interactive block p-6"
-                    >
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="p-3 rounded-xl bg-theme-input text-cyan-400 group-hover:bg-cyan-500 group-hover:text-slate-950 transition-all duration-200">
-                          <Icon size={24} />
-                        </div>
-                        <ChevronRight size={20} className="text-theme-muted group-hover:text-cyan-400 transition-all duration-200" />
-                      </div>
-                      <div className="space-y-2">
-                        <h3 className="text-lg font-semibold text-theme-primary">{action.title}</h3>
-                        <p className="text-sm text-theme-secondary">{action.description}</p>
-                      </div>
-                    </Link>
-                  );
-                })}
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+                <div>
+                  <h2 className="text-lg font-semibold text-theme-primary">Quick Actions</h2>
+                  <p className="text-sm text-theme-secondary"></p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setQuickActionsOpen((open) => !open)}
+                  className="btn-secondary btn-sm"
+                >
+                  {quickActionsOpen ? "Hide Quick Actions" : "Show Quick Actions"}
+                </button>
               </div>
+              {quickActionsOpen ? (
+                <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+                  {quickActions.map((action) => {
+                    const Icon = action.icon;
+                    return (
+                      <Link
+                        key={action.title}
+                        href={action.href}
+                        className="group card-interactive block p-6"
+                      >
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="p-3 rounded-xl bg-theme-input text-cyan-400 group-hover:bg-cyan-500 group-hover:text-slate-950 transition-all duration-200">
+                            <Icon size={24} />
+                          </div>
+                          <ChevronRight size={20} className="text-theme-muted group-hover:text-cyan-400 transition-all duration-200" />
+                        </div>
+                        <div className="space-y-2">
+                          <h3 className="text-lg font-semibold text-theme-primary">{action.title}</h3>
+                          <p className="text-sm text-theme-secondary">{action.description}</p>
+                        </div>
+                      </Link>
+                    );
+                  })}
+                </div>
+              ) : null}
             </div>
 
             {/* Settings Navigation - Horizontal Sticky Tab Bar */}

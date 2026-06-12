@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import Sidebar from "@/components/Sidebar";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { useTenantRole } from "@/hooks/useTenantRole";
+import { useBusinessSettings } from "@/hooks/useCustomFields";
 import { useTheme } from "@/lib/theme-context";
 import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/apiClient";
 import { useSubscription } from "@/hooks/useSubscription";
@@ -40,6 +41,7 @@ export default function DebtsPage() {
   const { loading: authLoading } = useRequireAuth();
   const { data: roleData, isLoading: roleLoading, isError: roleIsError, error: roleError } = useTenantRole();
   const { isActive: subscriptionActive, loading: subscriptionLoading } = useSubscription();
+  const { data: businessSettings } = useBusinessSettings();
   const [debts, setDebts] = useState<StoredDebt[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalInitial, setModalInitial] = useState<Partial<DebtFormValues> | undefined>(undefined);
@@ -83,6 +85,8 @@ export default function DebtsPage() {
 
     fetchDebts();
   }, [authLoading, roleLoading, roleIsError, roleError, isOwner]);
+
+  const businessName = businessSettings?.business_name?.trim() || "Business";
 
   const customers = useMemo(() => {
     const map = new Map<string, { name: string; phone: string; debts: DebtRecord[] }>();
@@ -274,6 +278,7 @@ export default function DebtsPage() {
               <DebtCard
                 key={c.phone}
                 customer={c}
+                businessName={businessName}
                 onAdd={openAddModal}
                 onDeleteDebt={handleDeleteDebt}
                 onMarkPaid={handleMarkPaid}

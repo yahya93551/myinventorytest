@@ -25,6 +25,7 @@ export const SaleSchema = z.object({
   customer_name: z.string().optional(),
   customer_address: z.string().optional(),
   customer_phone: z.string().optional(),
+  paid: z.boolean().optional(),
 });
 
 export type SaleMetadata = {
@@ -32,6 +33,7 @@ export type SaleMetadata = {
   customer_name?: string;
   customer_address?: string;
   customer_phone?: string;
+  paid?: boolean;
 };
 
 export const CategorySchema = z.string().min(1, 'Category name required').max(50, 'Category name too long');

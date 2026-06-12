@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Button from "./Button";
 import { X } from "lucide-react";
+import { countryOptions, isPhoneNumber, normalizePhoneNumber, splitPhoneNumber } from "@/lib/auth";
 
 export interface DebtFormValues {
   name: string;
@@ -20,6 +21,7 @@ interface DebtModalProps {
 }
 
 export default function DebtModal({ open, initial = {}, onClose, onSave }: DebtModalProps) {
+  const [countryCode, setCountryCode] = useState("+252");
   const [form, setForm] = useState<DebtFormValues>({
     name: initial.name || "",
     phone: initial.phone || "",
@@ -30,9 +32,11 @@ export default function DebtModal({ open, initial = {}, onClose, onSave }: DebtM
 
   useEffect(() => {
     if (open) {
+      const phoneParts = initial?.phone ? splitPhoneNumber(initial.phone) : { countryCode: "+252", phone: "" };
+      setCountryCode(phoneParts.countryCode);
       setForm({
         name: initial?.name || "",
-        phone: initial?.phone || "",
+        phone: phoneParts.phone,
         amount: initial?.amount || "",
         date: initial?.date || new Date().toISOString().slice(0, 10),
         note: initial?.note || "",
@@ -69,12 +73,26 @@ export default function DebtModal({ open, initial = {}, onClose, onSave }: DebtM
 
             <label className="text-sm">
               <div className="text-xs text-theme-secondary mb-1">Phone</div>
-              <input
-                value={form.phone}
-                onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                className="w-full rounded-lg border border-theme p-2 bg-transparent"
-                placeholder="e.g. +1234567890"
-              />
+              <div className="flex gap-2">
+                <select
+                  value={countryCode}
+                  onChange={(e) => setCountryCode(e.target.value)}
+                  className="w-24 rounded-lg border border-theme p-2 bg-slate-950 text-slate-100"
+                >
+                  {countryOptions.map((option) => (
+                    <option key={option.code} value={option.code}>
+                      {option.flag} {option.code}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  value={form.phone}
+                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                  className="flex-1 rounded-lg border border-theme p-2 bg-transparent"
+                  placeholder="Phone number"
+                  inputMode="tel"
+                />
+              </div>
             </label>
 
             <label className="text-sm">
@@ -117,15 +135,23 @@ export default function DebtModal({ open, initial = {}, onClose, onSave }: DebtM
               variant="primary"
               size="md"
               onClick={() => {
-                // basic validation
-                if (!form.phone || !form.amount) {
+                const rawPhone = form.phone.trim();
+                const phoneInput = rawPhone.startsWith("+") ? rawPhone : `${countryCode}${rawPhone}`;
+                const normalizedPhone = normalizePhoneNumber(phoneInput);
+
+                if (!rawPhone || !form.amount) {
                   alert("Phone and amount are required");
+                  return;
+                }
+
+                if (!isPhoneNumber(normalizedPhone)) {
+                  alert("Please enter a valid phone number.");
                   return;
                 }
 
                 onSave({
                   name: form.name.trim(),
-                  phone: form.phone.trim(),
+                  phone: normalizedPhone,
                   amount: form.amount,
                   date: form.date,
                   note: form.note?.trim(),

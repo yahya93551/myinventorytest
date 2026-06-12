@@ -8,7 +8,7 @@ import { getVisibleSystemFieldNames } from "@/lib/customFields";
 
 export default function Dashboard() {
   // 🔥 Directly use the live hook – always up‑to-date
-  const { products, sales } = useInventory();
+  const { products, sales, ownerMetrics } = useInventory();
   const customFieldsQuery = useCustomFields();
   const customFields = customFieldsQuery.data || [];
   const visibleSystemFieldNames = getVisibleSystemFieldNames(customFields);
@@ -65,7 +65,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <StatsCards products={products} visibleFieldNames={visibleSystemFieldNames} />
+      <StatsCards products={products} visibleFieldNames={visibleSystemFieldNames} ownerMetrics={ownerMetrics ?? undefined} />
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Cash Flow Section */}

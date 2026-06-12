@@ -12,6 +12,7 @@ const SaleMetadataSchema = z.object({
   customer_name: z.string().optional(),
   customer_address: z.string().optional(),
   customer_phone: z.string().optional(),
+  paid: z.boolean().optional(),
 });
 
 const SingleSaleSchema = SaleItemSchema.merge(SaleMetadataSchema);
@@ -32,12 +33,18 @@ export async function GET(req: Request) {
   const limit = Number(url.searchParams.get("limit") || "100");
   const safeLimit = Math.min(Math.max(limit, 1), 100);
 
-  const { data, error } = await supabaseAdmin
+  let query = supabaseAdmin
     .from("sales")
-    .select("id, product_id, product_name, quantity, total, order_id, customer_name, customer_address, customer_phone, user_id, created_by, created_at")
+    .select("id, product_id, product_name, quantity, total, order_id, customer_name, customer_address, customer_phone, paid, user_id, created_by, created_at")
     .eq("tenant_id", tenantContext.tenantId)
     .order("created_at", { ascending: false })
     .limit(safeLimit);
+
+  if (tenantContext.role === "sales") {
+    query = query.eq("user_id", tenantContext.userId);
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     return jsonError(error.message, 500);
@@ -124,6 +131,11 @@ export async function POST(req: Request) {
   const customerName = metadata.customer_name?.trim() || null;
   const customerAddress = metadata.customer_address?.trim() || null;
   const customerPhone = metadata.customer_phone?.trim() || null;
+  const isPaid = metadata.paid !== false;
+
+  if (!isPaid && (!customerName || !customerPhone)) {
+    return jsonError("Customer name and phone are required for unpaid sales", 422);
+  }
 
   const normalized = items.reduce<Array<{ product_id: string; quantity: number }>>(
     (acc, item: { product_id: string; quantity: number }) => {
@@ -308,9 +320,10 @@ export async function POST(req: Request) {
     customer_name: customerName,
     customer_address: customerAddress,
     customer_phone: customerPhone,
+    paid: isPaid,
   }));
 
-  const fallbackRows = salesRows.map(({ order_id, customer_name, customer_address, customer_phone, created_by, ...rest }) => rest);
+  const fallbackRows = salesRows.map(({ order_id, customer_name, customer_address, customer_phone, created_by, paid, ...rest }) => rest);
 
   let { data: inserted, error: insertError } = await supabaseAdmin
     .from("sales")
@@ -323,7 +336,7 @@ export async function POST(req: Request) {
       insertError,
     });
 
-    const shouldRetryWithoutMeta = insertError?.message?.match(/order_id|customer_name|customer_address|customer_phone/i);
+    const shouldRetryWithoutMeta = insertError?.message?.match(/order_id|customer_name|customer_address|customer_phone|paid/i);
     if (shouldRetryWithoutMeta) {
       console.warn("Sales route: retrying sale insert without invoice/customer metadata");
       const retryResult = await supabaseAdmin
@@ -352,6 +365,55 @@ export async function POST(req: Request) {
   if (insertError || !inserted) {
     await rollbackStock();
     return jsonError(insertError?.message || "Failed to record sale", 500);
+  }
+
+  if (!isPaid) {
+    const totalAmount = productRows.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    const { data: debtData, error: debtError } = await supabaseAdmin
+      .from("debts")
+      .insert({
+        tenant_id: tenantContext.tenantId,
+        user_id: tenantContext.userId,
+        created_by: tenantContext.userId,
+        customer_name: customerName!,
+        customer_phone: customerPhone!,
+        amount: totalAmount,
+        date: new Date().toISOString(),
+        note: `Unpaid sale ${orderId}`,
+        paid: false,
+      })
+      .select("id")
+      .single();
+
+    if (debtError || !debtData) {
+      console.error("Sales route: failed to create debt for unpaid sale", {
+        debtError,
+        orderId,
+        customerName,
+        customerPhone,
+      });
+
+      const insertedIds = inserted.map((row: any) => row.id).filter(Boolean);
+      if (insertedIds.length > 0) {
+        const { error: deleteError } = await supabaseAdmin
+          .from("sales")
+          .delete()
+          .in("id", insertedIds)
+          .eq("tenant_id", tenantContext.tenantId);
+
+        if (deleteError) {
+          console.error("Sales route: failed to rollback sale rows after debt failure", { deleteError, insertedIds });
+        }
+      }
+
+      if (rollback.length > 0) {
+        await rollbackStock();
+      }
+      if (allocationRollback.length > 0) {
+        await rollbackAllocations();
+      }
+      return jsonError(debtError?.message || "Failed to record unpaid sale debt", 500);
+    }
   }
 
   const totalQuantity = productRows.reduce((sum, item) => sum + item.quantity, 0);

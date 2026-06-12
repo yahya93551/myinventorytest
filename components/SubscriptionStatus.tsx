@@ -19,6 +19,12 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
   const [additionalNotes, setAdditionalNotes] = useState('');
   const [requestMessage, setRequestMessage] = useState('');
 
+  const activeUntilDate = subscription?.active_until ? new Date(subscription.active_until) : null;
+  const remainingDays = activeUntilDate
+    ? Math.max(0, Math.ceil((activeUntilDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+    : null;
+  const isFreeTrial = subscription?.status === 'active' && remainingDays !== null && remainingDays > 0 && remainingDays <= 14;
+
   const handleRequest = async () => {
     setRequestMessage('');
     setRequesting(true);
@@ -82,6 +88,18 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
             {subscription?.status?.toUpperCase() || 'INACTIVE'}
           </span>
         </div>
+
+        {isFreeTrial && remainingDays !== null ? (
+          <div className="rounded-2xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+            You are currently on a free trial. {remainingDays} day{remainingDays === 1 ? '' : 's'} remaining.
+          </div>
+        ) : null}
+
+        {!isFreeTrial && isActive && remainingDays !== null ? (
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+            Your active subscription expires in {remainingDays} day{remainingDays === 1 ? '' : 's'}.
+          </div>
+        ) : null}
 
         <div className="space-y-2 text-sm">
           <p className="text-gray-600">

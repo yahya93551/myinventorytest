@@ -406,19 +406,36 @@ export default function ProductTable({
 
                   <td className="px-4 py-4">
                     <div className="flex flex-wrap gap-2">
-                      <button
-                        onClick={() => openSell(product)}
-                        className="group inline-flex items-center justify-center gap-2 w-full px-3 py-3 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 text-sm font-semibold text-emerald-300 hover:bg-emerald-500/15 transition min-h-[44px]"
-                        title="Sell this product"
-                      >
-                        <ShoppingCart className="w-5 h-5" />
-                        Sell
-                      </button>
+                      {(() => {
+                        const available = tenantRole === "sales" ? product.allocated_quantity ?? 0 : product.stock;
+                        const disabled = available === 0;
+                        return (
+                          <button
+                            onClick={() => !disabled && openSell(product)}
+                            disabled={disabled}
+                            className={`group inline-flex items-center justify-center gap-2 w-full px-3 py-3 rounded-2xl border text-sm font-semibold transition min-h-11 ${
+                              disabled
+                                ? "border-slate-700 bg-slate-950/40 text-slate-500 cursor-not-allowed"
+                                : "border-emerald-500/20 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/15"
+                            }`}
+                            title={
+                              disabled
+                                ? tenantRole === "sales"
+                                  ? "No taken stock available"
+                                  : "Out of stock"
+                                : "Sell this product"
+                            }
+                          >
+                            <ShoppingCart className="w-5 h-5" />
+                            Sell
+                          </button>
+                        );
+                      })()}
 
                       {canRestock && (
                         <button
                           onClick={() => onRestock?.(product)}
-                          className="group inline-flex items-center justify-center gap-2 w-full px-3 py-3 rounded-2xl border border-blue-500/20 bg-blue-500/5 text-sm font-semibold text-blue-200 hover:bg-blue-500/10 transition min-h-[44px]"
+                          className="group inline-flex items-center justify-center gap-2 w-full px-3 py-3 rounded-2xl border border-blue-500/20 bg-blue-500/5 text-sm font-semibold text-blue-200 hover:bg-blue-500/10 transition min-h-11"
                           title="Load goods into stock"
                         >
                           <Plus className="w-5 h-5" />
@@ -426,10 +443,46 @@ export default function ProductTable({
                         </button>
                       )}
 
+                      {canLoad && (
+                        <button
+                          onClick={() => onLoad?.(product)}
+                          disabled={product.stock === 0}
+                          className={`group inline-flex items-center justify-center gap-2 w-full px-3 py-3 rounded-2xl border text-sm font-semibold transition min-h-11 ${
+                            product.stock === 0
+                              ? "border-slate-700 bg-slate-950/40 text-slate-500 cursor-not-allowed"
+                              : "border-amber-500/20 bg-amber-500/5 text-amber-200 hover:bg-amber-500/10"
+                          }`}
+                          title={product.stock === 0 ? "Out of stock" : "Take from stock"}
+                        >
+                          <Minus className="w-5 h-5" />
+                          Take
+                        </button>
+                      )}
+
+                      {canLoad && tenantRole === "sales" && onDrop && (
+                        <button
+                          onClick={() => onDrop(product)}
+                          disabled={(product.allocated_quantity ?? 0) === 0}
+                          className={`group inline-flex items-center justify-center gap-2 w-full px-3 py-3 rounded-2xl border text-sm font-semibold transition min-h-11 ${
+                            (product.allocated_quantity ?? 0) === 0
+                              ? "border-slate-700 bg-slate-950/40 text-slate-500 cursor-not-allowed"
+                              : "border-rose-500/20 bg-rose-500/5 text-rose-200 hover:bg-rose-500/10"
+                          }`}
+                          title={
+                            (product.allocated_quantity ?? 0) === 0
+                              ? "No taken stock available to drop"
+                              : "Drop taken stock"
+                          }
+                        >
+                          <Trash2 className="w-5 h-5" />
+                          Drop
+                        </button>
+                      )}
+
                       {canEdit && (
                         <button
                           onClick={() => onEdit?.(product)}
-                          className="group inline-flex items-center justify-center gap-2 w-full px-3 py-3 rounded-2xl border border-amber-500/20 bg-amber-500/5 text-sm font-semibold text-amber-200 hover:bg-amber-500/10 transition min-h-[44px]"
+                          className="group inline-flex items-center justify-center gap-2 w-full px-3 py-3 rounded-2xl border border-amber-500/20 bg-amber-500/5 text-sm font-semibold text-amber-200 hover:bg-amber-500/10 transition min-h-11"
                           title="Edit product details"
                         >
                           <Edit className="w-5 h-5" />
@@ -440,7 +493,7 @@ export default function ProductTable({
                       {canDelete && (
                         <button
                           onClick={() => onDelete?.(product.id)}
-                          className="group inline-flex items-center justify-center gap-2 w-full px-3 py-3 rounded-2xl border border-rose-500/20 bg-rose-500/5 text-sm font-semibold text-rose-200 hover:bg-rose-500/10 transition min-h-[44px]"
+                          className="group inline-flex items-center justify-center gap-2 w-full px-3 py-3 rounded-2xl border border-rose-500/20 bg-rose-500/5 text-sm font-semibold text-rose-200 hover:bg-rose-500/10 transition min-h-11"
                           title="Delete product permanently"
                         >
                           <Trash2 className="w-5 h-5" />

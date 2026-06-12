@@ -12,7 +12,14 @@ type StatsCard = {
   trend?: "up" | "down";
 };
 
-export default function StatsCards({ products, visibleFieldNames }: { products: Product[]; visibleFieldNames?: string[] }) {
+type OwnerMetrics = {
+  taken_not_sold_total?: number;
+  taken_not_sold_count?: number;
+  unpaid_debts_total?: number;
+  unpaid_debts_count?: number;
+};
+
+export default function StatsCards({ products, visibleFieldNames, ownerMetrics }: { products: Product[]; visibleFieldNames?: string[]; ownerMetrics?: OwnerMetrics }) {
   const total = products.length;
   const totalCost = products.reduce((acc, p) => acc + (p.cost_price ?? 0) * p.stock, 0);
   const totalSellValue = products.reduce((acc, p) => acc + p.price * p.stock, 0);
@@ -58,6 +65,27 @@ export default function StatsCards({ products, visibleFieldNames }: { products: 
       subtext: `${profitMargin}% margin`,
       trend: "up",
     });
+  }
+
+  // Owner-only metrics (taken but not sold, unpaid debts)
+  if (ownerMetrics) {
+    if (typeof ownerMetrics.taken_not_sold_total === "number") {
+      cards.push({
+        title: "Taken (not sold)",
+        value: ownerMetrics.taken_not_sold_total,
+        icon: <Package className="w-5 h-5" />,
+        subtext: `${ownerMetrics.taken_not_sold_count ?? 0} allocations`,
+      });
+    }
+
+    if (typeof ownerMetrics.unpaid_debts_total === "number") {
+      cards.push({
+        title: "Unpaid Debts",
+        value: `$${(ownerMetrics.unpaid_debts_total || 0).toFixed(2)}`,
+        icon: <DollarSign className="w-5 h-5" />,
+        subtext: `${ownerMetrics.unpaid_debts_count ?? 0} unpaid`,
+      });
+    }
   }
 
   const StatCard = ({ title, value, icon, subtext, trend }: StatsCard) => (

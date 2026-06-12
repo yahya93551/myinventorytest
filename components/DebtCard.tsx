@@ -3,7 +3,7 @@
 import React, { useState, useMemo } from "react";
 import Card from "./Card";
 import Button from "./Button";
-import { Plus, Trash, Check, ChevronDown, ChevronUp } from "lucide-react";
+import { Plus, Trash, Check, ChevronDown, ChevronUp, MessageCircle } from "lucide-react";
 
 export interface DebtRecord {
   id: string;
@@ -21,13 +21,32 @@ export interface CustomerDebts {
 
 interface DebtCardProps {
   customer: CustomerDebts;
+  businessName?: string;
   onAdd: (phone: string, name?: string) => void;
   onDeleteDebt: (customerPhone: string, debtId: string) => void;
   onMarkPaid: (customerPhone: string, debtId: string) => void;
 }
 
-export default function DebtCard({ customer, onAdd, onDeleteDebt, onMarkPaid }: DebtCardProps) {
+export default function DebtCard({ customer, businessName, onAdd, onDeleteDebt, onMarkPaid }: DebtCardProps) {
   const [open, setOpen] = useState(false);
+  const business = businessName?.trim() || "Business";
+
+  const whatsappUrl = (() => {
+    const digits = customer.phone.replace(/\D/g, "");
+    if (!digits) return "";
+
+    const total = customer.debts.reduce((sum, d) => sum + (d.amount || 0), 0);
+    const paidTotal = customer.debts.reduce((sum, d) => sum + (d.paid ? d.amount || 0 : 0), 0);
+    const restTotal = total - paidTotal;
+
+    const paidSentence =
+      paidTotal > 0
+        ? `Waxaa bixisay lacag dhan $${paidTotal.toFixed(2)}, `
+        : "";
+
+    const message = `${business}: Sida ku cad diiwaankayaga, wadarta alaabta aad qaadatay waa $${total.toFixed(2)}. ${paidSentence}waxaana wali kuugu harsan $${restTotal.toFixed(2)}. Fadlan bixi lacagta harsan waqtiga ugu dhow. Mahadsanid.`;
+    return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
+  })();
 
   const { total, paidTotal, restTotal } = useMemo(() => {
     const totals = customer.debts.reduce(
@@ -65,11 +84,32 @@ export default function DebtCard({ customer, onAdd, onDeleteDebt, onMarkPaid }: 
             <div className="rounded-2xl bg-emerald-50 px-3 py-2 text-emerald-700">Paid {paidTotal.toFixed(2)}</div>
             <div className="rounded-2xl bg-slate-100 px-3 py-2 text-slate-900">Rest {restTotal.toFixed(2)}</div>
           </div>
-          <div className="mt-3 flex gap-2 items-center justify-end">
-            <Button size="sm" variant="ghost" onClick={() => onAdd(customer.phone, customer.name)} icon={<Plus />}>
+          <div className="mt-3 flex flex-wrap gap-2 items-center justify-end">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => onAdd(customer.phone, customer.name)}
+              icon={<Plus />}
+              className="text-xs px-3 py-2"
+            >
               Add New Debt
             </Button>
-            <Button size="sm" variant="secondary" onClick={() => setOpen(!open)}>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => whatsappUrl && window.open(whatsappUrl, "_blank")}
+              disabled={!whatsappUrl}
+              icon={<MessageCircle />}
+              className="w-fit text-xs px-3 py-2"
+            >
+              Send Message
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setOpen(!open)}
+              className="text-xs px-3 py-2"
+            >
               {open ? <ChevronUp /> : <ChevronDown />} {open ? "Collapse" : "View Details"}
             </Button>
           </div>

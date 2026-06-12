@@ -6,6 +6,7 @@ import Sidebar from "@/components/Sidebar";
 import { Sale } from "../../types";
 import { apiGet } from "@/lib/apiClient";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
+import { useTenantRole } from "@/hooks/useTenantRole";
 import { useTheme } from "@/lib/theme-context";
 
 import {
@@ -22,9 +23,14 @@ export default function SalesPage() {
   const [salesLoading, setSalesLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filterDate, setFilterDate] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const { dark } = useTheme();
+  const { data: tenantRoleData, isLoading: tenantRoleLoading } = useTenantRole();
 
   const { loading } = useRequireAuth();
+
+  const showBackToDashboard =
+    !tenantRoleLoading && tenantRoleData?.role !== "sales";
 
   // ================= FETCH SALES =================
   useEffect(() => {
@@ -106,22 +112,33 @@ export default function SalesPage() {
 
   // ================= FILTER SALES =================
   const filteredSales = useMemo(() => {
-    if (!filterDate) {
-      return sortedSales;
-    }
+    const normalizedQuery = searchQuery.trim().toLowerCase();
 
     return sortedSales.filter((s) => {
       const dateValue = getSaleDate(s);
-
       if (!dateValue) return false;
 
       const saleDay = new Date(dateValue)
         .toISOString()
         .slice(0, 10);
 
-      return saleDay === filterDate;
+      const matchesDate = !filterDate || saleDay === filterDate;
+      const searchTarget = [
+        s.order_id,
+        s.customer_name,
+        s.customer_phone,
+        s.productName,
+      ]
+        .filter(Boolean)
+        .map((value) => String(value).toLowerCase())
+        .join(" ");
+
+      const matchesSearch =
+        !normalizedQuery || searchTarget.includes(normalizedQuery);
+
+      return matchesDate && matchesSearch;
     });
-  }, [sortedSales, filterDate]);
+  }, [sortedSales, filterDate, searchQuery]);
 
   // ================= TOTAL REVENUE =================
   const totalRevenue = useMemo(() => {
@@ -187,12 +204,14 @@ export default function SalesPage() {
       <div className="flex-1 p-4 sm:p-6 overflow-x-hidden">
         {/* HEADER */}
         <div className="mb-6 flex flex-col gap-4">
-          <Link
-            href="/"
-            className="inline-flex w-fit items-center rounded-full bg-theme-input border border-theme px-4 py-2 text-sm text-theme-primary hover:bg-theme-card transition"
-          >
-            ← Back to Dashboard
-          </Link>
+          {showBackToDashboard && (
+            <Link
+              href="/"
+              className="inline-flex w-fit items-center rounded-full bg-theme-input border border-theme px-4 py-2 text-sm text-theme-primary hover:bg-theme-card transition"
+            >
+              ← Back to Dashboard
+            </Link>
+          )}
 
           <div>
             <h2 className="text-3xl font-bold">
@@ -215,6 +234,18 @@ export default function SalesPage() {
         {/* FILTER */}
         <div className="flex flex-wrap gap-4 items-center mb-6">
           <label className="text-sm text-theme-secondary">
+            Search sales:
+          </label>
+
+          <input
+            type="search"
+            placeholder="Order, customer, product..."
+            className="bg-theme-input border border-theme px-3 py-2 rounded-2xl outline-none text-theme-primary focus:border-cyan-400"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+
+          <label className="text-sm text-theme-secondary">
             Filter by date:
           </label>
 
@@ -227,12 +258,15 @@ export default function SalesPage() {
             }
           />
 
-          {filterDate && (
+          {(filterDate || searchQuery) && (
             <button
-              onClick={() => setFilterDate("")}
+              onClick={() => {
+                setFilterDate("");
+                setSearchQuery("");
+              }}
               className="text-sm text-red-400 hover:text-red-300 transition"
             >
-              Clear
+              Clear filters
             </button>
           )}
         </div>
