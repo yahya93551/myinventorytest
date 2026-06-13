@@ -8,7 +8,7 @@ import { getVisibleSystemFieldNames } from "@/lib/customFields";
 
 export default function Dashboard() {
   // 🔥 Directly use the live hook – always up‑to-date
-  const { products, sales, ownerMetrics } = useInventory();
+  const { products, sales } = useInventory();
   const customFieldsQuery = useCustomFields();
   const customFields = customFieldsQuery.data || [];
   const visibleSystemFieldNames = getVisibleSystemFieldNames(customFields);
@@ -46,9 +46,19 @@ export default function Dashboard() {
     .sort((a, b) => b.stock - a.stock)
     .slice(0, 5);
 
+  const formatShortNumber = (value: number) => {
+    const abs = Math.abs(value);
+    if (abs >= 1000000) return `$${(value / 1000000).toFixed(1).replace(/\.0$/, "")}m`;
+    if (abs >= 1000) return `$${(value / 1000).toFixed(1).replace(/\.0$/, "")}k`;
+    return `$${value.toFixed(0)}`;
+  };
+
+  const formatShortDate = (date: Date) =>
+    date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+
   return (
     <div className="page-section">
-      <div className="section-header">
+      <div className="section-header flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-h1 text-theme-primary">Dashboard</h2>
           <p className="text-body-sm text-theme-secondary mt-2">
@@ -56,16 +66,16 @@ export default function Dashboard() {
           </p>
         </div>
 
-        <div className="card-standard inline-flex items-center gap-6 max-w-sm">
+        <div className="card-compact flex flex-col sm:flex-row items-start sm:items-center gap-2 min-w-0 self-start max-w-[18rem] p-3">
           <div>
-            <p className="text-body-sm text-theme-secondary">Total Categories</p>
-            <p className="text-h3 font-bold text-cyan-400 mt-1">{categoryCount}</p>
+            <p className="text-xs text-theme-secondary">Total Categories</p>
+            <p className="text-h4 font-bold text-cyan-400 mt-1">{categoryCount}</p>
           </div>
-          <div className="h-12 w-px bg-theme-surface"></div>
+          <div className="h-10 w-px bg-theme-surface" />
         </div>
       </div>
 
-      <StatsCards products={products} visibleFieldNames={visibleSystemFieldNames} ownerMetrics={ownerMetrics ?? undefined} />
+      <StatsCards products={products} visibleFieldNames={visibleSystemFieldNames} />
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Cash Flow Section */}
@@ -119,16 +129,24 @@ export default function Dashboard() {
                 const saleDate = getSaleDate(sale);
                 return (
                   <div key={sale.id} className="card-compact bg-theme-surface hover:bg-theme-card transition-colors">
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <p className="font-semibold text-theme-primary">{getProductName(sale)}</p>
-                        <p className="text-body-sm text-theme-secondary">{sale.quantity} units</p>
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-theme-primary truncate">
+                          {getProductName(sale)}
+                        </p>
+                        <p className="text-xs text-theme-secondary mt-1">
+                          {sale.quantity} units
+                        </p>
                       </div>
-                      <p className="text-lg font-bold text-cyan-400">${sale.total}</p>
+                      <div className="text-right min-w-24">
+                        <p className="text-base font-bold text-cyan-400" title={`$${Number(sale.total).toFixed(2)}`}>
+                          {formatShortNumber(Number(sale.total) || 0)}
+                        </p>
+                        <p className="text-xs text-theme-muted mt-1">
+                          {saleDate ? formatShortDate(saleDate) : "No date"}
+                        </p>
+                      </div>
                     </div>
-                    <p className="text-xs text-theme-muted mt-2">
-                      {saleDate ? saleDate.toLocaleString() : "No date"}
-                    </p>
                   </div>
                 );
               })}

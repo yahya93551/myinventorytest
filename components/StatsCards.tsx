@@ -7,6 +7,7 @@ import { Package, DollarSign, TrendingUp, Zap } from "lucide-react";
 type StatsCard = {
   title: string;
   value: string | number;
+  fullValue?: string;
   icon: ReactNode;
   subtext?: string;
   trend?: "up" | "down";
@@ -26,6 +27,13 @@ export default function StatsCards({ products, visibleFieldNames, ownerMetrics }
   const potentialProfit = Math.max(0, totalSellValue - totalCost);
   const profitMargin = totalSellValue > 0 ? ((potentialProfit / totalSellValue) * 100).toFixed(1) : "0";
 
+  const formatCurrencyShort = (value: number) => {
+    const abs = Math.abs(value);
+    if (abs >= 1000000) return `$${(value / 1000000).toFixed(1).replace(/\.0$/, "")}m`;
+    if (abs >= 1000) return `$${(value / 1000).toFixed(1).replace(/\.0$/, "")}k`;
+    return `$${value.toFixed(0)}`;
+  };
+
   const showCost = visibleFieldNames ? visibleFieldNames.includes("cost_price") : true;
   const showSell = visibleFieldNames ? visibleFieldNames.includes("price") : true;
   const showProfit = showCost && showSell;
@@ -42,7 +50,8 @@ export default function StatsCards({ products, visibleFieldNames, ownerMetrics }
   if (showCost) {
     cards.push({
       title: "Inventory Cost",
-      value: `$${totalCost.toFixed(2)}`,
+      value: formatCurrencyShort(totalCost),
+      fullValue: `$${totalCost.toFixed(2)}`,
       icon: <DollarSign className="w-5 h-5" />,
       subtext: "Total cost value",
     });
@@ -51,7 +60,8 @@ export default function StatsCards({ products, visibleFieldNames, ownerMetrics }
   if (showSell) {
     cards.push({
       title: "Sell Value",
-      value: `$${totalSellValue.toFixed(2)}`,
+      value: formatCurrencyShort(totalSellValue),
+      fullValue: `$${totalSellValue.toFixed(2)}`,
       icon: <Zap className="w-5 h-5" />,
       subtext: "If sold today",
     });
@@ -60,7 +70,8 @@ export default function StatsCards({ products, visibleFieldNames, ownerMetrics }
   if (showProfit) {
     cards.push({
       title: "Potential Profit",
-      value: `$${potentialProfit.toFixed(2)}`,
+      value: formatCurrencyShort(potentialProfit),
+      fullValue: `$${potentialProfit.toFixed(2)}`,
       icon: <TrendingUp className="w-5 h-5" />,
       subtext: `${profitMargin}% margin`,
       trend: "up",
@@ -88,22 +99,22 @@ export default function StatsCards({ products, visibleFieldNames, ownerMetrics }
     }
   }
 
-  const StatCard = ({ title, value, icon, subtext, trend }: StatsCard) => (
-    <div className="card-standard hover:shadow-hover hover:bg-theme-surface group">
-      <div className="flex items-start justify-between">
-        <div className="flex-1">
-          <p className="text-body-sm text-theme-secondary font-medium">{title}</p>
-          <h2 className="text-h3 font-bold text-theme-primary mt-2">{value}</h2>
+  const StatCard = ({ title, value, fullValue, icon, subtext, trend }: StatsCard) => (
+    <div className="card-compact px-3 py-3 hover:shadow-hover hover:bg-theme-surface group min-w-0">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+        <div className="flex-1 min-w-0">
+          <p className="text-xs text-theme-secondary font-medium">{title}</p>
+          <h2 className="text-lg sm:text-xl font-bold text-theme-primary mt-2" title={fullValue}>{value}</h2>
           {subtext && (
-            <p className="text-body-sm text-theme-muted mt-1">{subtext}</p>
+            <p className="text-xs text-theme-muted mt-1 truncate">{subtext}</p>
           )}
         </div>
-        <div className="p-3 rounded-xl bg-cyan-500/15 text-cyan-300 flex items-center justify-center shrink-0 group-hover:bg-cyan-500/25 transition-all duration-200">
+        <div className="p-2 rounded-xl bg-cyan-500/15 text-cyan-300 flex items-center justify-center shrink-0 group-hover:bg-cyan-500/25 transition-all duration-200">
           {icon}
         </div>
       </div>
       {trend === "up" && (
-        <div className="mt-3 flex items-center gap-1 text-green-400 text-xs font-semibold">
+        <div className="mt-2 flex items-center gap-1 text-green-400 text-[11px] font-semibold">
           <TrendingUp className="w-4 h-4" />
           Positive trend
         </div>
@@ -112,7 +123,7 @@ export default function StatsCards({ products, visibleFieldNames, ownerMetrics }
   );
 
   return (
-    <div className="grid-cards mb-8">
+    <div className="grid gap-2 grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 mb-8">
       {cards.map((card) => (
         <StatCard key={card.title} {...card} />
       ))}

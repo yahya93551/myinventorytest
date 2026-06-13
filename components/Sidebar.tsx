@@ -5,7 +5,6 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { logout } from "@/hooks/useRequireAuth";
-import { useTenantRole } from "@/hooks/useTenantRole";
 import { useTheme } from "@/lib/theme-context";
 import {
   LayoutDashboard,
@@ -46,9 +45,6 @@ export default function Sidebar() {
     ? "bg-slate-950/95 text-white border-white/10 shadow-lg"
     : "bg-white/95 text-slate-950 border-slate-200 shadow-sm";
 
-  const { data: tenantRoleData } = useTenantRole();
-  const tenantRole = tenantRoleData?.role || "owner";
-
   const navClass = (active: boolean) =>
     `w-full text-left px-4 py-3 rounded-xl transition-all duration-200 flex items-center gap-3 font-medium ${
       active
@@ -59,85 +55,6 @@ export default function Sidebar() {
         ? "text-slate-300 hover:bg-white/10 hover:text-white"
         : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
     }`;
-
-  const navItems =
-    tenantRole === "sales"
-      ? [
-          {
-            href: "/inventory",
-            icon: Package,
-            label: "Inventory",
-            active: pathname?.startsWith("/inventory") === true,
-          },
-          {
-            href: "/sales",
-            icon: ShoppingCart,
-            label: "Sales",
-            active: pathname === "/sales",
-          },
-        ]
-      : [
-          {
-            href: "/",
-            icon: LayoutDashboard,
-            label: "Dashboard",
-            active: pathname === "/",
-          },
-          {
-            href: "/inventory",
-            icon: Package,
-            label: "Inventory",
-            active: pathname?.startsWith("/inventory") === true,
-          },
-          {
-            href: "/inventory/add",
-            icon: Plus,
-            label: "Add Product",
-            active: pathname === "/inventory/add",
-          },
-          {
-            href: "/categories",
-            icon: Tag,
-            label: "Categories",
-            active: pathname === "/categories",
-          },
-          {
-            href: "/sales",
-            icon: ShoppingCart,
-            label: "Sales",
-            active: pathname === "/sales",
-          },
-          {
-            href: "/reports",
-            icon: FileText,
-            label: "Reports",
-            active: pathname === "/reports",
-          },
-          {
-            href: "/activity",
-            icon: History,
-            label: "Activity Log",
-            active: pathname === "/activity",
-          },
-          {
-            href: "/debts",
-            icon: Book,
-            label: "Debts",
-            active: pathname?.startsWith("/debts") === true,
-          },
-          {
-            href: "/settings",
-            icon: Settings,
-            label: "Settings",
-            active: pathname === "/settings",
-          },
-          {
-            href: "/profile",
-            icon: User,
-            label: "Profile",
-            active: pathname === "/profile",
-          },
-        ];
 
   return (
     <>
@@ -198,17 +115,95 @@ export default function Sidebar() {
 
         {/* NAV */}
         <div className="flex-1 flex flex-col gap-2">
-          {navItems.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={() => setOpen(false)}
-              className={navClass(item.active)}
-            >
-              <item.icon className="w-5 h-5 sm:w-6 sm:h-6" />
-              {!collapsed && <span>{item.label}</span>}
-            </Link>
-          ))}
+          <Link
+            href="/"
+            onClick={() => setOpen(false)}
+            className={navClass(pathname === "/")}
+          >
+            <LayoutDashboard className="w-5 h-5 sm:w-6 sm:h-6" />
+            {!collapsed && <span>Dashboard</span>}
+          </Link>
+
+          <Link
+            href="/inventory"
+            onClick={() => setOpen(false)}
+            className={navClass(pathname?.startsWith("/inventory") === true)}
+          >
+            <Package className="w-5 h-5 sm:w-6 sm:h-6" />
+            {!collapsed && <span>Inventory</span>}
+          </Link>
+
+          <Link
+            href="/inventory/add"
+            onClick={() => setOpen(false)}
+            className={navClass(pathname === "/inventory/add")}
+          >
+            <Plus className="w-5 h-5 sm:w-6 sm:h-6" />
+            {!collapsed && <span>Add Product</span>}
+          </Link>
+
+          <Link
+            href="/categories"
+            onClick={() => setOpen(false)}
+            className={navClass(pathname === "/categories")}
+          >
+            <Tag className="w-5 h-5 sm:w-6 sm:h-6" />
+            {!collapsed && <span>Categories</span>}
+          </Link>
+
+          <Link
+            href="/sales"
+            onClick={() => setOpen(false)}
+            className={navClass(pathname === "/sales")}
+          >
+            <ShoppingCart className="w-5 h-5 sm:w-6 sm:h-6" />
+            {!collapsed && <span>Sales</span>}
+          </Link>
+
+          <Link
+            href="/reports"
+            onClick={() => setOpen(false)}
+            className={navClass(pathname === "/reports")}
+          >
+            <FileText className="w-5 h-5 sm:w-6 sm:h-6" />
+            {!collapsed && <span>Reports</span>}
+          </Link>
+
+          <Link
+            href="/activity"
+            onClick={() => setOpen(false)}
+            className={navClass(pathname === "/activity")}
+          >
+            <History className="w-5 h-5 sm:w-6 sm:h-6" />
+            {!collapsed && <span>Activity Log</span>}
+          </Link>
+
+          <Link
+            href="/debts"
+            onClick={() => setOpen(false)}
+            className={navClass(pathname?.startsWith("/debts") === true)}
+          >
+            <Book className="w-5 h-5 sm:w-6 sm:h-6" />
+            {!collapsed && <span>Debts</span>}
+          </Link>
+
+          <Link
+            href="/settings"
+            onClick={() => setOpen(false)}
+            className={navClass(pathname === "/settings")}
+          >
+            <Settings className="w-5 h-5 sm:w-6 sm:h-6" />
+            {!collapsed && <span>Settings</span>}
+          </Link>
+
+          <Link
+            href="/profile"
+            onClick={() => setOpen(false)}
+            className={navClass(pathname === "/profile")}
+          >
+            <User className="w-5 h-5 sm:w-6 sm:h-6" />
+            {!collapsed && <span>Profile</span>}
+          </Link>
         </div>
 
         {/* THEME TOGGLE & LOGOUT */}
