@@ -445,21 +445,21 @@ export default function Inventory(props: InventoryProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 py-4 md:grid-cols-3">
-        <div className="rounded-2xl border-theme bg-theme-card p-4 sm:p-5 shadow-soft">
-          <p className="text-sm uppercase tracking-[0.16em] text-theme-secondary">Products</p>
-          <p className="mt-2 text-2xl sm:text-3xl font-semibold text-theme-primary">{totalProducts}</p>
-          <p className="mt-1 text-xs sm:text-sm text-theme-secondary">Total inventory items.</p>
+      <div className="grid grid-cols-3 gap-3 py-4">
+        <div className="rounded-2xl border-theme bg-theme-card p-2 shadow-soft">
+          <p className="text-[9px] uppercase tracking-[0.16em] text-theme-secondary">Products</p>
+          <p className="mt-1 text-base font-semibold text-theme-primary">{totalProducts}</p>
+          <p className="mt-1 text-[10px] text-theme-secondary">Total inventory items.</p>
         </div>
-        <div className="rounded-2xl border-theme bg-theme-card p-4 sm:p-5 shadow-soft">
-          <p className="text-sm uppercase tracking-[0.16em] text-theme-secondary">Low stock</p>
-          <p className="mt-2 text-2xl sm:text-3xl font-semibold text-theme-primary">{lowStockCount}</p>
-          <p className="mt-1 text-xs sm:text-sm text-theme-secondary">Products below threshold.</p>
+        <div className="rounded-2xl border-theme bg-theme-card p-2 shadow-soft">
+          <p className="text-[9px] uppercase tracking-[0.16em] text-theme-secondary">Low stock</p>
+          <p className="mt-1 text-base font-semibold text-theme-primary">{lowStockCount}</p>
+          <p className="mt-1 text-[10px] text-theme-secondary">Products below threshold.</p>
         </div>
-        <div className="rounded-2xl border-theme bg-theme-card p-4 sm:p-5 shadow-soft">
-          <p className="text-sm uppercase tracking-[0.16em] text-theme-secondary">Out of stock</p>
-          <p className="mt-2 text-2xl sm:text-3xl font-semibold text-theme-primary">{outOfStockCount}</p>
-          <p className="mt-1 text-xs sm:text-sm text-theme-secondary">Need restocking now.</p>
+        <div className="rounded-2xl border-theme bg-theme-card p-2 shadow-soft">
+          <p className="text-[9px] uppercase tracking-[0.16em] text-theme-secondary">Out of stock</p>
+          <p className="mt-1 text-base font-semibold text-theme-primary">{outOfStockCount}</p>
+          <p className="mt-1 text-[10px] text-theme-secondary">Need restocking now.</p>
         </div>
       </div>
 
