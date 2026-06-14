@@ -75,12 +75,12 @@ export default function Sidebar() {
       )}
 
       {/* PLACEHOLDER FOR DESKTOP LAYOUT */}
-      <div className={`hidden lg:block flex-shrink-0 ${collapsed ? "w-16" : "w-64"}`} />
+      <div className={`hidden lg:block shrink-0 ${collapsed ? "w-16" : "w-64"}`} />
 
       {/* SIDEBAR */}
       <div
         className={`
-          fixed z-50 top-0 left-0 h-full lg:h-screen max-h-screen flex-shrink-0
+          fixed z-50 top-0 left-0 h-full lg:h-screen max-h-screen shrink-0
           ${collapsed ? "w-16" : "w-64"}
           ${sidebarBaseClasses}
           backdrop-blur-xl

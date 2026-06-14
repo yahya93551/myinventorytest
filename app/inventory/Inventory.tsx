@@ -431,14 +431,14 @@ export default function Inventory(props: InventoryProps) {
             <button
               type="button"
               onClick={() => setIsAddModalOpen(true)}
-              className="rounded-2xl bg-theme-accent px-5 py-3 min-h-[44px] text-sm font-semibold text-slate-950 shadow-sm transition hover:bg-cyan-400"
+              className="rounded-2xl bg-theme-accent px-5 py-3 min-h-11 text-sm font-semibold text-slate-950 shadow-sm transition hover:bg-cyan-400"
             >
               + Add Product
             </button>
           )}
           <button
             onClick={() => setBulkSellOpen(true)}
-            className="rounded-2xl border border-theme bg-theme-card px-5 py-3 min-h-[44px] text-sm font-semibold text-theme-primary transition hover:bg-theme-surface"
+            className="rounded-2xl border border-theme bg-theme-card px-5 py-3 min-h-11 text-sm font-semibold text-theme-primary transition hover:bg-theme-surface"
           >
             Sell multiple items
           </button>

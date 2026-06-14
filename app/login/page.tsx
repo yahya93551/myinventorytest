@@ -293,12 +293,12 @@ export default function LoginPage() {
   return (
     <main className="min-h-screen bg-slate-950 text-white">
       <div className="relative isolate overflow-hidden">
-        <div className="absolute inset-x-0 top-0 -z-10 h-72 bg-[radial-gradient(circle_at_top_left,_rgba(56,189,248,0.18),_transparent_35%)] blur-3xl" />
+        <div className="absolute inset-x-0 top-0 -z-10 h-72 bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.18),transparent_35%)] blur-3xl" />
         <div className="absolute right-1/2 top-1/3 -z-10 h-80 w-80 rounded-full bg-cyan-500/10 blur-3xl" />
         <div className="absolute left-1/2 bottom-0 -z-10 h-96 w-96 rounded-full bg-blue-500/10 blur-3xl" />
 
         <div className="mx-auto grid max-w-7xl gap-8 px-4 py-10 sm:px-6 lg:grid-cols-[420px_minmax(0,1fr)] lg:px-8 lg:py-16">
-          <section className="relative overflow-hidden rounded-[32px] border border-white/10 bg-slate-900/85 p-8 shadow-[0_35px_120px_-45px_rgba(14,165,233,0.55)] backdrop-blur-xl">
+          <section className="relative overflow-hidden rounded-4xl border border-white/10 bg-slate-900/85 p-8 shadow-[0_35px_120px_-45px_rgba(14,165,233,0.55)] backdrop-blur-xl">
             <div className="mb-8 flex items-center gap-4">
               <div className="flex h-14 w-14 items-center justify-center rounded-3xl border border-cyan-500/20 bg-cyan-400/10 text-cyan-300 shadow-sm shadow-cyan-500/10">
                 <Sparkles className="h-7 w-7" />
@@ -346,7 +346,7 @@ export default function LoginPage() {
             <div className="pointer-events-none absolute inset-y-0 left-0 w-px bg-white/5" />
           </section>
 
-          <section className="relative rounded-[32px] border border-white/10 bg-slate-950/90 p-8 shadow-[0_45px_120px_-40px_rgba(15,23,42,0.75)] backdrop-blur-xl">
+          <section className="relative rounded-4xl border border-white/10 bg-slate-950/90 p-8 shadow-[0_45px_120px_-40px_rgba(15,23,42,0.75)] backdrop-blur-xl">
             <div className="absolute -left-16 top-8 h-40 w-40 rounded-full bg-cyan-500/10 blur-3xl" />
             <div className="absolute right-10 top-16 h-28 w-28 rounded-full bg-blue-500/10 blur-3xl" />
             <div className="relative z-10">
@@ -564,7 +564,7 @@ export default function LoginPage() {
                   type="button"
                   onClick={mode === "login" ? login : signup}
                   disabled={loading}
-                  className="inline-flex w-full items-center justify-center rounded-[28px] bg-gradient-to-r from-cyan-500 via-sky-500 to-blue-600 px-5 py-4 text-sm font-semibold text-slate-950 shadow-[0_20px_60px_-20px_rgba(14,165,233,0.65)] transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_25px_80px_-30px_rgba(14,165,233,0.75)] disabled:pointer-events-none disabled:opacity-60"
+                  className="inline-flex w-full items-center justify-center rounded-[28px] bg-linear-to-r from-cyan-500 via-sky-500 to-blue-600 px-5 py-4 text-sm font-semibold text-slate-950 shadow-[0_20px_60px_-20px_rgba(14,165,233,0.65)] transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_25px_80px_-30px_rgba(14,165,233,0.75)] disabled:pointer-events-none disabled:opacity-60"
                 >
                   {loading
                     ? mode === "login"
