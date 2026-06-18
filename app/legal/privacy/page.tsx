@@ -139,10 +139,10 @@ export default function PrivacyPage() {
             If you have questions about this Privacy Policy or our privacy practices, please contact us:
           </p>
           <div className="p-4 bg-theme-input rounded-lg space-y-2">
-            <p><strong>Email:</strong> support@yourdomain.com</p>
+            <p><strong>Email:</strong> yahyaweeko@gmail.com</p>
             <p><strong>WhatsApp:</strong> +252686859656</p>
             <p><strong>Phone:</strong> +252686859656</p>
-            <p className="text-sm">Hours: 9 AM - 5 PM GMT+3</p>
+            <p className="text-sm">Hours: 7 AM - 4 PM GMT+3</p>
           </div>
         </section>
 

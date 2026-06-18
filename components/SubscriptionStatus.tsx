@@ -18,6 +18,8 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
   const [paymentReference, setPaymentReference] = useState('');
   const [additionalNotes, setAdditionalNotes] = useState('');
   const [requestMessage, setRequestMessage] = useState('');
+  const [selectedPlanFee, setSelectedPlanFee] = useState<number>(subscription?.monthly_fee || 5.0);
+  const [showUpgradeForm, setShowUpgradeForm] = useState(false);
 
   const activeUntilDate = subscription?.active_until ? new Date(subscription.active_until) : null;
   const remainingDays = activeUntilDate
@@ -30,6 +32,7 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
     setRequesting(true);
     try {
       await apiPost('/api/subscriptions', {
+        monthly_fee: selectedPlanFee,
         payer_name: payerName,
         payment_phone: paymentPhone,
         payment_email: paymentEmail,
@@ -46,6 +49,7 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
       setBusinessName('');
       setPaymentReference('');
       setAdditionalNotes('');
+      setSelectedPlanFee(subscription?.monthly_fee || 5.0);
     } catch (err) {
       setRequestMessage(err instanceof Error ? err.message : 'Error requesting subscription');
     } finally {
@@ -101,6 +105,20 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
           </div>
         ) : null}
 
+        {/* Active users can request an upgrade */}
+        {isActive && (
+          <div className="mt-4">
+            <button
+              type="button"
+              onClick={() => setShowUpgradeForm((s) => !s)}
+              className="btn-primary inline-flex items-center gap-2 px-4 py-2 rounded-2xl shadow-md hover:shadow-lg transition-shadow duration-150"
+              style={{ alignItems: 'center' }}
+            >
+              <span className="text-sm font-semibold">{showUpgradeForm ? 'Hide upgrade' : 'Upgrade plan'}</span>
+            </button>
+          </div>
+        )}
+
         <div className="space-y-2 text-sm">
           <p className="text-gray-600">
             <span className="font-medium">Monthly Fee:</span> ${subscription?.monthly_fee || 5.0}/month
@@ -126,7 +144,7 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
           )}
         </div>
 
-        {!isActive && subscription?.status !== 'pending' && (
+        {(!isActive || showUpgradeForm) && subscription?.status !== 'pending' && (
           <>
             <div className="mt-6 space-y-4 border-t border-theme-input pt-4">
               <div className="rounded-2xl border border-cyan-300 bg-cyan-50 p-4 text-sm text-cyan-900">
@@ -161,6 +179,19 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
                 <p>Enter your payment information so the admin can verify your subscription request.</p>
 
                 <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="text-sm font-medium text-theme-primary">Plan</label>
+                    <select
+                      value={selectedPlanFee}
+                      onChange={(e) => setSelectedPlanFee(Number(e.target.value))}
+                      className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
+                      style={{ backgroundColor: 'var(--surface-input)', color: 'var(--text-primary)' }}
+                    >
+                      <option value={5}>Basic — $5 / month</option>
+                      <option value={10}>Pro — $10 / month</option>
+                      <option value={20}>Team — $20 / month</option>
+                    </select>
+                  </div>
                   <input
                     value={payerName}
                     onChange={(e) => setPayerName(e.target.value)}

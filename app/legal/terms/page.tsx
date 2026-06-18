@@ -97,9 +97,9 @@ export default function TermsPage() {
             If you have any questions about these Terms of Service, please contact us at:
           </p>
           <div className="mt-4 p-4 bg-theme-input rounded-lg">
-            <p className="font-semibold">Email: support@yourdomain.com</p>
+            <p className="font-semibold">Email:  yahyaweeko@gmail.com</p>
             <p className="font-semibold">WhatsApp: +252686859656</p>
-            <p className="text-sm mt-2">Hours: 9 AM - 5 PM GMT+3</p>
+            <p className="text-sm mt-2">Hours: 7 AM - 4 PM GMT+3</p>
           </div>
         </section>
 

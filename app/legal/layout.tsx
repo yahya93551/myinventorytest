@@ -4,8 +4,10 @@ export default function LegalLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-h-screen bg-white text-theme-primary">
-      {children}
+    <div className="min-h-screen bg-slate-950 text-slate-100">
+      <div className="min-h-screen">
+        {children}
+      </div>
     </div>
   );
 }

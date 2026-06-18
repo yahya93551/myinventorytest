@@ -9,6 +9,7 @@ import {
   rateLimitResponse,
 } from "@/lib/rateLimit";
 import { createPhoneFallbackEmail, isPhoneNumber, normalizePhoneNumber } from "@/lib/auth";
+import { getAndDeleteOtp } from "@/lib/redis";
 
 const SignUpSchema = z.object({
   email: z.string().email().optional(),
@@ -18,6 +19,14 @@ const SignUpSchema = z.object({
 });
 
 async function verifyPhoneOtp(phone: string, otp: string) {
+  // First try Redis cache (fast, atomic-ish). If missing, fall back to Supabase table.
+  try {
+    const cached = await getAndDeleteOtp(`otp:${phone}`);
+    if (cached && cached === otp) return true;
+  } catch (err) {
+    console.warn('[AUTH] Redis OTP check failed (falling back to DB)', err);
+  }
+
   const now = new Date().toISOString();
   const { data, error } = await supabaseAdmin
     .from("otp_codes")

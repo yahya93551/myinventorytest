@@ -110,7 +110,9 @@ export function useInventory() {
         throw new Error(formatZodError(parseResult.error.issues));
       }
 
-      await apiPost<void>("/api/products", product);
+      const resp = await apiPost<any>("/api/products", product);
+      // return created product data if available
+      return resp?.data ?? null;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["products"] });
@@ -329,10 +331,22 @@ export function useInventory() {
   };
 
   // ================= COMPATIBILITY WRAPPERS =================
+  // Returns the created product object on success, or null on failure
+  const addProductWithResult = async (product: ProductForm): Promise<Product | null> => {
+    try {
+      const created = await addProductMutation.mutateAsync(product);
+      return created as Product | null;
+    } catch (err) {
+      console.error('[useInventory] addProductWithResult failed', err);
+      return null;
+    }
+  };
+
+  // Backwards-compatible wrapper used by other callers: returns boolean
   const addProduct = async (product: ProductForm): Promise<boolean> => {
     try {
-      await addProductMutation.mutateAsync(product);
-      return true;
+      const created = await addProductWithResult(product);
+      return !!created;
     } catch {
       return false;
     }
@@ -467,6 +481,7 @@ export function useInventory() {
     totalPages: Math.ceil((productsData?.count || 0) / itemsPerPage),
 
     addProduct,
+    addProductWithResult,
     updateProduct,
     deleteProduct,
     restockProduct,

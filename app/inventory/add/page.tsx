@@ -251,6 +251,7 @@ export default function AddPage() {
           addProductHandler={
             addProductHandler
           }
+          isSubmitting={isSubmitting}
         />
 
         {/* LOADING */}

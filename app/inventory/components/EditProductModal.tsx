@@ -9,7 +9,7 @@ type Props = {
   categories: string[];
   customFields?: CustomField[];
   setEditItem: (item: Product | null) => void;
-  saveEdit: (id: string, updates: Partial<Product>) => void;
+  saveEdit: (id: string, updates: Partial<Product>) => Promise<boolean> | void;
 };
 
 export default function EditProductModal({
@@ -30,6 +30,7 @@ export default function EditProductModal({
   const [error, setError] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   const visibleStandardFields = getVisibleSystemFields(customFields);
 
@@ -169,7 +170,15 @@ export default function EditProductModal({
       return;
     }
 
-    saveEdit(editItem.id, updates);
+    try {
+      setIsSaving(true);
+      await saveEdit(editItem.id, updates);
+    } catch (err) {
+      console.error('saveEdit error:', err);
+      setError('Failed to save changes. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -339,15 +348,28 @@ export default function EditProductModal({
             type="button"
             onClick={() => setEditItem(null)}
             className="rounded-xl border border-theme px-4 py-2 text-theme-secondary transition hover:bg-theme-surface"
+            disabled={isSaving}
           >
             Cancel
           </button>
           <button
             type="button"
             onClick={handleSave}
-            className="rounded-xl bg-green-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500"
+            className="rounded-xl bg-green-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed"
+            disabled={isSaving}
+            aria-busy={isSaving}
           >
-            Save changes
+            {isSaving ? (
+              <span className="inline-flex items-center">
+                <svg className="h-4 w-4 mr-2 animate-spin" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                </svg>
+                Saving...
+              </span>
+            ) : (
+              'Save changes'
+            )}
           </button>
         </div>
       </div>

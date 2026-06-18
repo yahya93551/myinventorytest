@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { registerCurrentSession } from "@/lib/apiClient";
 import { CheckCircle2, Lock, Mail, Phone, ShieldCheck, Sparkles, Zap } from "lucide-react";
@@ -298,7 +299,7 @@ export default function LoginPage() {
         <div className="absolute left-1/2 bottom-0 -z-10 h-96 w-96 rounded-full bg-blue-500/10 blur-3xl" />
 
         <div className="mx-auto grid max-w-7xl gap-8 px-4 py-10 sm:px-6 lg:grid-cols-[420px_minmax(0,1fr)] lg:px-8 lg:py-16">
-          <section className="relative overflow-hidden rounded-4xl border border-white/10 bg-slate-900/85 p-8 shadow-[0_35px_120px_-45px_rgba(14,165,233,0.55)] backdrop-blur-xl">
+          <section className="hidden lg:block relative overflow-hidden rounded-4xl border border-white/10 bg-slate-900/85 p-8 shadow-[0_35px_120px_-45px_rgba(14,165,233,0.55)] backdrop-blur-xl">
             <div className="mb-8 flex items-center gap-4">
               <div className="flex h-14 w-14 items-center justify-center rounded-3xl border border-cyan-500/20 bg-cyan-400/10 text-cyan-300 shadow-sm shadow-cyan-500/10">
                 <Sparkles className="h-7 w-7" />
@@ -608,7 +609,23 @@ export default function LoginPage() {
             </div>
           </section>
         </div>
-      </div>
+        </div>
+
+        {/* Footer */}
+        <footer className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-400">
+            <div className="text-center sm:text-left">© {new Date().getFullYear()} MyInventory</div>
+
+            <div className="flex items-center gap-4">
+              <Link href="/legal/privacy" className="hover:underline">Privacy</Link>
+              <Link href="/legal/terms" className="hover:underline">Terms</Link>
+              <a href="mailto:support@myinventory.example" className="hover:underline">Support</a>
+              <a href="https://wa.me/1234567890" target="_blank" rel="noreferrer" className="hover:underline">WhatsApp</a>
+            </div>
+
+            <div className="text-center sm:text-right text-slate-500">Built with care.</div>
+          </div>
+        </footer>
     </main>
   );
 }

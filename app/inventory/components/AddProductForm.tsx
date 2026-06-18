@@ -23,6 +23,7 @@ type Props = {
   customData?: Record<string, any>;
   setCustomData?: (data: Record<string, any>) => void;
   addProductHandler: (imageFile?: File | null) => void;
+  isSubmitting?: boolean;
 };
 
 export default function AddProductForm({
@@ -42,6 +43,7 @@ export default function AddProductForm({
   customData = {},
   setCustomData,
   addProductHandler,
+  isSubmitting = false,
 }: Props) {
   const visibleStandardFields =
     getVisibleSystemFields(customFields);
@@ -331,10 +333,19 @@ export default function AddProductForm({
         <div className="mt-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-3">
           <button
             type="button"
-            onClick={() => addProductHandler(imageFile)}
-            className="inline-flex items-center justify-center rounded-2xl bg-theme-accent px-6 py-3 text-sm font-semibold text-slate-950 shadow-lg transition-all duration-200 hover:bg-cyan-400 hover:scale-[1.02] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/40"
+            onClick={() => !isSubmitting && addProductHandler(imageFile)}
+            disabled={isSubmitting}
+            aria-busy={isSubmitting}
+            className={`inline-flex items-center justify-center rounded-2xl bg-theme-accent px-6 py-3 text-sm font-semibold text-slate-950 shadow-lg transition-all duration-200 hover:bg-cyan-400 hover:scale-[1.02] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/40 ${isSubmitting ? "opacity-80 cursor-not-allowed" : ""}`}
           >
-            + Add Product
+            {isSubmitting ? (
+              <>
+                <span className="h-4 w-4 mr-2 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                Adding...
+              </>
+            ) : (
+              "+ Add Product"
+            )}
           </button>
         </div>
       </div>

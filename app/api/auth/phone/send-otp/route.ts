@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { setOtp } from "@/lib/redis";
 import {
   checkRateLimit,
   getRateLimitIdentifier,
@@ -53,6 +54,12 @@ export async function POST(req: Request) {
       code: otp,
       expires_at: expiresAt,
     });
+    // Also cache in Redis for fast verification (best-effort)
+    try {
+      await setOtp(`otp:${phone}`, otp, 300);
+    } catch (err) {
+      console.warn('[AUTH] Failed to write OTP to Redis (non-fatal)', err);
+    }
   } catch (err) {
     console.error("[AUTH] Failed to store phone OTP:", err);
     return NextResponse.json(

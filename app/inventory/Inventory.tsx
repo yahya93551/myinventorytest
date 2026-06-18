@@ -47,6 +47,7 @@ type InventoryProps = {
     customer_phone?: string;
   }) => Promise<boolean>;
   addProduct: (product: ProductForm) => Promise<boolean>;
+  addProductWithResult?: (product: ProductForm) => Promise<Product | null>;
   loadProduct: (id: string, quantity: number, reason?: string) => Promise<boolean>;
   dropProduct: (id: string, quantity: number) => Promise<boolean>;
   
@@ -77,6 +78,7 @@ export default function Inventory(props: InventoryProps) {
     confirmSell,
     sellProducts,
     addProduct,
+    addProductWithResult,
     currentPage,
     totalCount,
     itemsPerPage,
@@ -101,6 +103,7 @@ export default function Inventory(props: InventoryProps) {
   const [dropAmount, setDropAmount] = useState(1);
   const [bulkSellOpen, setBulkSellOpen] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isAdding, setIsAdding] = useState(false);
 
   const [message, setMessage] = useState<{
     type: "success" | "error";
@@ -160,6 +163,8 @@ export default function Inventory(props: InventoryProps) {
   // ✅ API FUNCTION
   // =====================================================
   const addProductHandler = async (imageFile?: File | null) => {
+    setIsAdding(true);
+    try {
     if (!name.trim()) {
       showMessage("error", "Product name is required");
       return;
@@ -203,61 +208,95 @@ export default function Inventory(props: InventoryProps) {
       return;
     }
 
-    let imageUrl: string | undefined;
+    // Create product first (fast). If image provided, upload asynchronously and attach later.
+    const created = await (addProductWithResult
+      ? addProductWithResult({
+          name: name.trim(),
+          category,
+          cost_price: parsedCostPrice,
+          price: parsedPrice,
+          stock: parsedStock,
+          custom_data: customData,
+        })
+      : null);
 
-    if (imageFile) {
-      if (storageBucketExists === false) {
-        console.warn('Skipping image upload: product-images bucket missing');
-        showMessage('error', 'Image upload skipped: storage bucket not found');
-      } else {
-        try {
-          const filePath = `products/${Date.now()}_${imageFile.name}`;
-          const { error: uploadError } = await supabase.storage
-            .from('product-images')
-            .upload(filePath, imageFile, { upsert: false });
-
-          if (uploadError) {
-            console.warn('Image upload skipped:', uploadError.message);
-            showMessage('error', 'Image upload failed (product created without image).');
-          } else {
-            const { data: urlData } = await supabase.storage
-              .from('product-images')
-              .getPublicUrl(filePath);
-
-            if (!urlData?.publicUrl) {
-              console.warn('Failed to get public URL for uploaded image.');
-              showMessage('error', 'Image uploaded but URL retrieval failed.');
-            } else {
-              imageUrl = urlData.publicUrl;
-            }
-          }
-        } catch (err) {
-          console.warn('Image upload (non-critical):', err);
-          showMessage('error', 'Image upload failed (product created without image).');
-        }
-      }
+    if (!created) {
+      showMessage("error", "Failed to add product");
+      return;
     }
 
-    const success = await addProduct({
-      name: name.trim(),
-      category,
-      cost_price: parsedCostPrice,
-      price: parsedPrice,
-      stock: parsedStock,
-      custom_data: customData,
-      image_url: imageUrl,
-    });
+    // Clear form and close modal immediately for snappy UX
+    setName("");
+    setCostPrice("");
+    setPrice("");
+    setStock("");
+    setCustomData({});
+    showMessage("success", "Product added successfully");
+    setIsAddModalOpen(false);
 
-    if (success) {
-      setName("");
-      setCostPrice("");
-      setPrice("");
-      setStock("");
-      setCustomData({});
-      showMessage("success", "Product added successfully");
-      setIsAddModalOpen(false);
-    } else {
-      showMessage("error", "Failed to add product");
+    // If image present, upload in background and patch product with image_url
+    if (imageFile && storageBucketExists !== false) {
+      (async () => {
+        try {
+          // Try to compress/resize the image in the browser to reduce upload time
+          let uploadBlob: Blob | File = imageFile;
+          try {
+            if (typeof createImageBitmap === 'function') {
+              const bitmap = await createImageBitmap(imageFile as Blob);
+              const maxDim = 1024;
+              let { width, height } = bitmap;
+              if (width > maxDim || height > maxDim) {
+                const scale = maxDim / Math.max(width, height);
+                width = Math.round(width * scale);
+                height = Math.round(height * scale);
+              }
+
+              const canvas = document.createElement('canvas');
+              canvas.width = width;
+              canvas.height = height;
+              const ctx = canvas.getContext('2d');
+              if (ctx) {
+                ctx.drawImage(bitmap, 0, 0, width, height);
+                const compressed = await new Promise<Blob | null>((resolve) =>
+                  canvas.toBlob(resolve, 'image/jpeg', 0.8)
+                );
+                if (compressed) uploadBlob = compressed;
+              }
+            }
+          } catch (compressErr) {
+            console.warn('Image compression failed, uploading original file:', compressErr);
+            uploadBlob = imageFile;
+          }
+
+          const filePath = `products/${Date.now()}_${imageFile.name.replace(/\s+/g, '_')}`;
+          const { error: uploadError } = await supabase.storage
+            .from('product-images')
+            .upload(filePath, uploadBlob as any, { upsert: false });
+
+          if (uploadError) {
+            console.warn('Background image upload failed:', uploadError.message);
+            return;
+          }
+
+          const { data: urlData } = await supabase.storage
+            .from('product-images')
+            .getPublicUrl(filePath);
+
+          if (!urlData?.publicUrl) {
+            console.warn('Failed to get public URL for uploaded image.');
+            return;
+          }
+
+          if (created?.id) {
+            await updateProduct(created.id, { image_url: urlData.publicUrl });
+          }
+        } catch (err) {
+          console.warn('Background image upload error:', err);
+        }
+      })();
+    }
+    } finally {
+      setIsAdding(false);
     }
   };
 
@@ -267,7 +306,7 @@ export default function Inventory(props: InventoryProps) {
   const saveEdit = async (id: string, updates: Partial<ProductForm>) => {
     if (Object.keys(updates).length === 0) {
       showMessage("error", "No changes made to save.");
-      return;
+      return false;
     }
 
     const success = await updateProduct(id, updates);
@@ -278,6 +317,7 @@ export default function Inventory(props: InventoryProps) {
     } else {
       showMessage("error", "Failed to update product");
     }
+    return success;
   };
 
   // =====================================================
@@ -443,6 +483,7 @@ export default function Inventory(props: InventoryProps) {
             Sell multiple items
           </button>
         </div>
+                isSubmitting={isAdding}
       </div>
 
       <div className="grid grid-cols-3 gap-3 py-4">
