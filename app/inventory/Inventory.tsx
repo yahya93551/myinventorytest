@@ -485,7 +485,6 @@ export default function Inventory(props: InventoryProps) {
             Sell multiple items
           </button>
         </div>
-                isSubmitting={isAdding}
       </div>
 
       <div className="grid grid-cols-3 gap-3 py-4">
