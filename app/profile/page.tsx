@@ -16,7 +16,7 @@ export default function ProfilePage() {
   const { dark } = useTheme();
   const [tenantRole, setTenantRole] = useState<string>("");
   const [subUsers, setSubUsers] = useState<Array<{ user_id: string; user_email: string; role: string; active: boolean; created_at: string }>>([]);
-  const [newSubUserEmail, setNewSubUserEmail] = useState("");
+  const [newSubUserIdentifier, setNewSubUserIdentifier] = useState("");
   const [newSubUserPassword, setNewSubUserPassword] = useState("");
   const [newSubUserRole, setNewSubUserRole] = useState<"accountant" | "sales">("sales");
   const [subUserMessage, setSubUserMessage] = useState<string>("");
@@ -243,8 +243,8 @@ export default function ProfilePage() {
   }, [tenantRole]);
 
   const createSubUser = async () => {
-    if (!newSubUserEmail || !newSubUserPassword) {
-      setSubUserMessage("Email and password are required.");
+    if (!newSubUserIdentifier || !newSubUserPassword) {
+      setSubUserMessage("Email or phone and password are required.");
       return;
     }
 
@@ -263,7 +263,7 @@ export default function ProfilePage() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          email: newSubUserEmail,
+          identifier: newSubUserIdentifier,
           password: newSubUserPassword,
           role: newSubUserRole,
         }),
@@ -274,7 +274,7 @@ export default function ProfilePage() {
         throw new Error(result.error || "Failed to create sub-user");
       }
 
-      setNewSubUserEmail("");
+      setNewSubUserIdentifier("");
       setNewSubUserPassword("");
       setNewSubUserRole("sales");
       setSubUserMessage("Sub-user created successfully.");

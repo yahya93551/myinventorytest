@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { requireActiveSubscription } from "@/lib/api";
+import { createPhoneFallbackEmail, isPhoneNumber, normalizePhoneNumber } from "@/lib/auth";
 import {
   checkRateLimit,
   getRateLimitIdentifier,
@@ -9,7 +10,7 @@ import {
 } from "@/lib/rateLimit";
 
 const CreateSubUserSchema = z.object({
-  email: z.string().email(),
+  identifier: z.string().min(1),
   password: z.string().min(6),
   role: z.enum(["accountant", "sales"]),
 });
@@ -24,7 +25,9 @@ interface OwnerAuthError {
   status?: number;
 }
 
-async function findUserByEmail(email: string) {
+async function findUserByIdentifier(identifier: string) {
+  const isPhone = isPhoneNumber(normalizePhoneNumber(identifier));
+  const normalizedIdentifier = isPhone ? normalizePhoneNumber(identifier) : identifier.toLowerCase();
   let page = 1;
 
   while (true) {
@@ -33,9 +36,12 @@ async function findUserByEmail(email: string) {
       throw error;
     }
 
-    const user = data.users.find(
-      (user) => user.email?.toLowerCase() === email.toLowerCase()
-    );
+    const user = data.users.find((user) => {
+      if (isPhone) {
+        return user.phone === normalizedIdentifier;
+      }
+      return user.email?.toLowerCase() === normalizedIdentifier;
+    });
 
     if (user) {
       return user;
@@ -155,12 +161,28 @@ export async function POST(req: Request) {
     );
   }
 
-  const { email, password, role } = parseResult.data;
+  const { identifier, password, role } = parseResult.data;
   const ownerId = auth.user.id;
   const tenantId = auth.tenantId;
 
-  const identifier = getRateLimitIdentifier(req, auth.user.id);
-  const rateResult = await checkRateLimit(identifier, {
+  const isPhone = isPhoneNumber(normalizePhoneNumber(identifier));
+  let normalizedPhone: string | undefined;
+  let email: string | undefined;
+
+  if (isPhone) {
+    normalizedPhone = normalizePhoneNumber(identifier);
+    if (!normalizedPhone) {
+      return NextResponse.json({ error: "Please provide a valid phone number." }, { status: 422 });
+    }
+  } else {
+    email = identifier.trim();
+    if (!email || !email.includes("@")) {
+      return NextResponse.json({ error: "Please provide a valid email address or phone number." }, { status: 422 });
+    }
+  }
+
+  const rateLimitIdentifier = getRateLimitIdentifier(req, auth.user.id);
+  const rateResult = await checkRateLimit(rateLimitIdentifier, {
     interval: 60_000,
     maxRequests: 10,
   });
@@ -172,20 +194,29 @@ export async function POST(req: Request) {
   let newUser = null;
 
   try {
-    newUser = await findUserByEmail(email);
+    newUser = await findUserByIdentifier(identifier);
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Failed to verify email" }, { status: 500 });
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Failed to verify identifier" }, { status: 500 });
   }
 
   if (!newUser) {
+    const createPayload: Record<string, unknown> = {
+      password,
+      email_confirm: true,
+    };
+
+    if (isPhone) {
+      createPayload.phone = normalizedPhone;
+      createPayload.email = createPhoneFallbackEmail(identifier);
+      createPayload.phone_confirm = true;
+    } else {
+      createPayload.email = email;
+    }
+
     const {
       data: createData,
       error: createError,
-    } = await supabaseAdmin.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true,
-    });
+    } = await supabaseAdmin.auth.admin.createUser(createPayload as any);
 
     if (createError || !createData?.user) {
       return NextResponse.json({ error: createError?.message || "Failed to create sub-user" }, { status: 500 });
@@ -213,7 +244,7 @@ export async function POST(req: Request) {
     {
       id: newUser.id,
       user_id: newUser.id,
-      email,
+      email: newUser.email || (isPhone ? createPhoneFallbackEmail(identifier) : email),
     },
     { onConflict: "id" }
   );
@@ -227,7 +258,7 @@ export async function POST(req: Request) {
     .insert({
       tenant_id: tenantId,
       user_id: newUser.id,
-      user_email: email,
+      user_email: isPhone ? normalizedPhone : email,
       role,
       active: true,
       created_by: ownerId,

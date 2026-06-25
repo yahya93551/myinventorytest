@@ -20,7 +20,7 @@ export default function SettingsPage() {
   const { dark } = useTheme();
   const [tenantRole, setTenantRole] = useState<string>("");
   const [subUsers, setSubUsers] = useState<Array<{ user_id: string; user_email: string; role: string; active: boolean; created_at: string }>>([]);
-  const [newSubUserEmail, setNewSubUserEmail] = useState("");
+  const [newSubUserIdentifier, setNewSubUserIdentifier] = useState("");
   const [newSubUserPassword, setNewSubUserPassword] = useState("");
   const [newSubUserRole, setNewSubUserRole] = useState<"accountant" | "sales">("sales");
   const [subUserMessage, setSubUserMessage] = useState<string>("");
@@ -161,8 +161,8 @@ export default function SettingsPage() {
   }, [tenantRole, subscriptionActive, subscriptionLoading]);
 
   const createSubUser = async () => {
-    if (!newSubUserEmail || !newSubUserPassword) {
-      setSubUserMessage("Email and password are required.");
+    if (!newSubUserIdentifier || !newSubUserPassword) {
+      setSubUserMessage("Email or phone and password are required.");
       return;
     }
 
@@ -181,7 +181,7 @@ export default function SettingsPage() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          email: newSubUserEmail,
+          identifier: newSubUserIdentifier,
           password: newSubUserPassword,
           role: newSubUserRole,
         }),
@@ -192,7 +192,7 @@ export default function SettingsPage() {
         throw new Error(result.error || "Failed to create sub-user");
       }
 
-      setNewSubUserEmail("");
+      setNewSubUserIdentifier("");
       setNewSubUserPassword("");
       setNewSubUserRole("sales");
       setSubUserMessage("Sub-user created successfully.");
@@ -575,11 +575,11 @@ CREATE TABLE IF NOT EXISTS tenant_members (
 
                         <div className="grid gap-4 sm:grid-cols-3">
                           <div>
-                            <label className="block text-sm font-medium text-theme-primary mb-2">Email Address</label>
+                            <label className="block text-sm font-medium text-theme-primary mb-2">Email or Phone</label>
                             <input
-                              value={newSubUserEmail}
-                              onChange={(e) => setNewSubUserEmail(e.target.value)}
-                              placeholder="user@example.com"
+                              value={newSubUserIdentifier}
+                              onChange={(e) => setNewSubUserIdentifier(e.target.value)}
+                              placeholder="user@example.com or +1234567890"
                               className="input-base"
                             />
                           </div>
