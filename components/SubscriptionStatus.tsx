@@ -1,12 +1,35 @@
 import React, { useEffect, useState } from 'react';
 import { useSubscription } from '@/hooks/useSubscription';
 import { apiPost } from '@/lib/apiClient';
+import { getSubscriptionMonthlyFeeForPlan, getSubscriptionPlan, isSubscriptionPlan, SubscriptionPlan } from '@/lib/subscriptionPlans';
+import PlanSelect from '@/components/PlanSelect';
 import Button from '@/components/Button';
 import Card from '@/components/Card';
 
 interface SubscriptionStatusProps {
   onRequestClick?: () => void;
 }
+
+const PLAN_DETAILS: Record<SubscriptionPlan, { label: string; products: string; users: string; description: string }> = {
+  basic: {
+    label: 'Basic',
+    products: 'Up to 1,000 products',
+    users: 'Up to 3 users',
+    description: 'A great starter plan for small businesses that need essential inventory management.',
+  },
+  pro: {
+    label: 'Pro',
+    products: 'Up to 5,000 products',
+    users: 'Up to 10 users',
+    description: 'For growing teams who need more capacity and collaboration.',
+  },
+  team: {
+    label: 'Team',
+    products: 'Unlimited products',
+    users: 'Unlimited users',
+    description: 'Designed for larger organizations with advanced needs and team access.',
+  },
+};
 
 export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) {
   const { subscription, loading, error, isActive, refetch } = useSubscription();
@@ -18,8 +41,16 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
   const [paymentReference, setPaymentReference] = useState('');
   const [additionalNotes, setAdditionalNotes] = useState('');
   const [requestMessage, setRequestMessage] = useState('');
-  const [selectedPlanFee, setSelectedPlanFee] = useState<number>(subscription?.monthly_fee || 5.0);
+  const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan>(() => getSubscriptionPlan(subscription ?? null));
   const [showUpgradeForm, setShowUpgradeForm] = useState(false);
+
+  useEffect(() => {
+    if (subscription?.plan && isSubscriptionPlan(subscription.plan)) {
+      setSelectedPlan(subscription.plan);
+    }
+  }, [subscription]);
+
+  const selectedPlanFee = getSubscriptionMonthlyFeeForPlan(selectedPlan);
 
   const activeUntilDate = subscription?.active_until ? new Date(subscription.active_until) : null;
   const remainingDays = activeUntilDate
@@ -32,6 +63,7 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
     setRequesting(true);
     try {
       await apiPost('/api/subscriptions', {
+        plan: selectedPlan,
         monthly_fee: selectedPlanFee,
         payer_name: payerName,
         payment_phone: paymentPhone,
@@ -49,7 +81,9 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
       setBusinessName('');
       setPaymentReference('');
       setAdditionalNotes('');
-      setSelectedPlanFee(subscription?.monthly_fee || 5.0);
+      if (subscription?.plan && isSubscriptionPlan(subscription.plan)) {
+        setSelectedPlan(subscription.plan);
+      }
     } catch (err) {
       setRequestMessage(err instanceof Error ? err.message : 'Error requesting subscription');
     } finally {
@@ -179,18 +213,23 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
                 <p>Enter your payment information so the admin can verify your subscription request.</p>
 
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
+                  <div className="relative">
                     <label className="text-sm font-medium text-theme-primary">Plan</label>
-                    <select
-                      value={selectedPlanFee}
-                      onChange={(e) => setSelectedPlanFee(Number(e.target.value))}
+                    <PlanSelect
+                      value={selectedPlan}
+                      onChange={(p) => setSelectedPlan(p)}
                       className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
-                      style={{ backgroundColor: 'var(--surface-input)', color: 'var(--text-primary)' }}
-                    >
-                      <option value={5}>Basic — $5 / month</option>
-                      <option value={10}>Pro — $10 / month</option>
-                      <option value={20}>Team — $20 / month</option>
-                    </select>
+                    />
+
+                    
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                    <p className="font-semibold text-slate-900">{PLAN_DETAILS[selectedPlan].label} plan details</p>
+                    <ul className="mt-2 space-y-1 list-disc pl-5">
+                      <li>{PLAN_DETAILS[selectedPlan].products}</li>
+                      <li>{PLAN_DETAILS[selectedPlan].users}</li>
+                      <li>{PLAN_DETAILS[selectedPlan].description}</li>
+                    </ul>
                   </div>
                   <input
                     value={payerName}

@@ -8,7 +8,7 @@ import { getVisibleSystemFieldNames } from "@/lib/customFields";
 
 export default function Dashboard() {
   // 🔥 Directly use the live hook – always up‑to-date
-  const { products, sales } = useInventory();
+  const { products, sales, ownerMetrics, categories } = useInventory();
   const customFieldsQuery = useCustomFields();
   const customFields = customFieldsQuery.data || [];
   const visibleSystemFieldNames = getVisibleSystemFieldNames(customFields);
@@ -33,7 +33,7 @@ export default function Dashboard() {
   const totalCost = products.reduce((a, p) => a + (p.cost_price ?? 0) * p.stock, 0);
   const totalSellValue = products.reduce((a, p) => a + p.price * p.stock, 0);
   const totalProfit = Math.max(0, totalSellValue - totalCost);
-  const categoryCount = new Set(products.map((p) => p.category)).size;
+  const categoryCount = categories.length > 0 ? categories.length : new Set(products.map((p) => p.category)).size;
 
   // Last sale date – safely
   let lastSaleDate = "No sales yet";
@@ -75,7 +75,11 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <StatsCards products={products} visibleFieldNames={visibleSystemFieldNames} />
+      <StatsCards
+        products={products}
+        visibleFieldNames={visibleSystemFieldNames}
+        ownerMetrics={ownerMetrics ?? undefined}
+      />
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Cash Flow Section */}

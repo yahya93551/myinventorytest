@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getServerTenantContext, requireRole, jsonError, jsonSuccess, requireActiveSubscription } from "@/lib/api";
+import { FEATURE_CUSTOM_FIELDS } from "@/lib/featureFlags";
 
 const CUSTOM_FIELDS_TABLE_NAME = "custom_fields";
 
@@ -115,6 +116,7 @@ const CustomFieldSchema = z.object({
 });
 
 export async function GET(req: Request) {
+  if (!FEATURE_CUSTOM_FIELDS) return jsonError("Not found", 404);
   const tenantContext = await getServerTenantContext(req);
   if ("error" in tenantContext) {
     return jsonError(tenantContext.error, tenantContext.status);
@@ -144,6 +146,7 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  if (!FEATURE_CUSTOM_FIELDS) return jsonError("Not found", 404);
   const tenantContextOrError = await requireRole(req, ["owner"]);
   if ("error" in tenantContextOrError) {
     return jsonError(tenantContextOrError.error, tenantContextOrError.status);
@@ -215,6 +218,7 @@ export async function POST(req: Request) {
 }
 
 export async function PATCH(req: Request) {
+  if (!FEATURE_CUSTOM_FIELDS) return jsonError("Not found", 404);
   const tenantContextOrError = await requireRole(req, ["owner"]);
   if ("error" in tenantContextOrError) {
     return jsonError(tenantContextOrError.error, tenantContextOrError.status);
@@ -290,6 +294,7 @@ export async function PATCH(req: Request) {
 }
 
 export async function DELETE(req: Request) {
+  if (!FEATURE_CUSTOM_FIELDS) return jsonError("Not found", 404);
   const tenantContextOrError = await requireRole(req, ["owner"]);
   if ("error" in tenantContextOrError) {
     return jsonError(tenantContextOrError.error, tenantContextOrError.status);

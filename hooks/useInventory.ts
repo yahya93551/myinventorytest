@@ -34,7 +34,7 @@ export function useInventory() {
   const itemsPerPage = 10;
   const [currentPage, setCurrentPage] = useState(1);
   const [sellItem, setSellItem] = useState<Product | null>(null);
-  const [sellQty, setSellQty] = useState(1);
+  const [sellQty, setSellQty] = useState<number | "">(1);
   const queryClient = useQueryClient();
 
   // ================= FETCH PRODUCTS WITH PAGINATION =================
@@ -320,9 +320,12 @@ export function useInventory() {
 
   const confirmSell = async (metadata?: SaleMetadata): Promise<boolean> => {
     if (!sellItem) return false;
+    const quantity = typeof sellQty === "number" ? sellQty : 0;
+    if (quantity < 1) return false;
+
     await sellProductMutation.mutateAsync({
       productId: sellItem.id,
-      quantity: sellQty,
+      quantity,
       metadata,
     });
     setSellItem(null);

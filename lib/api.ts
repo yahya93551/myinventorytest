@@ -1,6 +1,13 @@
 import type { User } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import {
+  getSubscriptionMonthlyFeeForPlan,
+  getSubscriptionPlan,
+  getSubscriptionPlanLimits,
+  isSubscriptionPlan,
+  SubscriptionPlan,
+} from "@/lib/subscriptionPlans";
 
 export interface ApiResponse<T> {
   success: boolean;
@@ -129,12 +136,20 @@ export async function requireRole(
  * Check if a tenant has an active subscription
  * Returns success if active, or an error object if not
  */
+export async function getTenantSubscription(tenantId: string) {
+  return await supabaseAdmin
+    .from("tenant_subscriptions")
+    .select("*")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+}
+
 export async function requireActiveSubscription(
   tenantId: string
 ): Promise<{ success: true } | { error: string; status: number }> {
   const { data: subscription, error } = await supabaseAdmin
     .from("tenant_subscriptions")
-    .select("status")
+    .select("status, active_until")
     .eq("tenant_id", tenantId)
     .maybeSingle();
 
@@ -145,8 +160,18 @@ export async function requireActiveSubscription(
   if (!subscription || subscription.status !== "active") {
     return {
       error: "Subscription required. Please request access or upgrade your subscription.",
-      status: 403
+      status: 403,
     };
+  }
+
+  if (subscription.active_until) {
+    const activeUntil = new Date(subscription.active_until);
+    if (!Number.isNaN(activeUntil.getTime()) && activeUntil < new Date()) {
+      return {
+        error: "Subscription expired. Please renew or upgrade your subscription.",
+        status: 403,
+      };
+    }
   }
 
   return { success: true };

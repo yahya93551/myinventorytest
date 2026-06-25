@@ -1,5 +1,6 @@
 "use client";
 
+import SalesRouteGuard from "@/components/SalesRouteGuard";
 import { useCallback, useEffect, useState } from "react";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { apiGet, apiDelete } from "@/lib/apiClient";
@@ -51,6 +52,7 @@ export default function SessionsSettingsPage() {
 
   return (
     <div className="space-y-6 p-6 bg-white rounded-lg shadow-sm text-slate-900">
+      <SalesRouteGuard />
       <div className="flex flex-col gap-2">
         <h1 className="text-2xl font-semibold">Active Sessions</h1>
         <p className="text-sm text-slate-600">

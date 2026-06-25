@@ -1,5 +1,6 @@
 "use client";
 
+import SalesRouteGuard from '@/components/SalesRouteGuard';
 import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
@@ -76,6 +77,7 @@ export default function MFASettingsPage() {
 
   return (
     <div className="space-y-6 p-6 bg-white rounded-lg shadow-sm text-slate-900">
+      <SalesRouteGuard />
       <h1 className="text-2xl font-semibold">Multi-factor Authentication</h1>
       <p className="text-sm text-slate-600">
         Enable an additional layer of security for your account by using an authenticator app, SMS, or email codes.

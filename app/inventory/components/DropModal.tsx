@@ -2,8 +2,8 @@ import { Product } from "../../../types";
 
 type Props = {
   dropItem: Product | null;
-  dropAmount: number;
-  setDropAmount: (amount: number) => void;
+  dropAmount: number | "";
+  setDropAmount: (amount: number | "") => void;
   setDropItem: (item: Product | null) => void;
   saveDrop: () => void;
 };
@@ -18,7 +18,7 @@ export default function DropModal({
   if (!dropItem) return null;
 
   const available = dropItem.allocated_quantity ?? 0;
-  const isValidQuantity = dropAmount > 0 && dropAmount <= available;
+  const isValidQuantity = typeof dropAmount === "number" && dropAmount > 0 && dropAmount <= available;
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
@@ -48,7 +48,7 @@ export default function DropModal({
             max={available}
             step={1}
             value={dropAmount}
-            onChange={(e) => setDropAmount(Number(e.target.value))}
+            onChange={(e) => setDropAmount(e.target.value === "" ? "" : Number(e.target.value))}
             placeholder="Enter quantity to drop"
           />
         </label>

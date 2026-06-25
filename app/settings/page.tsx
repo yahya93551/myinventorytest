@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
 import { useTheme } from "@/lib/theme-context";
+import SalesRouteGuard from "@/components/SalesRouteGuard";
 import { useRequireAuth, logout } from "@/hooks/useRequireAuth";
 import { useSubscription } from "@/hooks/useSubscription";
 import { BusinessSettingsForm } from "@/components/BusinessSettingsForm";
@@ -12,8 +13,10 @@ import { CustomFieldsManager } from "@/components/CustomFieldsManager";
 import { StandardFieldManager } from "@/components/StandardFieldManager";
 import { SubscriptionStatus } from "@/components/SubscriptionStatus";
 import { AdminSubscriptionManager } from "@/components/AdminSubscriptionManager";
+import ActivityLog from "@/components/ActivityLog";
 import { supabase } from "@/lib/supabase";
-import { Shield, Lock, Monitor, User, Building2, ListChecks, Layers, PlusCircle, Settings2, ChevronRight, CreditCard, Users, CheckCircle, AlertCircle, Zap, Package } from "lucide-react";
+import { FEATURE_CUSTOM_FIELDS } from "@/lib/featureFlags";
+import { Shield, Lock, Monitor, User, Building2, ListChecks, Layers, PlusCircle, Settings2, ChevronRight, CreditCard, Users, CheckCircle, AlertCircle, Zap, Package, History } from "lucide-react";
 
 export default function SettingsPage() {
   const { user, loading } = useRequireAuth();
@@ -26,7 +29,7 @@ export default function SettingsPage() {
   const [subUserMessage, setSubUserMessage] = useState<string>("");
   const [setupError, setSetupError] = useState<string>("");
   const [subUserLoading, setSubUserLoading] = useState(false);
-  const [activeSection, setActiveSection] = useState<"owner" | "system" | "subuser" | "business" | "customfields" | "standardfields" | "subscription">("owner");
+  const [activeSection, setActiveSection] = useState<"owner" | "system" | "subuser" | "business" | "customfields" | "standardfields" | "subscription" | "activity">("owner");
   const [businessType, setBusinessType] = useState<string>("custom");
   const [quickActionsOpen, setQuickActionsOpen] = useState(false);
   const router = useRouter();
@@ -56,6 +59,7 @@ export default function SettingsPage() {
   const settingTabs = [
     { id: "owner", label: "Owner Settings", icon: User },
     { id: "subscription", label: "Subscription", icon: CreditCard },
+    { id: "activity", label: "Activity Log", icon: History },
     { id: "business", label: "Business Type", icon: Building2 },
     { id: "standardfields", label: "Standard Fields", icon: ListChecks },
     { id: "customfields", label: "Custom Fields", icon: Layers },
@@ -227,6 +231,7 @@ export default function SettingsPage() {
 
   return (
     <div className={`flex min-h-screen items-start flex-col lg:flex-row ${dark ? "theme-dark" : "theme-light"}`}>
+      <SalesRouteGuard />
       <Sidebar />
       <main className="flex-1 w-full min-w-0 overflow-x-hidden">
         {/* Header */}
@@ -347,8 +352,9 @@ export default function SettingsPage() {
             <div className="sticky top-20 z-20 -mx-6 lg:-mx-8 px-6 lg:px-8 pt-6 pb-4 -mt-2 bg-linear-to-b from-theme-surface via-theme-surface to-transparent border-b border-theme/50">
               <div className="overflow-x-auto">
                 <div className="flex gap-2 min-w-min pb-2">
-                  {settingTabs.map((tab) => {
+                                  {settingTabs.map((tab) => {
                     const Icon = tab.icon;
+                                    if (tab.id === "customfields" && !FEATURE_CUSTOM_FIELDS) return null;
                     const selected = activeSection === tab.id;
                     return (
                       <button
@@ -476,6 +482,27 @@ CREATE TABLE IF NOT EXISTS tenant_members (
 
                   <div className="card-standard">
                     {tenantRole === "admin" ? <AdminSubscriptionManager /> : <SubscriptionStatus />}
+                  </div>
+                </section>
+              )}
+
+              {/* Activity Log */}
+              {activeSection === "activity" && (
+                <section>
+                  <div className="mb-6">
+                    <h2 className="text-2xl font-bold text-theme-primary">Activity Log</h2>
+                    <p className="text-theme-secondary mt-1">Review your tenant activity directly within settings.</p>
+                  </div>
+
+                  <div className="card-standard">
+                    {tenantRole !== "owner" ? (
+                      <div className="p-6 text-center">
+                        <p className="text-lg font-semibold text-theme-primary">Access denied</p>
+                        <p className="text-theme-secondary mt-2">Only the tenant owner can view activity logs.</p>
+                      </div>
+                    ) : (
+                      <ActivityLog perPage={20} />
+                    )}
                   </div>
                 </section>
               )}
@@ -813,7 +840,7 @@ CREATE TABLE IF NOT EXISTS tenant_members (
               )}
 
               {/* Custom Fields */}
-              {activeSection === "customfields" && (
+              {FEATURE_CUSTOM_FIELDS && activeSection === "customfields" && (
                 <section>
                   <div className="mb-6">
                     <h2 className="text-2xl font-bold text-theme-primary">Custom Fields</h2>

@@ -3,9 +3,12 @@ export const metadata = {
   description: 'Get help and support for My Inventory',
 };
 
+import SalesRouteGuard from "@/components/SalesRouteGuard";
+
 export default function SupportPage() {
   return (
     <div className="min-h-screen bg-white">
+      <SalesRouteGuard />
       <div className="max-w-4xl mx-auto px-4 py-12">
         <h1 className="text-4xl font-bold mb-2 text-theme-primary">Support Center</h1>
         <p className="text-theme-secondary mb-12">We're here to help. Get in touch with us.</p>

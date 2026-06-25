@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
+import SalesRouteGuard from "@/components/SalesRouteGuard";
 import { useRequireAuth, logout } from "@/hooks/useRequireAuth";
 import { useTheme } from "@/lib/theme-context";
 import { useSubscription } from "@/hooks/useSubscription";
@@ -297,6 +298,7 @@ export default function ProfilePage() {
 
   return (
     <div className={`flex min-h-screen items-start flex-col lg:flex-row ${dark ? "bg-slate-950 text-slate-100" : "bg-slate-100 text-slate-950"}`}>
+      <SalesRouteGuard />
       <Sidebar />
       <main className="flex-1 p-6">
         <div className="mb-6 flex flex-col gap-4">

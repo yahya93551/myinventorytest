@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import Sidebar from "@/components/Sidebar";
+import SalesRouteGuard from "@/components/SalesRouteGuard";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { useTenantRole } from "@/hooks/useTenantRole";
 import { useBusinessSettings } from "@/hooks/useCustomFields";
@@ -239,6 +240,7 @@ export default function DebtsPage() {
 
   return (
     <div className={`flex min-h-screen items-start flex-col lg:flex-row ${dark ? "theme-dark" : "theme-light"}`}>
+      <SalesRouteGuard />
       <Sidebar />
 
       <div className="flex-1 p-6">

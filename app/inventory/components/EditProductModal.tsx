@@ -3,6 +3,7 @@ import { Product, CustomField } from "../../../types";
 import { supabase } from "@/lib/supabase";
 import { CustomFieldInput } from "@/components/CustomFieldInput";
 import { getVisibleSystemFields } from "@/lib/customFields";
+import { FEATURE_CUSTOM_FIELDS } from "@/lib/featureFlags";
 
 type Props = {
   editItem: Product | null;
@@ -300,7 +301,7 @@ export default function EditProductModal({
           })}
 
           {/* Custom Fields */}
-          {customFields
+          {FEATURE_CUSTOM_FIELDS && customFields
             .filter((field) => !field.is_system && field.is_visible)
             .map((field) => (
               <CustomFieldInput

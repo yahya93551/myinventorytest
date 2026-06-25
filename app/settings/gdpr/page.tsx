@@ -1,5 +1,6 @@
 "use client";
 
+import SalesRouteGuard from "@/components/SalesRouteGuard";
 import { useState } from "react";
 import { apiPost } from "@/lib/apiClient";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
@@ -62,6 +63,7 @@ export default function GDPRSettingsPage() {
 
   return (
     <div className="space-y-6 p-6 bg-white rounded-lg shadow-sm text-slate-900">
+      <SalesRouteGuard />
       <h1 className="text-2xl font-semibold">Privacy & GDPR</h1>
       <p className="text-sm text-slate-600">
         Request your account data export or start the account deletion workflow. These actions are protected and require your confirmation.

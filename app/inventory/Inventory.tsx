@@ -30,8 +30,8 @@ type InventoryProps = {
   restockProduct: (id: string, amount: number) => Promise<boolean>;
 
   sellItem: Product | null;
-  sellQty: number;
-  setSellQty: (qty: number) => void;
+  sellQty: number | "";
+  setSellQty: (qty: number | "") => void;
   setSellItem: (item: Product | null) => void;
   openSell: (product: Product) => void;
   confirmSell: (metadata?: {
@@ -97,10 +97,10 @@ export default function Inventory(props: InventoryProps) {
   const [restockItem, setRestockItem] = useState<Product | null>(null);
   const [restockAmount, setRestockAmount] = useState(1);
   const [loadItem, setLoadItem] = useState<Product | null>(null);
-  const [loadAmount, setLoadAmount] = useState(1);
+  const [loadAmount, setLoadAmount] = useState<number | "">(1);
   const [loadNote, setLoadNote] = useState("");
   const [dropItem, setDropItem] = useState<Product | null>(null);
-  const [dropAmount, setDropAmount] = useState(1);
+  const [dropAmount, setDropAmount] = useState<number | "">(1);
   const [bulkSellOpen, setBulkSellOpen] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
@@ -378,17 +378,18 @@ export default function Inventory(props: InventoryProps) {
   const saveLoad = async () => {
     if (!loadItem) return;
 
-    if (loadAmount <= 0) {
+    const quantity = typeof loadAmount === "number" ? loadAmount : Number(loadAmount);
+    if (!quantity || quantity <= 0) {
       showMessage("error", "Quantity must be greater than 0");
       return;
     }
 
-    if (loadAmount > loadItem.stock) {
+    if (quantity > loadItem.stock) {
       showMessage("error", "Quantity cannot exceed available stock");
       return;
     }
 
-    const success = await loadProduct(loadItem.id, loadAmount, loadNote);
+    const success = await loadProduct(loadItem.id, quantity, loadNote);
 
     if (success) {
       showMessage("success", "Stock taken successfully");
@@ -410,12 +411,13 @@ export default function Inventory(props: InventoryProps) {
     if (!dropItem) return;
 
     const available = dropItem.allocated_quantity ?? 0;
-    if (dropAmount <= 0 || dropAmount > available) {
+    const quantity = typeof dropAmount === "number" ? dropAmount : Number(dropAmount);
+    if (!quantity || quantity <= 0 || quantity > available) {
       showMessage("error", "Quantity must be between 1 and the taken stock amount");
       return;
     }
 
-    const success = await dropProduct(dropItem.id, dropAmount);
+    const success = await dropProduct(dropItem.id, quantity);
 
     if (success) {
       showMessage("success", "Taken stock dropped successfully");

@@ -7,9 +7,12 @@ import Link from "next/link";
 import Sidebar from "@/components/Sidebar";
 import AddProductForm from "../components/AddProductForm";
 import BulkUploadProducts from "@/components/BulkUploadProducts";
+import SalesRouteGuard from "@/components/SalesRouteGuard";
 import { apiGet, apiPost } from "@/lib/apiClient";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
-import { useCustomFields } from "@/hooks/useCustomFields";import { useSubscription } from "@/hooks/useSubscription";import { useTheme } from "@/lib/theme-context";
+import { useCustomFields } from "@/hooks/useCustomFields";
+import { useSubscription } from "@/hooks/useSubscription";
+import { useTheme } from "@/lib/theme-context";
 import { getVisibleSystemFieldNames } from "@/lib/customFields";
 
 type Product = {
@@ -191,6 +194,7 @@ export default function AddPage() {
     <div
       className={`flex min-h-screen items-start flex-col lg:flex-row ${theme}`}
     >
+      <SalesRouteGuard />
       <Sidebar />
 
       <div className="flex-1 p-4 sm:p-6 overflow-x-hidden">

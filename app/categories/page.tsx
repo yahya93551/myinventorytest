@@ -2,6 +2,7 @@
 
 import Sidebar from "@/components/Sidebar";
 import Categories from "@/components/Categories";
+import SalesRouteGuard from "@/components/SalesRouteGuard";
 import { useInventory } from "@/hooks/useInventory";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { useTheme } from "@/lib/theme-context";
@@ -21,6 +22,7 @@ export default function CategoriesPage() {
 
   return (
     <div className={`flex min-h-screen items-start flex-col lg:flex-row ${dark ? "theme-dark" : "theme-light"}`}>
+      <SalesRouteGuard />
       <Sidebar />
       <div className="flex-1 p-4 sm:p-6">
         <Categories

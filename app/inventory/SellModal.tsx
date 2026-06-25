@@ -13,8 +13,8 @@ type SaleMeta = {
 
 type Props = {
   sellItem: Product | null;
-  sellQty: number;
-  setSellQty: (qty: number) => void;
+  sellQty: number | "";
+  setSellQty: (qty: number | "") => void;
   setSellItem: (item: Product | null) => void;
   confirmSell: (metadata?: SaleMeta) => Promise<boolean | void> | void;
   tenantRole: string;
@@ -60,8 +60,9 @@ export default function SellModal({
     timeZone: "Africa/Mogadishu",
   });
   const availableToSell = tenantRole === "sales" ? sellItem.allocated_quantity ?? 0 : sellItem.stock;
-  const total = sellQty * sellItem.price;
-  const canConfirm = sellQty >= 1 && sellQty <= availableToSell;
+  const quantity = typeof sellQty === "number" ? sellQty : 0;
+  const total = quantity * sellItem.price;
+  const canConfirm = quantity >= 1 && quantity <= availableToSell;
 
   const printReceipt = () => {
     if (typeof window === "undefined") return;
@@ -220,13 +221,17 @@ export default function SellModal({
             Phone
             <div className="mt-1 flex gap-2">
               <select
-                className="w-24 rounded bg-slate-950 px-3 py-2 text-slate-100"
+                className="w-24 rounded border border-theme bg-theme-input px-3 py-2 text-theme-primary"
                 value={countryCode}
                 onChange={(e) => setCountryCode(e.target.value)}
                 disabled={isProcessing}
               >
                 {countryOptions.map((option) => (
-                  <option key={option.code} value={option.code}>
+                  <option
+                    key={option.code}
+                    value={option.code}
+                    className="bg-theme-surface text-theme-primary"
+                  >
                     {option.flag} {option.code}
                   </option>
                 ))}
@@ -285,10 +290,8 @@ export default function SellModal({
           max={availableToSell}
           value={sellQty}
           onChange={(e) => {
-            const value = Number(e.target.value);
-            const nextQty = Number.isNaN(value)
-              ? 1
-              : Math.max(1, Math.min(value, availableToSell));
+            const rawValue = e.target.value;
+            const nextQty = rawValue === "" ? "" : Number(rawValue);
 
             setError(null);
             setSellQty(nextQty);

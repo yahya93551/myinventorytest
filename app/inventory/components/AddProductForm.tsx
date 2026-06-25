@@ -5,6 +5,7 @@ import { useState } from "react";
 import { CustomField } from "../../../types";
 import { CustomFieldInput } from "@/components/CustomFieldInput";
 import { getVisibleSystemFields } from "@/lib/customFields";
+import { FEATURE_CUSTOM_FIELDS } from "@/lib/featureFlags";
 
 type Props = {
   name: string;
@@ -277,7 +278,7 @@ export default function AddProductForm({
           renderStandardField
         )}
 
-        {customFields.some(
+        {FEATURE_CUSTOM_FIELDS && customFields.some(
           (field) => !field.is_system && field.is_visible
         ) && (
           <div className="col-span-full rounded-3xl border border-theme bg-theme-input p-4 text-theme-secondary">
@@ -291,7 +292,7 @@ export default function AddProductForm({
         )}
 
         {/* Custom Fields */}
-        {customFields
+        {FEATURE_CUSTOM_FIELDS && customFields
           .filter(
             (field) =>
               !field.is_system &&

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { getSubscriptionPlan, getSubscriptionMonthlyFeeForPlan, isSubscriptionPlan } from "@/lib/subscriptionPlans";
 
 type AuthUserResponse = Awaited<ReturnType<typeof supabaseAdmin.auth.getUser>>;
 type AuthUser = NonNullable<NonNullable<AuthUserResponse["data"]>["user"]>;
@@ -64,6 +65,28 @@ async function authorizeUser(authHeader: string | null | undefined): Promise<Own
   return { user: userData.user, tenantId: membership.tenant_id };
 }
 
+function normalizeSubscription(subscription: any) {
+  if (!subscription) {
+    return {
+      status: "inactive",
+      monthly_fee: 5.0,
+      message: "No active subscription",
+      plan: "basic",
+    };
+  }
+
+  const normalized = { ...subscription };
+  if (normalized.status === "active" && normalized.active_until) {
+    const activeUntil = new Date(normalized.active_until);
+    if (!Number.isNaN(activeUntil.getTime()) && activeUntil < new Date()) {
+      normalized.status = "expired";
+    }
+  }
+
+  normalized.plan = getSubscriptionPlan(normalized);
+  return normalized;
+}
+
 // GET /api/subscriptions - Get subscription status for current user
 export async function GET(req: Request) {
   const authHeader = req.headers.get("authorization")?.replace("Bearer ", "")?.trim();
@@ -84,19 +107,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  if (!subscription) {
-    // Return default inactive subscription
-    return NextResponse.json({
-      success: true,
-      data: {
-        status: "inactive",
-        monthly_fee: 5.0,
-        message: "No active subscription"
-      }
-    });
-  }
-
-  return NextResponse.json({ success: true, data: subscription });
+  return NextResponse.json({ success: true, data: normalizeSubscription(subscription) });
 }
 
 // POST /api/subscriptions - Owner requests subscription (only for owners)
@@ -121,7 +132,29 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Only owners can request subscriptions" }, { status: 403 });
   }
 
-  // Check if subscription already exists
+  // Parse payload early so we have plan and fee available for update paths
+  const payload = await req.json().catch(() => ({}));
+  const payerName = typeof payload.payer_name === 'string' ? payload.payer_name.trim() : '';
+  const paymentPhone = typeof payload.payment_phone === 'string' ? payload.payment_phone.trim() : '';
+  const paymentEmail = typeof payload.payment_email === 'string' ? payload.payment_email.trim() : '';
+  const businessName = typeof payload.business_name === 'string' ? payload.business_name.trim() : '';
+  const paymentReference = typeof payload.payment_reference === 'string' ? payload.payment_reference.trim() : '';
+  const notes = typeof payload.notes === 'string' ? payload.notes.trim() : '';
+  const requestedPlan = typeof payload.plan === 'string' && isSubscriptionPlan(payload.plan) ? payload.plan : "basic";
+  const monthly_fee = getSubscriptionMonthlyFeeForPlan(requestedPlan);
+
+  const notesParts = [
+    payerName ? `Payer name: ${payerName}` : null,
+    paymentPhone ? `Payment phone: ${paymentPhone}` : null,
+    paymentEmail ? `Payment email: ${paymentEmail}` : null,
+    businessName ? `Business name: ${businessName}` : null,
+    paymentReference ? `Payment reference: ${paymentReference}` : null,
+    notes ? `Details: ${notes}` : null,
+    `Selected plan: ${requestedPlan}`,
+  ].filter(Boolean);
+  const formattedNotes = notesParts.length > 0 ? notesParts.join(' | ') : null;
+
+  // Check if subscription already exists and normalize its status
   const { data: existingSubscription, error: existingError } = await supabaseAdmin
     .from("tenant_subscriptions")
     .select("*")
@@ -133,42 +166,96 @@ export async function POST(req: Request) {
   }
 
   if (existingSubscription) {
+    const normalizedExisting = normalizeSubscription(existingSubscription);
+    // If there's an active or pending subscription/request, block new requests
+    if (normalizedExisting.status === "active" || normalizedExisting.status === "pending") {
+      return NextResponse.json(
+        { error: "Subscription already exists for this account. Current status: " + normalizedExisting.status },
+        { status: 400 }
+      );
+    }
+
+    // If existing subscription is expired or inactive, update that row to become a new pending request
+    const { data: updatedSubscription, error: updateError } = await supabaseAdmin
+      .from("tenant_subscriptions")
+      .update({
+        status: "pending",
+        monthly_fee,
+        requested_at: new Date().toISOString(),
+        notes: formattedNotes,
+        plan: requestedPlan,
+      })
+      .eq("id", existingSubscription.id)
+      .select("*")
+      .single();
+
+    if (updateError) {
+      // If the DB schema doesn't have `plan`, retry without that column to remain backward compatible
+      if (typeof updateError.message === 'string' && updateError.message.toLowerCase().includes("plan")) {
+        const { data: updatedSubscriptionRetry, error: updateErrorRetry } = await supabaseAdmin
+          .from("tenant_subscriptions")
+          .update({
+            status: "pending",
+            monthly_fee,
+            requested_at: new Date().toISOString(),
+            notes: formattedNotes,
+          })
+          .eq("id", existingSubscription.id)
+          .select("*")
+          .single();
+
+        if (updateErrorRetry) {
+          return NextResponse.json({ error: updateErrorRetry.message }, { status: 500 });
+        }
+
+        return NextResponse.json(
+          { success: true, data: updatedSubscriptionRetry, message: "Subscription request submitted. Waiting for admin approval." },
+          { status: 200 }
+        );
+      }
+
+      return NextResponse.json({ error: updateError.message }, { status: 500 });
+    }
+
     return NextResponse.json(
-      { error: "Subscription already exists for this account. Current status: " + existingSubscription.status },
-      { status: 400 }
+      { success: true, data: updatedSubscription, message: "Subscription request submitted. Waiting for admin approval." },
+      { status: 200 }
     );
   }
 
-  const payload = await req.json().catch(() => ({}));
-  const payerName = typeof payload.payer_name === 'string' ? payload.payer_name.trim() : '';
-  const paymentPhone = typeof payload.payment_phone === 'string' ? payload.payment_phone.trim() : '';
-  const paymentEmail = typeof payload.payment_email === 'string' ? payload.payment_email.trim() : '';
-  const businessName = typeof payload.business_name === 'string' ? payload.business_name.trim() : '';
-  const paymentReference = typeof payload.payment_reference === 'string' ? payload.payment_reference.trim() : '';
-  const notes = typeof payload.notes === 'string' ? payload.notes.trim() : '';
-
-  const notesParts = [
-    payerName ? `Payer name: ${payerName}` : null,
-    paymentPhone ? `Payment phone: ${paymentPhone}` : null,
-    paymentEmail ? `Payment email: ${paymentEmail}` : null,
-    businessName ? `Business name: ${businessName}` : null,
-    paymentReference ? `Payment reference: ${paymentReference}` : null,
-    notes ? `Details: ${notes}` : null,
-  ].filter(Boolean);
-  const formattedNotes = notesParts.length > 0 ? notesParts.join(' | ') : null;
-
   // Create new subscription request
-  const { data: newSubscription, error: createError } = await supabaseAdmin
+  let { data: newSubscription, error: createError } = await supabaseAdmin
     .from("tenant_subscriptions")
     .insert({
       tenant_id: tenantId,
       status: "pending",
-      monthly_fee: 5.0,
+      monthly_fee,
       requested_at: new Date().toISOString(),
       notes: formattedNotes,
+      plan: requestedPlan,
     })
     .select("*")
     .single();
+
+  if (createError) {
+    // Retry without `plan` if the DB doesn't have that column yet
+    if (typeof createError.message === 'string' && createError.message.toLowerCase().includes("plan")) {
+      const res = await supabaseAdmin
+        .from("tenant_subscriptions")
+        .insert({
+          tenant_id: tenantId,
+          status: "pending",
+          monthly_fee,
+          requested_at: new Date().toISOString(),
+          notes: formattedNotes,
+        })
+        .select("*")
+        .single();
+
+      newSubscription = res.data;
+      createError = res.error;
+    }
+  }
 
   if (createError) {
     return NextResponse.json({ error: createError.message }, { status: 500 });

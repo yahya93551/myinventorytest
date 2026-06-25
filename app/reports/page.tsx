@@ -5,6 +5,7 @@ import Link from "next/link";
 import { apiGet } from "@/lib/apiClient";
 import { Sale } from "../../types";
 import Sidebar from "@/components/Sidebar";
+import SalesRouteGuard from "@/components/SalesRouteGuard";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { useTheme } from "@/lib/theme-context";
 import { jsPDF } from "jspdf";
@@ -304,6 +305,7 @@ export default function ReportsPage() {
     <div
       className={`flex min-h-screen items-start flex-col lg:flex-row ${theme}`}
     >
+      <SalesRouteGuard />
       <Sidebar />
 
       <div className="flex-1 p-4 sm:p-6 overflow-x-hidden">

@@ -5,6 +5,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { logout } from "@/hooks/useRequireAuth";
+import { useTenantRole } from "@/hooks/useTenantRole";
 import { useTheme } from "@/lib/theme-context";
 import {
   LayoutDashboard,
@@ -21,16 +22,18 @@ import {
   Menu,
   X,
   Plus,
-  History,
 } from "lucide-react";
 
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { dark, setDark } = useTheme();
+  const { data: tenantRoleData, isLoading: tenantRoleLoading } = useTenantRole();
 
   const [collapsed, setCollapsed] = useState(false);
   const [open, setOpen] = useState(false);
+
+  const isSalesUser = !tenantRoleLoading && tenantRoleData?.role === "sales";
 
   const handleLogout = async () => {
     try {
@@ -115,14 +118,16 @@ export default function Sidebar() {
 
         {/* NAV */}
         <div className="flex-1 flex flex-col gap-2">
-          <Link
-            href="/"
-            onClick={() => setOpen(false)}
-            className={navClass(pathname === "/")}
-          >
-            <LayoutDashboard className="w-5 h-5 sm:w-6 sm:h-6" />
-            {!collapsed && <span>Dashboard</span>}
-          </Link>
+          {!isSalesUser && (
+            <Link
+              href="/"
+              onClick={() => setOpen(false)}
+              className={navClass(pathname === "/")}
+            >
+              <LayoutDashboard className="w-5 h-5 sm:w-6 sm:h-6" />
+              {!collapsed && <span>Dashboard</span>}
+            </Link>
+          )}
 
           <Link
             href="/inventory"
@@ -133,23 +138,27 @@ export default function Sidebar() {
             {!collapsed && <span>Inventory</span>}
           </Link>
 
-          <Link
-            href="/inventory/add"
-            onClick={() => setOpen(false)}
-            className={navClass(pathname === "/inventory/add")}
-          >
-            <Plus className="w-5 h-5 sm:w-6 sm:h-6" />
-            {!collapsed && <span>Add Product</span>}
-          </Link>
+          {!isSalesUser && (
+            <Link
+              href="/inventory/add"
+              onClick={() => setOpen(false)}
+              className={navClass(pathname === "/inventory/add")}
+            >
+              <Plus className="w-5 h-5 sm:w-6 sm:h-6" />
+              {!collapsed && <span>Add Product</span>}
+            </Link>
+          )}
 
-          <Link
-            href="/categories"
-            onClick={() => setOpen(false)}
-            className={navClass(pathname === "/categories")}
-          >
-            <Tag className="w-5 h-5 sm:w-6 sm:h-6" />
-            {!collapsed && <span>Categories</span>}
-          </Link>
+          {!isSalesUser && (
+            <Link
+              href="/categories"
+              onClick={() => setOpen(false)}
+              className={navClass(pathname === "/categories")}
+            >
+              <Tag className="w-5 h-5 sm:w-6 sm:h-6" />
+              {!collapsed && <span>Categories</span>}
+            </Link>
+          )}
 
           <Link
             href="/sales"
@@ -160,50 +169,49 @@ export default function Sidebar() {
             {!collapsed && <span>Sales</span>}
           </Link>
 
-          <Link
-            href="/reports"
-            onClick={() => setOpen(false)}
-            className={navClass(pathname === "/reports")}
-          >
-            <FileText className="w-5 h-5 sm:w-6 sm:h-6" />
-            {!collapsed && <span>Reports</span>}
-          </Link>
+          {!isSalesUser && (
+            <Link
+              href="/reports"
+              onClick={() => setOpen(false)}
+              className={navClass(pathname === "/reports")}
+            >
+              <FileText className="w-5 h-5 sm:w-6 sm:h-6" />
+              {!collapsed && <span>Reports</span>}
+            </Link>
+          )}
 
-          <Link
-            href="/activity"
-            onClick={() => setOpen(false)}
-            className={navClass(pathname === "/activity")}
-          >
-            <History className="w-5 h-5 sm:w-6 sm:h-6" />
-            {!collapsed && <span>Activity Log</span>}
-          </Link>
+          {!isSalesUser && (
+            <Link
+              href="/debts"
+              onClick={() => setOpen(false)}
+              className={navClass(pathname?.startsWith("/debts") === true)}
+            >
+              <Book className="w-5 h-5 sm:w-6 sm:h-6" />
+              {!collapsed && <span>Debts</span>}
+            </Link>
+          )}
 
-          <Link
-            href="/debts"
-            onClick={() => setOpen(false)}
-            className={navClass(pathname?.startsWith("/debts") === true)}
-          >
-            <Book className="w-5 h-5 sm:w-6 sm:h-6" />
-            {!collapsed && <span>Debts</span>}
-          </Link>
+          {!isSalesUser && (
+            <Link
+              href="/settings"
+              onClick={() => setOpen(false)}
+              className={navClass(pathname === "/settings")}
+            >
+              <Settings className="w-5 h-5 sm:w-6 sm:h-6" />
+              {!collapsed && <span>Settings</span>}
+            </Link>
+          )}
 
-          <Link
-            href="/settings"
-            onClick={() => setOpen(false)}
-            className={navClass(pathname === "/settings")}
-          >
-            <Settings className="w-5 h-5 sm:w-6 sm:h-6" />
-            {!collapsed && <span>Settings</span>}
-          </Link>
-
-          <Link
-            href="/profile"
-            onClick={() => setOpen(false)}
-            className={navClass(pathname === "/profile")}
-          >
-            <User className="w-5 h-5 sm:w-6 sm:h-6" />
-            {!collapsed && <span>Profile</span>}
-          </Link>
+          {!isSalesUser && (
+            <Link
+              href="/profile"
+              onClick={() => setOpen(false)}
+              className={navClass(pathname === "/profile")}
+            >
+              <User className="w-5 h-5 sm:w-6 sm:h-6" />
+              {!collapsed && <span>Profile</span>}
+            </Link>
+          )}
         </div>
 
         {/* THEME TOGGLE & LOGOUT */}

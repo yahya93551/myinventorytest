@@ -2,9 +2,9 @@ import { Product } from "../../../types";
 
 type Props = {
   loadItem: Product | null;
-  loadAmount: number;
+  loadAmount: number | "";
   loadNote: string;
-  setLoadAmount: (amount: number) => void;
+  setLoadAmount: (amount: number | "") => void;
   setLoadNote: (note: string) => void;
   setLoadItem: (item: Product | null) => void;
   saveLoad: () => void;
@@ -21,7 +21,7 @@ export default function LoadModal({
 }: Props) {
   if (!loadItem) return null;
 
-  const isValidQuantity = loadAmount > 0 && loadAmount <= loadItem.stock;
+  const isValidQuantity = typeof loadAmount === "number" && loadAmount > 0 && loadAmount <= loadItem.stock;
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
@@ -51,7 +51,7 @@ export default function LoadModal({
             max={loadItem.stock}
             step={1}
             value={loadAmount}
-            onChange={(e) => setLoadAmount(Number(e.target.value))}
+            onChange={(e) => setLoadAmount(e.target.value === "" ? "" : Number(e.target.value))}
             placeholder="Enter quantity to take"
           />
         </label>

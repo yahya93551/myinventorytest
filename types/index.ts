@@ -71,6 +71,7 @@ export interface Subscription {
   id: string;
   tenant_id: string;
   status: SubscriptionStatus;
+  plan?: 'basic' | 'pro' | 'team' | null;
   monthly_fee: number;
   billing_date: string | null;
   next_billing_date: string | null;
