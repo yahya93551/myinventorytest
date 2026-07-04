@@ -15,8 +15,11 @@ import { SubscriptionStatus } from "@/components/SubscriptionStatus";
 import { AdminSubscriptionManager } from "@/components/AdminSubscriptionManager";
 import ActivityLog from "@/components/ActivityLog";
 import { supabase } from "@/lib/supabase";
+import { getAccessToken } from "@/lib/apiClient";
+import { isPhoneNumber, normalizePhoneNumber } from "@/lib/auth";
 import { FEATURE_CUSTOM_FIELDS } from "@/lib/featureFlags";
-import { Shield, Lock, Monitor, User, Building2, ListChecks, Layers, PlusCircle, Settings2, ChevronRight, CreditCard, Users, CheckCircle, AlertCircle, Zap, Package, History } from "lucide-react";
+import { SUBSCRIPTION_PLAN_USER_LIMITS } from "@/lib/subscriptionPlans";
+import { Shield, Lock, Monitor, User, Building2, ListChecks, Layers, PlusCircle, Settings2, ChevronRight, CreditCard, Users, CheckCircle, AlertCircle, Zap, Package, History, ChevronDown } from "lucide-react";
 
 export default function SettingsPage() {
   const { user, loading } = useRequireAuth();
@@ -32,8 +35,39 @@ export default function SettingsPage() {
   const [activeSection, setActiveSection] = useState<"owner" | "system" | "subuser" | "business" | "customfields" | "standardfields" | "subscription" | "activity">("owner");
   const [businessType, setBusinessType] = useState<string>("custom");
   const [quickActionsOpen, setQuickActionsOpen] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordMessage, setPasswordMessage] = useState<string>("");
+  const [passwordLoading, setPasswordLoading] = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [linkPhoneNumber, setLinkPhoneNumber] = useState("");
+  const [phoneOtpSent, setPhoneOtpSent] = useState(false);
+  const [linkPhoneOtp, setLinkPhoneOtp] = useState("");
+  const [sendPhoneOtpLoading, setSendPhoneOtpLoading] = useState(false);
+  const [linkPhoneLoading, setLinkPhoneLoading] = useState(false);
+  const [linkPhoneMessage, setLinkPhoneMessage] = useState<string>("");
+  const [linkedPhone, setLinkedPhone] = useState<string>(user?.phone || "");
+  const [changeRoleModalOpen, setChangeRoleModalOpen] = useState(false);
+  const [selectedUserForRoleChange, setSelectedUserForRoleChange] = useState<{ user_id: string; user_email: string; role: string } | null>(null);
+  const [newRoleForChange, setNewRoleForChange] = useState<"accountant" | "sales">("sales");
+  const [changeRoleLoading, setChangeRoleLoading] = useState(false);
+  const [deleteUserModalOpen, setDeleteUserModalOpen] = useState(false);
+  const [selectedUserForDelete, setSelectedUserForDelete] = useState<{ user_id: string; user_email: string } | null>(null);
+  const [deleteUserLoading, setDeleteUserLoading] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string>("");
+  const [toastType, setToastType] = useState<"success" | "error">("success");
+  const [showToast, setShowToast] = useState(false);
+  const [createMemberFormOpen, setCreateMemberFormOpen] = useState(false);
   const router = useRouter();
-  const { isActive: subscriptionActive, loading: subscriptionLoading } = useSubscription();
+  const { subscription, isActive: subscriptionActive, loading: subscriptionLoading } = useSubscription();
+
+  const showNotification = (message: string, type: "success" | "error" = "success") => {
+    setToastMessage(message);
+    setToastType(type);
+    setShowToast(true);
+    setTimeout(() => setShowToast(false), 3000);
+  };
 
   const quickActions = [
     {
@@ -76,11 +110,160 @@ export default function SettingsPage() {
     router.push("/login");
   };
 
+  const handleUpdatePassword = async () => {
+    setPasswordMessage("");
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      setPasswordMessage("All password fields are required.");
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setPasswordMessage("New passwords do not match.");
+      return;
+    }
+
+    if (newPassword.length < 8) {
+      setPasswordMessage("Password must be at least 8 characters.");
+      return;
+    }
+
+    if (newPassword === currentPassword) {
+      setPasswordMessage("New password must be different from current password.");
+      return;
+    }
+
+    setPasswordLoading(true);
+    try {
+      // First verify current password by attempting to sign in
+      if (!user?.email) {
+        setPasswordMessage("Unable to verify your identity.");
+        setPasswordLoading(false);
+        return;
+      }
+
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: user.email,
+        password: currentPassword,
+      });
+
+      if (signInError) {
+        setPasswordMessage("Current password is incorrect.");
+        setPasswordLoading(false);
+        return;
+      }
+
+      // If verification successful, update to new password
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+
+      if (updateError) {
+        setPasswordMessage(updateError.message);
+      } else {
+        setCurrentPassword("");
+        setNewPassword("");
+        setConfirmPassword("");
+        setPasswordMessage("Password updated successfully.");
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to update password.";
+      setPasswordMessage(message);
+      console.error("Password update error:", message);
+    } finally {
+      setPasswordLoading(false);
+    }
+  };
+
+  const sendPhoneVerificationCode = async () => {
+    setLinkPhoneMessage("");
+    const normalizedPhone = normalizePhoneNumber(linkPhoneNumber);
+
+    if (!isPhoneNumber(normalizedPhone)) {
+      setLinkPhoneMessage("Please enter a valid phone number to receive the verification code.");
+      return;
+    }
+
+    setSendPhoneOtpLoading(true);
+    try {
+      const res = await fetch("/api/auth/phone/send-otp", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ phone: normalizedPhone }),
+      });
+
+      const result = await res.json();
+      if (!res.ok) {
+        setLinkPhoneMessage(result.error || "Failed to send verification code.");
+        return;
+      }
+
+      setPhoneOtpSent(true);
+      setLinkPhoneMessage(result.message || "Verification code sent. Enter it below to link your phone.");
+      setLinkPhoneNumber(normalizedPhone);
+    } catch (err) {
+      console.error(err);
+      setLinkPhoneMessage("Failed to send verification code. Please try again.");
+    } finally {
+      setSendPhoneOtpLoading(false);
+    }
+  };
+
+  const handleLinkPhone = async () => {
+    setLinkPhoneMessage("");
+    const normalizedPhone = normalizePhoneNumber(linkPhoneNumber);
+
+    if (!isPhoneNumber(normalizedPhone)) {
+      setLinkPhoneMessage("Please enter a valid phone number.");
+      return;
+    }
+
+    if (!linkPhoneOtp.trim()) {
+      setLinkPhoneMessage("Enter the verification code sent to your phone.");
+      return;
+    }
+
+    setLinkPhoneLoading(true);
+    try {
+      const token = await getAccessToken();
+      if (!token) {
+        setLinkPhoneMessage("Unable to verify your session. Please refresh and try again.");
+        return;
+      }
+
+      const res = await fetch("/api/account/link-phone", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ phone: normalizedPhone, otp: linkPhoneOtp.trim() }),
+      });
+
+      const result = await res.json();
+      if (!res.ok) {
+        setLinkPhoneMessage(result.error || "Failed to link phone number.");
+        return;
+      }
+
+      setLinkedPhone(normalizedPhone);
+      setLinkPhoneMessage(result.data?.message || "Phone linked successfully.");
+      setPhoneOtpSent(false);
+      setLinkPhoneOtp("");
+    } catch (err) {
+      console.error(err);
+      setLinkPhoneMessage("Failed to link phone number. Please try again.");
+    } finally {
+      setLinkPhoneLoading(false);
+    }
+  };
+
   useEffect(() => {
     const loadTenantRole = async () => {
       try {
-        const session = await supabase.auth.getSession();
-        const token = session.data.session?.access_token;
+const token = await getAccessToken();
         if (!token) {
           return;
         }
@@ -114,6 +297,12 @@ export default function SettingsPage() {
   }, [loading, user]);
 
   useEffect(() => {
+    if (user?.phone) {
+      setLinkedPhone(user.phone);
+    }
+  }, [user?.phone]);
+
+  useEffect(() => {
     const loadSubUsers = async () => {
       if (tenantRole !== "owner") return;
 
@@ -131,8 +320,7 @@ export default function SettingsPage() {
       setSubUserMessage("");
 
       try {
-        const session = await supabase.auth.getSession();
-        const token = session.data.session?.access_token;
+        const token = await getAccessToken();
         if (!token) throw new Error("Authentication required");
 
         const res = await fetch("/api/subusers", {
@@ -174,8 +362,7 @@ export default function SettingsPage() {
     setSubUserMessage("");
 
     try {
-      const session = await supabase.auth.getSession();
-      const token = session.data.session?.access_token;
+      const token = await getAccessToken();
       if (!token) throw new Error("Authentication required");
 
       const res = await fetch("/api/subusers", {
@@ -206,6 +393,98 @@ export default function SettingsPage() {
       setSubUserMessage(err instanceof Error ? err.message : "Failed to create sub-user");
     } finally {
       setSubUserLoading(false);
+    }
+  };
+
+  const handleChangeRole = async () => {
+    if (!selectedUserForRoleChange) return;
+
+    if (newRoleForChange === selectedUserForRoleChange.role) {
+      setSubUserMessage("Please select a different role.");
+      return;
+    }
+
+    setChangeRoleLoading(true);
+    setSubUserMessage("");
+
+    try {
+      const token = await getAccessToken();
+      if (!token) throw new Error("Authentication required");
+
+      const res = await fetch("/api/subusers", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          user_id: selectedUserForRoleChange.user_id,
+          new_role: newRoleForChange,
+        }),
+      });
+
+      const result = await res.json();
+      if (!res.ok) {
+        throw new Error(result.error || "Failed to update role");
+      }
+
+      setSubUsers((current) =>
+        current.map((member) =>
+          member.user_id === selectedUserForRoleChange.user_id
+            ? { ...member, role: newRoleForChange }
+            : member
+        )
+      );
+
+      showNotification("Role updated successfully.", "success");
+      setChangeRoleModalOpen(false);
+      setSelectedUserForRoleChange(null);
+    } catch (err) {
+      console.error(err);
+      showNotification(err instanceof Error ? err.message : "Failed to update role", "error");
+    } finally {
+      setChangeRoleLoading(false);
+    }
+  };
+
+  const handleDeleteUser = async () => {
+    if (!selectedUserForDelete) return;
+
+    setDeleteUserLoading(true);
+    setSubUserMessage("");
+
+    try {
+      const token = await getAccessToken();
+      if (!token) throw new Error("Authentication required");
+
+      const res = await fetch("/api/subusers", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          user_id: selectedUserForDelete.user_id,
+        }),
+      });
+
+      const result = await res.json();
+      if (!res.ok) {
+        throw new Error(result.error || "Failed to delete user");
+      }
+
+      setSubUsers((current) =>
+        current.filter((member) => member.user_id !== selectedUserForDelete.user_id)
+      );
+
+      showNotification("Member deleted successfully.", "success");
+      setDeleteUserModalOpen(false);
+      setSelectedUserForDelete(null);
+    } catch (err) {
+      console.error(err);
+      showNotification(err instanceof Error ? err.message : "Failed to delete user", "error");
+    } finally {
+      setDeleteUserLoading(false);
     }
   };
 
@@ -437,6 +716,11 @@ CREATE TABLE IF NOT EXISTS tenant_members (
                           <p className="text-lg font-medium text-theme-primary mt-1">{user?.email || "Unknown"}</p>
                         </div>
 
+                        <div>
+                          <p className="text-xs text-theme-muted font-medium uppercase tracking-wide">Phone Number</p>
+                          <p className="text-lg font-medium text-theme-primary mt-1">{linkedPhone || "Not linked"}</p>
+                        </div>
+
                         <div className="flex flex-col sm:flex-row gap-4 sm:gap-8">
                           <div>
                             <p className="text-xs text-theme-muted font-medium uppercase tracking-wide">Tenant Role</p>
@@ -469,6 +753,176 @@ CREATE TABLE IF NOT EXISTS tenant_members (
                       </p>
                     </div>
                   </div>
+
+                  {/* Change Password Card */}
+                  <div className="card-standard max-w-2xl mt-8">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <h3 className="text-xl font-semibold text-theme-primary">Change Password</h3>
+                        <p className="text-sm text-theme-secondary mt-1">Update your account password securely.</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowPasswordModal(true)}
+                        className="rounded-2xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:opacity-90"
+                      >
+                        Change Password
+                      </button>
+                    </div>
+                    {!showPasswordModal && passwordMessage && (
+                      <p className="mt-4 text-sm text-theme-secondary">{passwordMessage}</p>
+                    )}
+                  </div>
+
+                  <div className="card-standard max-w-2xl mt-8">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <h3 className="text-xl font-semibold text-theme-primary">Link a Phone Number</h3>
+                        <p className="text-sm text-theme-secondary mt-1">Add a phone number to your owner account for phone-based login and verification.</p>
+                      </div>
+                    </div>
+
+                    <div className="mt-6 grid gap-4 sm:grid-cols-[1fr_auto]">
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-sm font-medium text-theme-secondary mb-2">Phone Number</label>
+                          <input
+                            type="tel"
+                            value={linkPhoneNumber}
+                            onChange={(e) => setLinkPhoneNumber(e.target.value)}
+                            placeholder="+1234567890"
+                            className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
+                          />
+                        </div>
+
+                        {phoneOtpSent && (
+                          <div>
+                            <label className="block text-sm font-medium text-theme-secondary mb-2">Verification Code</label>
+                            <input
+                              type="text"
+                              value={linkPhoneOtp}
+                              onChange={(e) => setLinkPhoneOtp(e.target.value)}
+                              placeholder="Enter SMS code"
+                              className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
+                            />
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex flex-col gap-3 items-stretch">
+                        <button
+                          type="button"
+                          onClick={sendPhoneVerificationCode}
+                          disabled={sendPhoneOtpLoading || !isPhoneNumber(normalizePhoneNumber(linkPhoneNumber))}
+                          className="rounded-2xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
+                        >
+                          {sendPhoneOtpLoading ? "Sending..." : phoneOtpSent ? "Resend Code" : "Send Verification Code"}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handleLinkPhone}
+                          disabled={linkPhoneLoading || !phoneOtpSent || !linkPhoneOtp.trim()}
+                          className="rounded-2xl border border-theme bg-theme-card px-4 py-3 text-sm font-semibold text-theme-primary hover:bg-theme-input disabled:opacity-50"
+                        >
+                          {linkPhoneLoading ? "Linking..." : "Link Phone"}
+                        </button>
+                      </div>
+                    </div>
+
+                    {linkPhoneMessage && (
+                      <p className={`mt-4 text-sm ${linkPhoneMessage.includes("success") ? "text-green-400" : "text-red-400"}`}>
+                        {linkPhoneMessage}
+                      </p>
+                    )}
+                  </div>
+
+                  {showPasswordModal && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-4">
+                      <div className="w-full max-w-2xl rounded-3xl border border-theme bg-theme-card p-6 shadow-xl">
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <h2 className="text-2xl font-semibold text-theme-primary">Change Password</h2>
+                            <p className="text-sm text-theme-secondary mt-1">Enter your current password and choose a secure new password.</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowPasswordModal(false);
+                              setCurrentPassword("");
+                              setNewPassword("");
+                              setConfirmPassword("");
+                              setPasswordMessage("");
+                            }}
+                            className="text-sm font-semibold text-theme-secondary hover:text-theme-primary"
+                          >
+                            Close
+                          </button>
+                        </div>
+
+                        <div className="mt-6 grid gap-4">
+                          <div>
+                            <label className="block text-sm text-theme-secondary mb-2">Current Password</label>
+                            <input
+                              type="password"
+                              value={currentPassword}
+                              onChange={(e) => setCurrentPassword(e.target.value)}
+                              placeholder="Enter your current password"
+                              className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm text-theme-secondary mb-2">New Password</label>
+                            <input
+                              type="password"
+                              value={newPassword}
+                              onChange={(e) => setNewPassword(e.target.value)}
+                              placeholder="Enter new password"
+                              className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm text-theme-secondary mb-2">Confirm New Password</label>
+                            <input
+                              type="password"
+                              value={confirmPassword}
+                              onChange={(e) => setConfirmPassword(e.target.value)}
+                              placeholder="Confirm new password"
+                              className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowPasswordModal(false);
+                              setCurrentPassword("");
+                              setNewPassword("");
+                              setConfirmPassword("");
+                              setPasswordMessage("");
+                            }}
+                            className="rounded-2xl border border-theme px-4 py-3 text-sm font-semibold text-theme-primary hover:bg-theme-input"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleUpdatePassword}
+                            disabled={passwordLoading}
+                            className="rounded-2xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
+                          >
+                            {passwordLoading ? "Updating..." : "Update Password"}
+                          </button>
+                        </div>
+
+                        {passwordMessage && (
+                          <p className="mt-4 text-sm text-theme-secondary">{passwordMessage}</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </section>
               )}
 
@@ -596,57 +1050,115 @@ CREATE TABLE IF NOT EXISTS tenant_members (
                     </div>
                   ) : (
                     <div className="space-y-6">
-                      {/* Create Sub-user Form */}
+                      {/* Plan Info and Create Sub-user Form */}
                       <div className="card-standard">
-                        <h3 className="text-lg font-semibold text-theme-primary mb-4">Create New Member</h3>
-
-                        <div className="grid gap-4 sm:grid-cols-3">
-                          <div>
-                            <label className="block text-sm font-medium text-theme-primary mb-2">Email or Phone</label>
-                            <input
-                              value={newSubUserIdentifier}
-                              onChange={(e) => setNewSubUserIdentifier(e.target.value)}
-                              placeholder="user@example.com or +1234567890"
-                              className="input-base"
-                            />
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="flex-1">
+                            <h3 className="text-lg font-semibold text-theme-primary">Create New Member</h3>
+                            {subscription && (
+                              <p className="text-xs text-theme-muted mt-1">
+                                Plan: <span className="capitalize font-medium text-theme-secondary">{subscription.plan || "basic"}</span>
+                                {" "} • Users: <span className="font-medium text-theme-secondary">{subUsers.length}/{SUBSCRIPTION_PLAN_USER_LIMITS[subscription.plan || "basic"] || "∞"}</span>
+                              </p>
+                            )}
                           </div>
-
-                          <div>
-                            <label className="block text-sm font-medium text-theme-primary mb-2">Password</label>
-                            <input
-                              type="password"
-                              value={newSubUserPassword}
-                              onChange={(e) => setNewSubUserPassword(e.target.value)}
-                              placeholder="Secure password"
-                              className="input-base"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-sm font-medium text-theme-primary mb-2">Role</label>
-                            <select
-                              value={newSubUserRole}
-                              onChange={(e) => setNewSubUserRole(e.target.value as "accountant" | "sales")}
-                              className="select-base"
-                            >
-                              <option value="sales">Sales</option>
-                              <option value="accountant">Accountant</option>
-                            </select>
-                          </div>
+                          {(() => {
+                            const plan = subscription?.plan || "basic";
+                            const userLimit = SUBSCRIPTION_PLAN_USER_LIMITS[plan];
+                            const canCreateMore = !userLimit || subUsers.length < userLimit;
+                            return (
+                              <button
+                                onClick={() => setCreateMemberFormOpen(!createMemberFormOpen)}
+                                disabled={!canCreateMore}
+                                className={`p-2 rounded-lg transition-colors ${!canCreateMore ? "opacity-50 cursor-not-allowed" : "hover:bg-theme-input"}`}
+                                title={canCreateMore ? (createMemberFormOpen ? "Hide form" : "Show form") : "User limit reached"}
+                              >
+                                <ChevronDown 
+                                  size={20} 
+                                  className={`text-theme-secondary transition-transform duration-300 ${createMemberFormOpen ? "rotate-180" : ""}`}
+                                />
+                              </button>
+                            );
+                          })()}
                         </div>
 
-                        <button
-                          onClick={createSubUser}
-                          disabled={subUserLoading}
-                          className="btn-primary mt-4"
-                        >
-                          {subUserLoading ? "Creating..." : "Create Member"}
-                        </button>
+                        {(() => {
+                          const plan = subscription?.plan || "basic";
+                          const userLimit = SUBSCRIPTION_PLAN_USER_LIMITS[plan];
+                          const limitReached = userLimit && subUsers.length >= userLimit;
+                          return limitReached ? (
+                            <div className="rounded-2xl border border-orange-500/30 bg-orange-500/10 p-4">
+                              <div className="flex gap-3">
+                                <div className="p-2 rounded-lg bg-orange-500/20 text-orange-400 shrink-0">
+                                  <AlertCircle size={20} />
+                                </div>
+                                <div className="flex-1">
+                                  <h4 className="font-semibold text-orange-100">User Limit Reached</h4>
+                                  <p className="text-sm text-orange-100/80 mt-1">
+                                    Your <span className="capitalize font-medium">{plan}</span> plan allows {userLimit} {userLimit === 1 ? "user" : "users"}. 
+                                    {" "}<Link href="/settings?tab=subscription" className="text-orange-200 hover:text-orange-100 underline">Upgrade your plan</Link> to add more.
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          ) : null;
+                        })()}
 
-                        {subUserMessage && (
-                          <p className={`mt-4 text-sm ${subUserMessage.includes("successfully") ? "text-green-400" : "text-red-400"}`}>
-                            {subUserMessage}
-                          </p>
+                        {createMemberFormOpen && (
+                          <>
+                            <div className="grid gap-4 sm:grid-cols-3 mt-4">
+                              <div>
+                                <label className="block text-sm font-medium text-theme-primary mb-2">Email or Phone</label>
+                                <input
+                                  value={newSubUserIdentifier}
+                                  onChange={(e) => setNewSubUserIdentifier(e.target.value)}
+                                  placeholder="user@example.com or +1234567890"
+                                  className="input-base"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-sm font-medium text-theme-primary mb-2">Password</label>
+                                <input
+                                  type="password"
+                                  value={newSubUserPassword}
+                                  onChange={(e) => setNewSubUserPassword(e.target.value)}
+                                  placeholder="Secure password"
+                                  className="input-base"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-sm font-medium text-theme-primary mb-2">Role</label>
+                                <select
+                                  value={newSubUserRole}
+                                  onChange={(e) => setNewSubUserRole(e.target.value as "accountant" | "sales")}
+                                  className="select-base"
+                                >
+                                  <option value="sales">Sales</option>
+                                  <option value="accountant">Accountant</option>
+                                </select>
+                              </div>
+                            </div>
+
+                            <button
+                              onClick={createSubUser}
+                              disabled={subUserLoading || (() => {
+                                const plan = subscription?.plan || "basic";
+                                const userLimit = SUBSCRIPTION_PLAN_USER_LIMITS[plan];
+                                return Boolean(userLimit && subUsers.length >= userLimit);
+                              })()}
+                              className="btn-primary mt-4"
+                            >
+                              {subUserLoading ? "Creating..." : "Create Member"}
+                            </button>
+
+                            {subUserMessage && (
+                              <p className={`mt-4 text-sm ${subUserMessage.includes("successfully") ? "text-green-400" : "text-red-400"}`}>
+                                {subUserMessage}
+                              </p>
+                            )}
+                          </>
                         )}
                       </div>
 
@@ -673,6 +1185,7 @@ CREATE TABLE IF NOT EXISTS tenant_members (
                                     <th className="text-left py-4 px-6 font-semibold text-theme-secondary">Role</th>
                                     <th className="text-left py-4 px-6 font-semibold text-theme-secondary">Status</th>
                                     <th className="text-left py-4 px-6 font-semibold text-theme-secondary">Created</th>
+                                    <th className="text-left py-4 px-6 font-semibold text-theme-secondary">Actions</th>
                                   </tr>
                                 </thead>
                                 <tbody className="divide-y divide-theme">
@@ -696,6 +1209,36 @@ CREATE TABLE IF NOT EXISTS tenant_members (
                                           day: "numeric",
                                           year: "numeric",
                                         })}
+                                      </td>
+                                      <td className="py-4 px-6">
+                                        <div className="flex gap-3">
+                                          <button
+                                            onClick={() => {
+                                              setSelectedUserForRoleChange({
+                                                user_id: member.user_id,
+                                                user_email: member.user_email,
+                                                role: member.role,
+                                              });
+                                              setNewRoleForChange(member.role === "sales" ? "accountant" : "sales");
+                                              setChangeRoleModalOpen(true);
+                                            }}
+                                            className="text-sm font-medium text-cyan-400 hover:text-cyan-300 transition-colors"
+                                          >
+                                            Change Role
+                                          </button>
+                                          <button
+                                            onClick={() => {
+                                              setSelectedUserForDelete({
+                                                user_id: member.user_id,
+                                                user_email: member.user_email,
+                                              });
+                                              setDeleteUserModalOpen(true);
+                                            }}
+                                            className="text-sm font-medium text-red-400 hover:text-red-300 transition-colors"
+                                          >
+                                            Delete
+                                          </button>
+                                        </div>
                                       </td>
                                     </tr>
                                   ))}
@@ -731,11 +1274,156 @@ CREATE TABLE IF NOT EXISTS tenant_members (
                                       </p>
                                     </div>
                                   </div>
+                                  <div className="mt-3 pt-3 border-t border-theme flex gap-2">
+                                    <button
+                                      onClick={() => {
+                                        setSelectedUserForRoleChange({
+                                          user_id: member.user_id,
+                                          user_email: member.user_email,
+                                          role: member.role,
+                                        });
+                                        setNewRoleForChange(member.role === "sales" ? "accountant" : "sales");
+                                        setChangeRoleModalOpen(true);
+                                      }}
+                                      className="flex-1 text-sm font-medium text-cyan-400 hover:text-cyan-300 transition-colors py-2 rounded-lg hover:bg-theme-input/30"
+                                    >
+                                      Change Role
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        setSelectedUserForDelete({
+                                          user_id: member.user_id,
+                                          user_email: member.user_email,
+                                        });
+                                        setDeleteUserModalOpen(true);
+                                      }}
+                                      className="flex-1 text-sm font-medium text-red-400 hover:text-red-300 transition-colors py-2 rounded-lg hover:bg-theme-input/30"
+                                    >
+                                      Delete
+                                    </button>
+                                  </div>
                                 </div>
                               ))}
                             </div>
                           </div>
                         )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Change Role Modal */}
+                  {changeRoleModalOpen && selectedUserForRoleChange && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-4">
+                      <div className="w-full max-w-md rounded-3xl border border-theme bg-theme-card p-6 shadow-xl">
+                        <div className="flex items-start justify-between gap-4 mb-6">
+                          <div>
+                            <h2 className="text-2xl font-semibold text-theme-primary">Change Role</h2>
+                            <p className="text-sm text-theme-secondary mt-1">{selectedUserForRoleChange.user_email}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setChangeRoleModalOpen(false);
+                              setSelectedUserForRoleChange(null);
+                            }}
+                            className="text-sm font-semibold text-theme-secondary hover:text-theme-primary"
+                          >
+                            Close
+                          </button>
+                        </div>
+
+                        <div className="space-y-4">
+                          <div>
+                            <p className="text-sm text-theme-secondary mb-3 font-medium">Current Role</p>
+                            <div className="px-4 py-3 rounded-2xl bg-theme-input border border-theme text-theme-primary">
+                              {selectedUserForRoleChange.role.charAt(0).toUpperCase() + selectedUserForRoleChange.role.slice(1)}
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-theme-primary mb-2">New Role</label>
+                            <select
+                              value={newRoleForChange}
+                              onChange={(e) => setNewRoleForChange(e.target.value as "accountant" | "sales")}
+                              className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
+                            >
+                              <option value="sales">Sales</option>
+                              <option value="accountant">Accountant</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setChangeRoleModalOpen(false);
+                              setSelectedUserForRoleChange(null);
+                            }}
+                            className="rounded-2xl border border-theme px-4 py-3 text-sm font-semibold text-theme-primary hover:bg-theme-input"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleChangeRole}
+                            disabled={changeRoleLoading}
+                            className="rounded-2xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
+                          >
+                            {changeRoleLoading ? "Updating..." : "Update Role"}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Delete User Modal */}
+                  {deleteUserModalOpen && selectedUserForDelete && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-4">
+                      <div className="w-full max-w-md rounded-3xl border border-theme bg-theme-card p-6 shadow-xl">
+                        <div className="flex items-start justify-between gap-4 mb-6">
+                          <div>
+                            <h2 className="text-2xl font-semibold text-theme-primary">Delete Member</h2>
+                            <p className="text-sm text-theme-secondary mt-1">{selectedUserForDelete.user_email}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDeleteUserModalOpen(false);
+                              setSelectedUserForDelete(null);
+                            }}
+                            className="text-sm font-semibold text-theme-secondary hover:text-theme-primary"
+                          >
+                            Close
+                          </button>
+                        </div>
+
+                        <div className="mb-6 p-4 rounded-2xl bg-red-500/10 border border-red-500/30">
+                          <p className="text-sm text-red-200">
+                            Are you sure you want to delete <strong>{selectedUserForDelete.user_email}</strong>? This action cannot be undone.
+                          </p>
+                        </div>
+
+                        <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDeleteUserModalOpen(false);
+                              setSelectedUserForDelete(null);
+                            }}
+                            className="rounded-2xl border border-theme px-4 py-3 text-sm font-semibold text-theme-primary hover:bg-theme-input"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleDeleteUser}
+                            disabled={deleteUserLoading}
+                            className="rounded-2xl bg-red-600 px-4 py-3 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
+                          >
+                            {deleteUserLoading ? "Deleting..." : "Delete Member"}
+                          </button>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -891,6 +1579,19 @@ CREATE TABLE IF NOT EXISTS tenant_members (
             </div>
           </div>
         </div>
+
+        {/* Toast Notification */}
+        {showToast && (
+          <div className="fixed top-4 right-4 z-50 animate-in fade-in slide-in-from-top-2 duration-300">
+            <div className={`rounded-2xl px-6 py-4 shadow-lg border ${
+              toastType === "success"
+                ? "bg-green-500/20 border-green-500/50 text-green-200"
+                : "bg-red-500/20 border-red-500/50 text-red-200"
+            }`}>
+              <p className="text-sm font-medium">{toastMessage}</p>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );

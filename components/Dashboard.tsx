@@ -58,8 +58,8 @@ export default function Dashboard() {
 
   return (
     <div className="page-section">
-      <div className="section-header flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
+      <div className="section-header flex flex-col sm:flex-row items-start sm:items-start justify-between gap-4">
+        <div className="min-w-0">
           <h2 className="text-h1 text-theme-primary">Dashboard</h2>
           <p className="text-body-sm text-theme-secondary mt-2">
             Inventory overview, cash flow, and report summaries.

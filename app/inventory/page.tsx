@@ -16,10 +16,10 @@ export default function InventoryPage() {
   const { loading } = useRequireAuth();
   const { isActive: subscriptionActive, loading: subscriptionLoading } = useSubscription();
 
-  if (loading || subscriptionLoading || subscriptionLoading) {
+  if (loading || subscriptionLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white">
-        <p>Checking authentication...</p>
+      <div className="min-h-screen flex items-center justify-center bg-slate-950/90 text-white">
+        <p>Loading inventory…</p>
       </div>
     );
   }

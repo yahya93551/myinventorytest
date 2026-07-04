@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { ProductWithCustomData, CustomField } from "../../types";
 import { Search, ShoppingCart, Plus, Minus, Edit, Trash2, AlertCircle, DollarSign, Tag, SlidersHorizontal } from "lucide-react";
-import { getVisibleTableFields } from "@/lib/customFields";
+import { getVisibleStandardFields } from "@/lib/customFields";
 
 export default function ProductTable({
   products = [],
@@ -36,7 +36,7 @@ export default function ProductTable({
 }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
-  const allVisibleFields = getVisibleTableFields(customFields);
+  const allVisibleFields = getVisibleStandardFields(customFields);
 
   const filteredProducts = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();

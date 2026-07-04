@@ -95,7 +95,7 @@ export default function Inventory(props: InventoryProps) {
 
   const [editItem, setEditItem] = useState<Product | null>(null);
   const [restockItem, setRestockItem] = useState<Product | null>(null);
-  const [restockAmount, setRestockAmount] = useState(1);
+  const [restockAmount, setRestockAmount] = useState<number | "">("");
   const [loadItem, setLoadItem] = useState<Product | null>(null);
   const [loadAmount, setLoadAmount] = useState<number | "">(1);
   const [loadNote, setLoadNote] = useState("");
@@ -346,13 +346,13 @@ export default function Inventory(props: InventoryProps) {
   // =====================================================
   const openRestockModal = (product: Product) => {
     setRestockItem(product);
-    setRestockAmount(1);
+    setRestockAmount("");
   };
 
   const saveRestock = async () => {
     if (!restockItem) return;
 
-    if (restockAmount <= 0) {
+    if (restockAmount === "" || restockAmount <= 0) {
       showMessage("error", "Restock amount must be greater than 0");
       return;
     }
@@ -366,7 +366,7 @@ export default function Inventory(props: InventoryProps) {
     }
 
     setRestockItem(null);
-    setRestockAmount(1);
+    setRestockAmount("");
   };
 
   const openLoadModal = (product: Product) => {

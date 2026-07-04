@@ -6,8 +6,6 @@ import { apiGet, apiPost } from "@/lib/apiClient";
 import { BusinessSettings } from "@/types";
 
 const BUSINESS_TYPES = [
-  { value: "pharmacy", label: "Pharmacy", description: "Medicines, health products" },
-  { value: "ngo", label: "NGO", description: "Non-profit organization" },
   { value: "warehouse", label: "Warehouse", description: "Bulk storage and distribution" },
   { value: "supermarket", label: "Supermarket", description: "Retail grocery and general goods" },
   { value: "retail_shop", label: "Retail Shop", description: "Small retail store" },
@@ -105,6 +103,7 @@ export function BusinessSettingsForm({ onBusinessTypeChange }: BusinessSettingsF
           {BUSINESS_TYPES.map((type) => (
             <button
               key={type.value}
+              type="button"
               onClick={() => setSelectedType(type.value)}
               className={`p-4 rounded border-2 transition text-left ${
                 selectedType === type.value

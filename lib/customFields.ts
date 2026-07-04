@@ -98,8 +98,21 @@ export function getVisibleSystemFields(customFields: CustomField[] = []) {
     .sort((a, b) => a.field_order - b.field_order);
 }
 
+export const allowedStandardFieldNames = [
+  "name",
+  "category",
+  "cost_price",
+  "price",
+  "stock",
+];
+
 export function getVisibleSystemFieldNames(customFields: CustomField[] = []) {
   return getVisibleSystemFields(customFields).map((field) => field.field_name);
+}
+
+export function getVisibleStandardFields(customFields: CustomField[] = []) {
+  return getVisibleSystemFields(customFields)
+    .filter((field) => allowedStandardFieldNames.includes(field.field_name));
 }
 
 export function getVisibleTableFields(customFields: CustomField[] = []) {

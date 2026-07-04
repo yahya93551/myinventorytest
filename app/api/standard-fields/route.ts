@@ -3,6 +3,27 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getServerTenantContext, requireRole, jsonError, jsonSuccess } from "@/lib/api";
 import { fallbackSystemFields } from "@/lib/customFields";
 
+function getErrorMessage(error: unknown) {
+  if (!error) return "";
+  if (error instanceof Error) return error.message;
+  if (typeof error === "object" && error !== null) {
+    if ("message" in error && typeof (error as any).message === "string") {
+      return (error as any).message;
+    }
+    if ("error" in error && typeof (error as any).error === "string") {
+      return (error as any).error;
+    }
+  }
+  return String(error);
+}
+
+function isMissingCustomFieldsTable(error: unknown) {
+  const message = getErrorMessage(error).toLowerCase();
+  return message.includes("could not find the table 'public.custom_fields'") ||
+    message.includes("relation \"custom_fields\" does not exist") ||
+    message.includes("custom_fields") && message.includes("does not exist");
+}
+
 export async function GET(req: Request) {
   const tenantContext = await getServerTenantContext(req);
   if ("error" in tenantContext) {
@@ -49,13 +70,17 @@ export async function PATCH(req: Request) {
   }
 
   const schema = z.object({
-    id: z.string().uuid(),
+    id: z.string().uuid().optional(),
+    field_name: z.string().trim().min(1).optional(),
     updates: z.object({
       display_name: z.string().max(200).optional(),
       is_visible: z.boolean().optional(),
       field_order: z.number().int().optional(),
       description: z.string().max(500).optional(),
     }).partial(),
+  }).refine((data) => data.id || data.field_name, {
+    message: "Either id or field_name is required",
+    path: ["id"],
   });
 
   const parseResult = schema.safeParse(payload);
@@ -63,14 +88,17 @@ export async function PATCH(req: Request) {
     return jsonError(parseResult.error.issues.map((i) => i.message).join(", "), 422);
   }
 
-  const { id, updates } = parseResult.data;
+  const { id, field_name, updates } = parseResult.data;
 
   // Verify field belongs to tenant and is a system field
-  const { data: field, error: fieldError } = await supabaseAdmin
-    .from("custom_fields")
-    .select("tenant_id, is_system")
-    .eq("id", id)
-    .maybeSingle();
+  const fieldQuery = supabaseAdmin.from("custom_fields").select("tenant_id, is_system, id");
+  if (id) {
+    fieldQuery.eq("id", id);
+  } else {
+    fieldQuery.eq("tenant_id", tenantContext.tenantId).eq("field_name", field_name);
+  }
+
+  const { data: field, error: fieldError } = await fieldQuery.maybeSingle();
 
   if (fieldError) {
     return jsonError(fieldError.message, 500);
@@ -84,12 +112,17 @@ export async function PATCH(req: Request) {
     return jsonError("Cannot update non-system field via standard-fields endpoint", 400);
   }
 
-  const { data, error } = await supabaseAdmin
+  const updateQuery = supabaseAdmin
     .from("custom_fields")
-    .update({ ...updates, updated_at: new Date().toISOString() })
-    .eq("id", id)
-    .select()
-    .single();
+    .update({ ...updates, updated_at: new Date().toISOString() });
+
+  if (id) {
+    updateQuery.eq("id", id);
+  } else {
+    updateQuery.eq("tenant_id", tenantContext.tenantId).eq("field_name", field_name);
+  }
+
+  const { data, error } = await updateQuery.select().single();
 
   if (error) {
     return jsonError(error.message, 500);

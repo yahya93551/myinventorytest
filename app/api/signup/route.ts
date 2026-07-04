@@ -150,6 +150,7 @@ export async function POST(req: Request) {
     id: user.id,
     user_id: user.id,
     email: user.email || safeEmail,
+    ...(user.phone ? { phone: user.phone } : {}),
   };
 
   const { error: profileError } = await supabaseAdmin.from("profiles").insert(profileInsert);

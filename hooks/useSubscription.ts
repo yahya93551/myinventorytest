@@ -39,7 +39,7 @@ export function useSubscription(): UseSubscriptionReturn {
     fetchSubscription();
   }, [fetchSubscription]);
 
-  const isActive = subscription?.status === 'active';
+  const isActive = typeof subscription?.status === 'string' && subscription.status.toLowerCase() === 'active';
 
   return {
     subscription,

@@ -40,12 +40,17 @@ function SessionTracker() {
     const { data } = supabase.auth.onAuthStateChange((event, session) => {
       if (!active) return;
 
-      if (event === 'SIGNED_IN' && session) {
+      const authEvent = event as string;
+
+      if (authEvent === 'SIGNED_IN' && session) {
         registerSession();
       }
 
-      if (event === 'SIGNED_OUT') {
+      if (authEvent === 'SIGNED_OUT' || authEvent === 'USER_DELETED') {
         clearCurrentSessionId();
+        if (typeof window !== 'undefined') {
+          window.location.href = '/login';
+        }
       }
     });
 

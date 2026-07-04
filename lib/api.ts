@@ -157,7 +157,7 @@ export async function requireActiveSubscription(
     return { error: "Failed to check subscription status", status: 500 };
   }
 
-  if (!subscription || subscription.status !== "active") {
+  if (!subscription || typeof subscription.status !== 'string' || subscription.status.toLowerCase() !== "active") {
     return {
       error: "Subscription required. Please request access or upgrade your subscription.",
       status: 403,

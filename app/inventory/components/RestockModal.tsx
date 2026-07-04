@@ -2,8 +2,8 @@ import { Product } from "../../../types";
 
 type Props = {
   restockItem: Product | null;
-  restockAmount: number;
-  setRestockAmount: (amount: number) => void;
+  restockAmount: number | "";
+  setRestockAmount: (amount: number | "") => void;
   setRestockItem: (item: Product | null) => void;
   saveRestock: () => void;
 };
@@ -17,7 +17,7 @@ export default function RestockModal({
 }: Props) {
   if (!restockItem) return null;
 
-  const isValidAmount = restockAmount > 0;
+  const isValidAmount = typeof restockAmount === "number" && restockAmount > 0;
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
@@ -46,7 +46,7 @@ export default function RestockModal({
             min={1}
             step={1}
             value={restockAmount}
-            onChange={(e) => setRestockAmount(Number(e.target.value))}
+            onChange={(e) => setRestockAmount(e.target.value === "" ? "" : Number(e.target.value))}
             placeholder="Enter amount to add"
           />
         </label>

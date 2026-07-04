@@ -160,10 +160,10 @@ export default function AddPage() {
 
   if (loading || subscriptionLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white">
+      <div className="min-h-screen flex items-center justify-center bg-slate-950/90 text-white">
         <div className="flex items-center gap-3">
           <span className="h-5 w-5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-          <p>Checking authentication...</p>
+          <p>Loading inventory tools…</p>
         </div>
       </div>
     );

@@ -34,21 +34,38 @@ function removeStoredSessionUserId() {
   localStorage.removeItem(SESSION_USER_ID_KEY);
 }
 
-async function getToken() {
+export async function getAccessToken() {
   try {
     // Refresh session to ensure token is valid
     await supabase.auth.refreshSession();
   } catch (err) {
     console.warn('Session refresh failed:', err);
   }
-  
+
   const { data } = await supabase.auth.getSession();
   return data.session?.access_token || null;
+}
+
+async function getToken() {
+  return getAccessToken();
 }
 
 const defaultHeaders = {
   "Content-Type": "application/json",
 };
+
+async function handleUnauthorized() {
+  if (typeof window === "undefined") return;
+
+  clearCurrentSessionId();
+  try {
+    await supabase.auth.signOut();
+  } catch (error) {
+    console.warn('[SESSION] Failed to sign out after unauthorized response:', error);
+  }
+
+  window.location.href = "/login";
+}
 
 async function fetchApi<T>(input: RequestInfo, init: RequestInit = {}) {
   const headers = new Headers(init.headers || {});
@@ -72,6 +89,10 @@ async function fetchApi<T>(input: RequestInfo, init: RequestInit = {}) {
   const json = body ? JSON.parse(body) : null;
 
   if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      await handleUnauthorized();
+      throw new Error("Unauthorized. Redirecting to login.");
+    }
     const message = json?.error || json?.message || response.statusText;
     throw new Error(message);
   }

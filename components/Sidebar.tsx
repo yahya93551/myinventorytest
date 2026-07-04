@@ -15,7 +15,6 @@ import {
   FileText,
   Moon,
   Sun,
-  User,
   Building2,
   Book,
   Settings,
@@ -199,17 +198,6 @@ export default function Sidebar() {
             >
               <Settings className="w-5 h-5 sm:w-6 sm:h-6" />
               {!collapsed && <span>Settings</span>}
-            </Link>
-          )}
-
-          {!isSalesUser && (
-            <Link
-              href="/profile"
-              onClick={() => setOpen(false)}
-              className={navClass(pathname === "/profile")}
-            >
-              <User className="w-5 h-5 sm:w-6 sm:h-6" />
-              {!collapsed && <span>Profile</span>}
             </Link>
           )}
         </div>

@@ -76,8 +76,11 @@ function normalizeSubscription(subscription: any) {
   }
 
   const normalized = { ...subscription };
+  
+  // If status is 'active', it's active - only mark as expired if active_until is set and in the past
   if (normalized.status === "active" && normalized.active_until) {
     const activeUntil = new Date(normalized.active_until);
+    // Only mark as expired if we have a valid date in the past
     if (!Number.isNaN(activeUntil.getTime()) && activeUntil < new Date()) {
       normalized.status = "expired";
     }

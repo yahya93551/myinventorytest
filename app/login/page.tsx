@@ -620,7 +620,7 @@ export default function LoginPage() {
               <Link href="/legal/privacy" className="hover:underline">Privacy</Link>
               <Link href="/legal/terms" className="hover:underline">Terms</Link>
               <a href="mailto:support@myinventory.example" className="hover:underline">Support</a>
-              <a href="https://wa.me/1234567890" target="_blank" rel="noreferrer" className="hover:underline">WhatsApp</a>
+              <a href="https://wa.me/+252686859656" target="_blank" rel="noreferrer" className="hover:underline">WhatsApp</a>
             </div>
 
             <div className="text-center sm:text-right text-slate-500">Built with care.</div>

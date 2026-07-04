@@ -10,12 +10,14 @@ type StatsCard = {
   fullValue?: string;
   icon: ReactNode;
   subtext?: string;
+  detail?: string;
   trend?: "up" | "down";
 };
 
 type OwnerMetrics = {
   taken_not_sold_total?: number;
   taken_not_sold_count?: number;
+  taken_not_sold_user_emails?: string[];
   unpaid_debts_total?: number;
   unpaid_debts_count?: number;
 };
@@ -81,11 +83,17 @@ export default function StatsCards({ products, visibleFieldNames, ownerMetrics }
   // Owner-only metrics (taken but not sold, unpaid debts)
   if (ownerMetrics) {
     if (typeof ownerMetrics.taken_not_sold_total === "number") {
+      const uniqueUsers = Array.from(new Set(ownerMetrics.taken_not_sold_user_emails || []));
+      const userLabel = uniqueUsers.length
+        ? `Taken by ${uniqueUsers.slice(0, 3).join(", ")}${uniqueUsers.length > 3 ? ` +${uniqueUsers.length - 3} more` : ""}`
+        : undefined;
+
       cards.push({
         title: "Taken (not sold)",
         value: ownerMetrics.taken_not_sold_total,
         icon: <Package className="w-5 h-5" />,
         subtext: `${ownerMetrics.taken_not_sold_count ?? 0} allocations`,
+        detail: userLabel,
       });
     }
 
@@ -99,7 +107,7 @@ export default function StatsCards({ products, visibleFieldNames, ownerMetrics }
     }
   }
 
-  const StatCard = ({ title, value, fullValue, icon, subtext, trend }: StatsCard) => (
+  const StatCard = ({ title, value, fullValue, icon, subtext, detail, trend }: StatsCard) => (
     <div className="card-compact px-3 py-3 hover:shadow-hover hover:bg-theme-surface group min-w-0">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
         <div className="flex-1 min-w-0">
@@ -107,6 +115,9 @@ export default function StatsCards({ products, visibleFieldNames, ownerMetrics }
           <h2 className="text-lg sm:text-xl font-bold text-theme-primary mt-2" title={fullValue}>{value}</h2>
           {subtext && (
             <p className="text-xs text-theme-muted mt-1 truncate">{subtext}</p>
+          )}
+          {detail && (
+            <p className="text-[11px] text-theme-secondary mt-1 truncate">{detail}</p>
           )}
         </div>
         <div className="p-2 rounded-xl bg-cyan-500/15 text-cyan-300 flex items-center justify-center shrink-0 group-hover:bg-cyan-500/25 transition-all duration-200">

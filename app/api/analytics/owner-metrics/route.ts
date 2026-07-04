@@ -27,6 +27,29 @@ export async function GET(req: Request) {
     const takenNotSoldTotal = (takes || []).reduce((sum: number, t: any) => sum + (t?.remaining_quantity || 0), 0);
     const takenNotSoldCount = (takes || []).length;
 
+    const takenNotSoldUserIds = Array.from(
+      new Set(
+        (takes || [])
+          .map((t: any) => t?.user_id)
+          .filter((id: any) => typeof id === "string" && id.length > 0)
+      )
+    );
+
+    let takenNotSoldUserEmails: string[] = [];
+    if (takenNotSoldUserIds.length > 0) {
+      const { data: members, error: membersError } = await supabaseAdmin
+        .from("tenant_members")
+        .select("user_email")
+        .in("user_id", takenNotSoldUserIds)
+        .eq("tenant_id", tenantContext.tenantId);
+
+      if (!membersError && Array.isArray(members)) {
+        takenNotSoldUserEmails = members
+          .map((member: any) => member.user_email)
+          .filter((email: any) => typeof email === "string" && email.length > 0);
+      }
+    }
+
     const { data: debts, error: debtsError } = await supabaseAdmin
       .from("debts")
       .select("amount")
@@ -43,6 +66,7 @@ export async function GET(req: Request) {
     return jsonSuccess({
       taken_not_sold_total: takenNotSoldTotal,
       taken_not_sold_count: takenNotSoldCount,
+      taken_not_sold_user_emails: takenNotSoldUserEmails,
       unpaid_debts_total: unpaidDebtsTotal,
       unpaid_debts_count: unpaidDebtsCount,
     });

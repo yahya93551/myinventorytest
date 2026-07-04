@@ -245,6 +245,7 @@ export async function POST(req: Request) {
       id: newUser.id,
       user_id: newUser.id,
       email: newUser.email || (isPhone ? createPhoneFallbackEmail(identifier) : email),
+      ...(newUser.phone ? { phone: newUser.phone } : {}),
     },
     { onConflict: "id" }
   );
@@ -271,4 +272,88 @@ export async function POST(req: Request) {
   }
 
   return NextResponse.json({ success: true, data: membership });
+}
+
+export async function PUT(req: Request) {
+  const authHeader = req.headers.get("authorization")?.replace("Bearer ", "")?.trim();
+  const auth = await authorizeOwner(authHeader);
+  if ("error" in auth) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status || 401 });
+  }
+
+  const subscriptionCheck = await requireActiveSubscription(auth.tenantId);
+  if ("error" in subscriptionCheck) {
+    return NextResponse.json({ error: subscriptionCheck.error }, { status: subscriptionCheck.status });
+  }
+
+  const payload = await req.json();
+  const { user_id, new_role } = payload;
+
+  if (!user_id || !new_role) {
+    return NextResponse.json({ error: "user_id and new_role are required" }, { status: 422 });
+  }
+
+  if (!["accountant", "sales"].includes(new_role)) {
+    return NextResponse.json({ error: "Invalid role. Must be 'accountant' or 'sales'" }, { status: 422 });
+  }
+
+  const tenantId = auth.tenantId;
+
+  try {
+    const { data: membership, error: membershipError } = await supabaseAdmin
+      .from("tenant_members")
+      .update({ role: new_role })
+      .eq("tenant_id", tenantId)
+      .eq("user_id", user_id)
+      .select("user_id, user_email, role, active, created_at")
+      .single();
+
+    if (membershipError || !membership) {
+      return NextResponse.json({ error: membershipError?.message || "Failed to update role" }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true, data: membership });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Failed to update role" }, { status: 500 });
+  }
+}
+
+// DELETE /api/subusers - Delete a sub-user
+export async function DELETE(req: Request) {
+  const authHeader = req.headers.get("authorization")?.replace("Bearer ", "")?.trim();
+  const auth = await authorizeOwner(authHeader);
+  if ("error" in auth) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status || 401 });
+  }
+
+  const subscriptionCheck = await requireActiveSubscription(auth.tenantId);
+  if ("error" in subscriptionCheck) {
+    return NextResponse.json({ error: subscriptionCheck.error }, { status: subscriptionCheck.status });
+  }
+
+  const payload = await req.json();
+  const { user_id } = payload;
+
+  if (!user_id) {
+    return NextResponse.json({ error: "user_id is required" }, { status: 422 });
+  }
+
+  const tenantId = auth.tenantId;
+
+  try {
+    // Delete the membership record
+    const { error: deleteError } = await supabaseAdmin
+      .from("tenant_members")
+      .delete()
+      .eq("tenant_id", tenantId)
+      .eq("user_id", user_id);
+
+    if (deleteError) {
+      return NextResponse.json({ error: deleteError.message || "Failed to delete user" }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true, message: "User deleted successfully" });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Failed to delete user" }, { status: 500 });
+  }
 }

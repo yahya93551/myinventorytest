@@ -183,26 +183,21 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
             <div className="mt-6 space-y-4 border-t border-theme-input pt-4">
               <div className="rounded-2xl border border-cyan-300 bg-cyan-50 p-4 text-sm text-cyan-900">
                 <p className="font-semibold">💰 Payment Instructions</p>
-                
+
                 <div className="mt-3 space-y-2">
-                  <p className="font-medium">Send payment to:</p>
+                  <p className="font-medium">Please contact us on WhatsApp and then fill the payment details below:</p>
                   <p className="ml-2 font-mono font-bold text-cyan-700">+252686859656</p>
-                  
-                  <p className="mt-3 font-medium">USSD Payment Methods:</p>
-                  <div className="ml-2 space-y-1 font-mono text-xs">
-                    <p><span className="font-bold">Hormuud:</span> *712*686859656*5#</p>
-                    <p><span className="font-bold">Somnet:</span> *812*686859656*5#</p>
-                  </div>
-                  
+
+                  <p className="mt-3">After sending the payment, complete the form below so the admin can verify your subscription.</p>
+
                   <p className="mt-3">
-                    Questions?{' '}
                     <a
                       href="https://wa.me/252686859656"
                       target="_blank"
                       rel="noopener noreferrer"
                       className="font-semibold underline hover:text-cyan-700"
                     >
-                      Contact us via WhatsApp
+                      Message us on WhatsApp
                     </a>
                   </p>
                 </div>

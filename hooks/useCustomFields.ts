@@ -2,17 +2,20 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { apiGet } from "@/lib/apiClient";
+import { FEATURE_CUSTOM_FIELDS } from "@/lib/featureFlags";
 import { CustomField, BusinessSettings } from "@/types";
 
 export function useCustomFields() {
   return useQuery({
     queryKey: ["custom_fields"],
     queryFn: async () => {
-      const [standardResponse, customResponse] = await Promise.all([
-        apiGet<CustomField[]>("/api/standard-fields"),
-        apiGet<CustomField[]>("/api/custom-fields"),
-      ]);
+      const standardResponse = await apiGet<CustomField[]>("/api/standard-fields");
       const standardFields = standardResponse.data || [];
+      if (!FEATURE_CUSTOM_FIELDS) {
+        return standardFields;
+      }
+
+      const customResponse = await apiGet<CustomField[]>("/api/custom-fields");
       const customFields = customResponse.data || [];
       return [...standardFields, ...customFields];
     },

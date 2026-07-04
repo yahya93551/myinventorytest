@@ -7,7 +7,9 @@ import { Sale } from "../../types";
 import { apiGet } from "@/lib/apiClient";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { useTenantRole } from "@/hooks/useTenantRole";
+import { useBusinessSettings } from "@/hooks/useCustomFields";
 import { useTheme } from "@/lib/theme-context";
+import { generateReceiptHtml, printReceiptHtml } from "@/lib/receipt";
 
 import {
   LineChart,
@@ -26,6 +28,7 @@ export default function SalesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const { dark } = useTheme();
   const { data: tenantRoleData, isLoading: tenantRoleLoading } = useTenantRole();
+  const { data: businessSettings } = useBusinessSettings();
 
   const { loading } = useRequireAuth();
 
@@ -90,6 +93,46 @@ export default function SalesPage() {
     return d.toLocaleString("en-US", {
       timeZone: "Africa/Mogadishu",
     });
+  };
+
+  const handlePrintSale = (sale: Sale) => {
+    if (typeof window === "undefined") return;
+
+    const saleDate = formatDate(sale);
+    const quantity = Number(sale.quantity || 0);
+    const totalValue = Number(sale.total || 0);
+    const total = totalValue.toFixed(2);
+    const unitPrice = quantity > 0 ? totalValue / quantity : 0;
+
+    const businessName = businessSettings?.business_name?.trim() || "Business";
+    const businessAddress = businessSettings?.business_address?.trim() || "";
+    const businessContact =
+      businessSettings?.business_contact_phone?.trim() ||
+      businessSettings?.business_contact_email?.trim() ||
+      "";
+
+    const receiptHtml = generateReceiptHtml(
+      {
+        businessName,
+        businessAddress,
+        businessContact,
+        invoiceNumber: sale.order_id || "-",
+        date: saleDate,
+        customerName: sale.customer_name || "Walk-in Customer",
+        customerPhone: sale.customer_phone || "-",
+        title: "Sale Invoice",
+      },
+      [
+        {
+          description: sale.productName || "Unknown",
+          quantity,
+          unitPrice,
+          total: Number(total),
+        },
+      ]
+    );
+
+    printReceiptHtml(receiptHtml);
   };
 
   // ================= SORT SALES =================
@@ -293,6 +336,7 @@ export default function SalesPage() {
                 <th className="p-4 text-left text-theme-secondary">Qty</th>
                 <th className="p-4 text-left text-theme-secondary">Total</th>
                 <th className="p-4 text-left text-theme-secondary">Date</th>
+                <th className="p-4 text-left text-theme-secondary">Action</th>
               </tr>
             </thead>
 
@@ -347,6 +391,14 @@ export default function SalesPage() {
 
                     <td className="p-4 text-sm text-theme-secondary">
                       {formatDate(sale)}
+                    </td>
+                    <td className="p-4 text-right">
+                      <button
+                        onClick={() => handlePrintSale(sale)}
+                        className="text-sm text-cyan-300 hover:text-cyan-200 transition"
+                      >
+                        Print
+                      </button>
                     </td>
                   </tr>
                 ))

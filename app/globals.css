@@ -212,6 +212,19 @@ body {
     accent-color: var(--color-accent-primary) !important;
   }
 
+  .select-base option,
+  .select-base optgroup {
+    background: var(--surface-input) !important;
+    color: var(--text-primary) !important;
+  }
+
+  .select-base option:hover,
+  .select-base option:focus,
+  .select-base option:checked {
+    background: rgba(255, 255, 255, 0.12) !important;
+    color: var(--text-primary) !important;
+  }
+
   .inventory-filter-select,
   .inventory-filter-select option,
   .inventory-filter-select optgroup {

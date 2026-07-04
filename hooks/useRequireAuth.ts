@@ -14,28 +14,52 @@ export function useRequireAuth() {
 
   useEffect(() => {
     let mounted = true;
-    
+    let subscription: any;
+
     const checkAuth = async () => {
       try {
-        const { data, error } = await supabase.auth.getUser();
-        if (mounted) {
-          if (error || !data.user) {
-            router.push("/login");
-            return;
-          }
-          setUser(data.user);
-          setLoading(false);
+        const { data, error } = await supabase.auth.getSession();
+        if (!mounted) return;
+
+        if (error || !data.session?.user) {
+          router.replace("/login");
+          return;
         }
+
+        setUser(data.session.user);
       } catch (err) {
         if (mounted) {
-          router.push("/login");
+          router.replace("/login");
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
         }
       }
     };
 
+    const authListener = supabase.auth.onAuthStateChange((event, session) => {
+      if (!mounted) return;
+      const authEvent = event as string;
+      if (authEvent === "SIGNED_OUT" || authEvent === "USER_DELETED") {
+        setUser(null);
+        router.replace("/login");
+      }
+
+      if (authEvent === "SIGNED_IN" && session?.user) {
+        setUser(session.user);
+      }
+    });
+
+    subscription = authListener.data?.subscription;
+
     checkAuth();
+
     return () => {
       mounted = false;
+      if (subscription?.unsubscribe) {
+        subscription.unsubscribe();
+      }
     };
   }, [router]);
 

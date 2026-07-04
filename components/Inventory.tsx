@@ -5,6 +5,7 @@ import { Product, CustomField } from "../types";
 import { Edit, ShoppingCart, Trash2, Plus } from "lucide-react";
 import { useCustomFields } from "@/hooks/useCustomFields";
 import { getVisibleTableFields, getVisibleSystemFields } from "@/lib/customFields";
+import { FEATURE_CUSTOM_FIELDS } from "@/lib/featureFlags";
 import { useTenantRole } from "@/hooks/useTenantRole";
 
 export default function Inventory({ products, setProducts, categories }: any) {
@@ -32,8 +33,69 @@ export default function Inventory({ products, setProducts, categories }: any) {
   };
 
   // fetch visible fields once for form/table
-  const { data: customFieldsData = [] } = useCustomFields();
-  const visibleSystemFields = getVisibleSystemFields(customFieldsData as CustomField[]);
+  const { data: customFieldsData, isLoading: customFieldsLoading } = useCustomFields();
+
+  // If custom fields feature is disabled, derive visible system fields from
+  // the existing `products` data (the user provided a products table JSON).
+  // This keeps the form/table in sync with the actual product shape without
+  // relying on the custom-fields feature or migrations.
+  const ALLOWED_FIELDS = ["name", "category", "cost_price", "price", "stock"];
+  const DISPLAY_NAMES: Record<string, string> = {
+    name: "Product Name",
+    category: "Category",
+    cost_price: "Cost Price",
+    price: "Sell Price",
+    stock: "Stock Qty",
+  };
+  const FIELD_TYPES: Record<string, string> = {
+    name: "text",
+    category: "text",
+    cost_price: "currency",
+    price: "currency",
+    stock: "number",
+  };
+
+  let visibleSystemFields: CustomField[] = [];
+  let visibleTableFields: CustomField[] = [];
+
+  if (!FEATURE_CUSTOM_FIELDS) {
+    // Determine which allowed fields are present in the current products array
+    const present = new Set<string>();
+    for (const p of products) {
+      for (const fn of ALLOWED_FIELDS) {
+        if (p[fn] !== null && p[fn] !== undefined) present.add(fn);
+      }
+    }
+
+    visibleSystemFields = ALLOWED_FIELDS.filter((fn) => present.has(fn)).map((fn, idx) => ({
+      id: fn,
+      tenant_id: "",
+      field_name: fn,
+      display_name: DISPLAY_NAMES[fn] || fn,
+      field_type: FIELD_TYPES[fn] || "text",
+      description: "",
+      is_required: false,
+      is_visible: true,
+      is_system: true,
+      field_order: idx,
+      created_by: "",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })) as CustomField[];
+
+    // Table fields: same as visible system fields (no custom fields when feature off)
+    visibleTableFields = [...visibleSystemFields];
+  } else {
+    // Avoid showing fallback system fields while the query is still loading —
+    // only compute visible fields when the hook has resolved so toggles from
+    // the settings page are respected immediately.
+    visibleSystemFields = !customFieldsLoading
+      ? getVisibleSystemFields(customFieldsData as CustomField[] | undefined)
+      : [];
+
+    // Only render standard system fields in the table, not custom fields.
+    visibleTableFields = [...visibleSystemFields];
+  }
 
   // tenant role for frontend guards (default to owner to avoid hiding features unexpectedly)
   const { data: tenantRoleData } = useTenantRole();
@@ -69,8 +131,8 @@ export default function Inventory({ products, setProducts, categories }: any) {
 
       {/* ADD FORM (renders only visible standard fields) */}
       {canAdd && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-        {visibleSystemFields.map((f) => {
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+      {visibleSystemFields.map((f) => {
           switch (f.field_name) {
             case "name":
               return (
@@ -157,51 +219,41 @@ export default function Inventory({ products, setProducts, categories }: any) {
             <thead className="bg-white/5">
               <tr>
                 {/* build header from visible fields */}
-                {(() => {
-                  const { data: customFields = [] } = useCustomFields();
-                  const visibleFields: CustomField[] = getVisibleTableFields(customFields as CustomField[]);
-                  return (
-                    <>
-                      {visibleFields.map((f) => (
-                        <th key={f.id} className="p-3 text-left">{f.display_name}</th>
-                      ))}
-                      <th className="text-left">Actions</th>
-                    </>
-                  );
-                })()}
+                <>
+                  {visibleTableFields.map((f) => (
+                    <th key={f.id} className="p-3 text-left">{f.display_name}</th>
+                  ))}
+                  <th className="text-left">Actions</th>
+                </>
               </tr>
             </thead>
 
             <tbody>
               {products.map((p: Product) => (
                 <tr key={p.id} className="border-t border-white/10">
-                  {(() => {
-                    const { data: customFields = [] } = useCustomFields();
-                    const visibleFields: CustomField[] = getVisibleTableFields(customFields as CustomField[]);
-                    return visibleFields.map((f) => {
-                      const key = f.field_name;
-                      let value: any = null;
+                  {visibleTableFields.map((f) => {
+                    const key = f.field_name;
+                    let value: any = null;
 
-                      if (f.is_system) {
-                        value = (p as any)[key];
-                      } else {
-                        value = p.custom_data?.[key];
-                      }
+                    if (f.is_system) {
+                      value = (p as any)[key];
+                    } else {
+                      value = p.custom_data?.[key];
+                    }
 
-                      // format certain field types
-                      if (key === "price" || f.field_type === "currency") {
-                        value = typeof value === "number" ? `$${value.toFixed(2)}` : value ?? "-";
-                      }
+                    // format certain field types
+                    if (key === "price" || f.field_type === "currency") {
+                      value = typeof value === "number" ? `$${value.toFixed(2)}` : value ?? "-";
+                    }
 
-                      if (value === null || value === undefined || value === "") value = "-";
+                    if (value === null || value === undefined || value === "") value = "-";
 
-                      return (
-                        <td key={`${p.id}-${f.id}`} className="p-3">
-                          {String(value)}
-                        </td>
-                      );
-                    });
-                  })()}
+                    return (
+                      <td key={`${p.id}-${f.id}`} className="p-3">
+                        {String(value)}
+                      </td>
+                    );
+                  })}
 
                   {/* Actions column (unchanged) */}
                   <td>
