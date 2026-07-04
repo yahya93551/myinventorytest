@@ -6,7 +6,7 @@ export default defineConfig({
     environment: 'node',
     include: ['lib/**/*.test.ts'],
     coverage: {
-      provider: 'c8',
+      provider: 'v8',
       reporter: ['text', 'lcov'],
       exclude: ['**/node_modules/**', 'vitest.config.ts'],
     },
