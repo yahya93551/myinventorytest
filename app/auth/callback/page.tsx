@@ -1,0 +1,36 @@
+"use client";
+
+import { useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+
+export default function CallbackPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    const type = searchParams.get("type");
+    const token = searchParams.get("token");
+
+    // Handle password recovery
+    if (type === "recovery" && token) {
+      router.push(`/auth/reset-password?type=recovery&token=${token}`);
+    }
+    // Handle email confirmation
+    else if (type === "signup" && token) {
+      router.push(`/login?verified=true`);
+    }
+    // Default: go to login
+    else {
+      router.push("/login");
+    }
+  }, [router, searchParams]);
+
+  return (
+    <main className="min-h-screen bg-slate-950 text-white flex items-center justify-center">
+      <div className="text-center">
+        <div className="inline-flex h-12 w-12 animate-spin rounded-full border-4 border-cyan-500 border-t-transparent mb-4"></div>
+        <p className="text-slate-400">Redirecting...</p>
+      </div>
+    </main>
+  );
+}

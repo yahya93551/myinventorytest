@@ -23,7 +23,7 @@ const countryOptions = [
 ];
 
 export default function LoginPage() {
-  const [mode, setMode] = useState<"login" | "signup">("login");
+  const [mode, setMode] = useState<"login" | "signup" | "forgot-password">("login");
   const [signupMethod, setSignupMethod] = useState<"email" | "phone">("email");
   const [identifier, setIdentifier] = useState("");
   const [countryCode, setCountryCode] = useState("+1");
@@ -277,6 +277,51 @@ export default function LoginPage() {
     }
   };
 
+  const forgotPassword = async () => {
+    const trimmedIdentifier = identifier.trim();
+    if (!trimmedIdentifier) {
+      setMessageType("error");
+      setMessage("Please enter your email address.");
+      return;
+    }
+
+    const isEmail = /\S+@\S+\.\S+/.test(trimmedIdentifier);
+    if (!isEmail) {
+      setMessageType("error");
+      setMessage("Please enter a valid email address.");
+      return;
+    }
+
+    setLoading(true);
+    setMessage("");
+
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(trimmedIdentifier, {
+        redirectTo: `https://myinventoryuse.com/auth/callback`,
+      });
+
+      setLoading(false);
+
+      if (error) {
+        setMessageType("error");
+        if (error.message?.includes("rate limit")) {
+          setMessage("Too many reset attempts. Please try again in a few minutes.");
+        } else {
+          setMessage(error.message || "Failed to send reset email.");
+        }
+      } else {
+        setMessageType("success");
+        setMessage("Password reset link sent! Check your email.");
+        setIdentifier("");
+      }
+    } catch (error) {
+      setLoading(false);
+      setMessageType("error");
+      setMessage("Failed to send reset email. Please try again.");
+      console.error(error);
+    }
+  };
+
   const inputPlaceholder =
     mode === "login"
       ? "Email or phone"
@@ -354,10 +399,12 @@ export default function LoginPage() {
               <div className="mb-4 flex flex-col gap-2">
                 <p className="text-sm uppercase tracking-[0.28em] text-cyan-300/80">Secure login</p>
                 <h2 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
-                  Access your account
+                  {mode === "forgot-password" ? "Reset your password" : "Access your account"}
                 </h2>
                 <p className="max-w-xl text-sm leading-7 text-slate-400">
-                  Login or create a new account to continue managing inventory with a polished, high-end auth experience.
+                  {mode === "forgot-password"
+                    ? "Enter your email address and we'll send you a link to reset your password."
+                    : "Login or create a new account to continue managing inventory with a polished, high-end auth experience."}
                 </p>
               </div>
 
@@ -379,7 +426,7 @@ export default function LoginPage() {
                 </button>
               </div>
 
-              {mode === "signup" && (
+              {mode !== "forgot-password" && mode === "signup" && (
                 <div className="mb-6 flex gap-3 rounded-3xl border border-white/10 bg-slate-900/80 p-1">
                   <button
                     type="button"
@@ -415,7 +462,43 @@ export default function LoginPage() {
               )}
 
               <div className="space-y-4">
-                {mode === "signup" && signupMethod === "phone" ? (
+                {mode === "forgot-password" ? (
+                  <>
+                    <div className="relative">
+                      <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-cyan-300/80">
+                        <Mail className="h-5 w-5" />
+                      </span>
+                      <input
+                        className="w-full rounded-[28px] border border-white/10 bg-slate-950/80 py-4 pl-14 pr-4 text-sm text-white placeholder:text-slate-500 shadow-sm shadow-cyan-500/10 outline-none transition focus:border-cyan-300/60 focus:bg-slate-900 focus:ring-2 focus:ring-cyan-500/20"
+                        placeholder="Enter your email address"
+                        type="email"
+                        value={identifier}
+                        onChange={(e) => setIdentifier(e.target.value)}
+                      />
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={forgotPassword}
+                      disabled={loading}
+                      className="inline-flex w-full items-center justify-center rounded-[28px] bg-linear-to-r from-cyan-500 via-sky-500 to-blue-600 px-5 py-4 text-sm font-semibold text-slate-950 shadow-[0_20px_60px_-20px_rgba(14,165,233,0.65)] transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_25px_80px_-30px_rgba(14,165,233,0.75)] disabled:pointer-events-none disabled:opacity-60"
+                    >
+                      {loading ? "Sending reset link..." : "Send Reset Link"}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMode("login");
+                        setIdentifier("");
+                        setMessage("");
+                      }}
+                      className="w-full text-sm text-cyan-300/80 hover:text-cyan-300 transition"
+                    >
+                      Back to Login
+                    </button>
+                  </>
+                ) : mode === "signup" && signupMethod === "phone" ? (
                   <div className="relative" ref={countryMenuRef}>
                     <div className="grid gap-3 sm:grid-cols-[200px_minmax(0,1fr)] items-center">
                       <button
@@ -530,6 +613,21 @@ export default function LoginPage() {
                     onChange={(e) => setPassword(e.target.value)}
                   />
                 </div>
+
+                {mode === "login" && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode("forgot-password");
+                      setIdentifier("");
+                      setPassword("");
+                      setMessage("");
+                    }}
+                    className="text-xs text-cyan-300/80 hover:text-cyan-300 transition text-right w-full"
+                  >
+                    Forgot your password?
+                  </button>
+                )}
 
                 {mode === "signup" && (
                   <div className="relative">
