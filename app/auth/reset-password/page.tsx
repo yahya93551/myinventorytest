@@ -22,10 +22,9 @@ function ResetPasswordContent() {
   useEffect(() => {
     const validateToken = async () => {
       try {
-        const token = searchParams.get("token");
-        const type = searchParams.get("type");
+        const { data: { session }, error } = await supabase.auth.getSession();
 
-        if (!token || type !== "recovery") {
+        if (error || !session) {
           setMessageType("error");
           setMessage("Invalid or missing reset link.");
           setIsValidToken(false);
@@ -33,8 +32,6 @@ function ResetPasswordContent() {
           return;
         }
 
-        // Token is valid if we got it from the callback
-        // Supabase will handle validation when we call updateUser
         setIsValidToken(true);
         setMessage("");
         setValidating(false);
@@ -47,7 +44,7 @@ function ResetPasswordContent() {
     };
 
     validateToken();
-  }, [searchParams]);
+  }, []);
 
   const validate = () => {
     if (!password || !confirmPassword) {

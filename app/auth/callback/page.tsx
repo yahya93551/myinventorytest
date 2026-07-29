@@ -14,16 +14,16 @@ function CallbackContent() {
     const token = searchParams.get("token");
 
     // Handle password recovery
-    if (type === "recovery" && token) {
-      router.push(`/auth/reset-password?type=recovery&token=${token}`);
+    if (type === "recovery") {
+      router.replace("/auth/reset-password");
     }
     // Handle email confirmation
     else if (type === "signup" && token) {
-      router.push(`/login?verified=true`);
+      router.replace(`/login?verified=true`);
     }
     // Default: go to login
     else {
-      router.push("/login");
+      router.replace("/login");
     }
   }, [router, searchParams]);
 
