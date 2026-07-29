@@ -47,9 +47,13 @@ function SessionTracker() {
       }
 
       if (authEvent === 'SIGNED_OUT' || authEvent === 'USER_DELETED') {
-        clearCurrentSessionId();
-        if (typeof window !== 'undefined') {
-          window.location.href = '/login';
+        const isRecoveryRoute = typeof window !== 'undefined' && window.location.pathname.startsWith('/auth');
+
+        if (!isRecoveryRoute) {
+          clearCurrentSessionId();
+          if (typeof window !== 'undefined') {
+            window.location.href = '/login';
+          }
         }
       }
     });

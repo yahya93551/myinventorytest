@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useEffect } from "react";
+import { supabase } from "@/lib/supabase";
 import { useRouter, useSearchParams } from "next/navigation";
 
 export const dynamic = "force-dynamic";
@@ -13,18 +14,33 @@ function CallbackContent() {
     const type = searchParams.get("type");
     const token = searchParams.get("token");
 
-    // Handle password recovery
-    if (type === "recovery") {
-      router.replace("/auth/reset-password");
-    }
-    // Handle email confirmation
-    else if (type === "signup" && token) {
-      router.replace(`/login?verified=true`);
-    }
-    // Default: go to login
-    else {
+    const handleRecovery = async () => {
+      if (type === "recovery" && token) {
+        try {
+          await supabase.auth.verifyOtp({
+            token_hash: token,
+            type: "recovery",
+          });
+        } catch (error) {
+          console.warn("Recovery verification warning:", error);
+        }
+
+        const params = new URLSearchParams(searchParams.toString());
+        router.replace(`/auth/reset-password?${params.toString()}`);
+        return;
+      }
+
+      // Handle email confirmation
+      if (type === "signup" && token) {
+        router.replace(`/login?verified=true`);
+        return;
+      }
+
+      // Default: go to login
       router.replace("/login");
-    }
+    };
+
+    handleRecovery();
   }, [router, searchParams]);
 
   return (
