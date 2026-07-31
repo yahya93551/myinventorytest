@@ -1,70 +1,83 @@
-//app/auth/callback/page.tsx
 "use client";
 
 import { Suspense, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
 function CallbackContent() {
   const router = useRouter();
-  const searchParams = useSearchParams();
 
- useEffect(() => {
-  console.log("====================================");
-  console.log("🔐 SUPABASE CALLBACK STARTED");
-  console.log("====================================");
+  useEffect(() => {
+    let mounted = true;
 
-  console.log("FULL URL:", window.location.href);
-  console.log("PATH:", window.location.pathname);
-  console.log("SEARCH:", window.location.search);
-  console.log("HASH:", window.location.hash);
+    const handleCallback = async () => {
+      console.log("🔐 Supabase auth callback");
 
-  const params = new URLSearchParams(window.location.search);
+      // Supabase processes the recovery URL and creates
+      // the session automatically.
+      const {
+        data: { session },
+        error,
+      } = await supabase.auth.getSession();
 
-  console.log("QUERY PARAMETERS:");
+      if (!mounted) return;
 
-  for (const [key, value] of params.entries()) {
-    console.log(key, "=", value);
-  }
+      if (error) {
+        console.error("Supabase session error:", error);
+        router.replace("/login?error=reset_failed");
+        return;
+      }
 
-  console.log("====================================");
+      if (session) {
+        console.log("✅ Recovery session found");
+        router.replace("/auth/reset-password");
+        return;
+      }
 
-  const handleCallback = async () => {
-    console.log("Checking Supabase session...");
+      // Sometimes the Supabase client needs a moment to
+      // process the URL hash and establish the session.
+      const timeout = setTimeout(async () => {
+        const {
+          data: { session: latestSession },
+          error: latestError,
+        } = await supabase.auth.getSession();
 
-    const {
-      data: { session },
-      error,
-    } = await supabase.auth.getSession();
+        if (!mounted) return;
 
-    console.log("SESSION:", session);
-    console.log("SESSION ERROR:", error);
+        if (latestError || !latestSession) {
+          console.error(
+            "❌ No recovery session found",
+            latestError
+          );
 
-    if (session) {
-      console.log("✅ RECOVERY SESSION FOUND");
-      console.log("Redirecting to reset password...");
+          router.replace("/login?error=invalid_reset_link");
+          return;
+        }
 
-      router.replace("/auth/reset-password");
-      return;
-    }
+        console.log("✅ Recovery session found after waiting");
+        router.replace("/auth/reset-password");
+      }, 1000);
 
-    console.log("❌ NO SESSION FOUND");
-    console.log("Staying on callback page for debugging.");
+      return () => clearTimeout(timeout);
+    };
 
-    // TEMPORARILY DISABLED
-    // router.replace("/login");
-  };
+    handleCallback();
 
-  handleCallback();
-}, [router, searchParams]);
+    return () => {
+      mounted = false;
+    };
+  }, [router]);
 
   return (
     <main className="min-h-screen bg-slate-950 text-white flex items-center justify-center">
       <div className="text-center">
-        <div className="inline-flex h-12 w-12 animate-spin rounded-full border-4 border-cyan-500 border-t-transparent mb-4"></div>
-        <p className="text-slate-400">Redirecting...</p>
+        <div className="inline-flex h-12 w-12 animate-spin rounded-full border-4 border-cyan-500 border-t-transparent mb-4" />
+
+        <p className="text-slate-400">
+          Securing your reset session...
+        </p>
       </div>
     </main>
   );
@@ -76,8 +89,11 @@ export default function CallbackPage() {
       fallback={
         <main className="min-h-screen bg-slate-950 text-white flex items-center justify-center">
           <div className="text-center">
-            <div className="inline-flex h-12 w-12 animate-spin rounded-full border-4 border-cyan-500 border-t-transparent mb-4"></div>
-            <p className="text-slate-400">Redirecting...</p>
+            <div className="inline-flex h-12 w-12 animate-spin rounded-full border-4 border-cyan-500 border-t-transparent mb-4" />
+
+            <p className="text-slate-400">
+              Loading...
+            </p>
           </div>
         </main>
       }
