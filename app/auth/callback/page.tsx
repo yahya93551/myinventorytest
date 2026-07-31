@@ -11,38 +11,54 @@ function CallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  useEffect(() => {
-    const type = searchParams.get("type");
-    const token = searchParams.get("token");
+ useEffect(() => {
+  console.log("====================================");
+  console.log("🔐 SUPABASE CALLBACK STARTED");
+  console.log("====================================");
 
-    const handleRecovery = async () => {
-      if (type === "recovery" && token) {
-        try {
-          await supabase.auth.verifyOtp({
-            token_hash: token,
-            type: "recovery",
-          });
-        } catch (error) {
-          console.warn("Recovery verification warning:", error);
-        }
+  console.log("FULL URL:", window.location.href);
+  console.log("PATH:", window.location.pathname);
+  console.log("SEARCH:", window.location.search);
+  console.log("HASH:", window.location.hash);
 
-        const params = new URLSearchParams(searchParams.toString());
-        router.replace(`/auth/reset-password?${params.toString()}`);
-        return;
-      }
+  const params = new URLSearchParams(window.location.search);
 
-      // Handle email confirmation
-      if (type === "signup" && token) {
-        router.replace(`/login?verified=true`);
-        return;
-      }
+  console.log("QUERY PARAMETERS:");
 
-      // Default: go to login
-      router.replace("/login");
-    };
+  for (const [key, value] of params.entries()) {
+    console.log(key, "=", value);
+  }
 
-    handleRecovery();
-  }, [router, searchParams]);
+  console.log("====================================");
+
+  const handleCallback = async () => {
+    console.log("Checking Supabase session...");
+
+    const {
+      data: { session },
+      error,
+    } = await supabase.auth.getSession();
+
+    console.log("SESSION:", session);
+    console.log("SESSION ERROR:", error);
+
+    if (session) {
+      console.log("✅ RECOVERY SESSION FOUND");
+      console.log("Redirecting to reset password...");
+
+      router.replace("/auth/reset-password");
+      return;
+    }
+
+    console.log("❌ NO SESSION FOUND");
+    console.log("Staying on callback page for debugging.");
+
+    // TEMPORARILY DISABLED
+    // router.replace("/login");
+  };
+
+  handleCallback();
+}, [router, searchParams]);
 
   return (
     <main className="min-h-screen bg-slate-950 text-white flex items-center justify-center">
