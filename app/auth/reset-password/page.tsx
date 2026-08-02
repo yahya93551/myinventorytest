@@ -28,7 +28,7 @@ function ResetPasswordContent() {
   const [isValidSession, setIsValidSession] = useState(false);
 
   useEffect(() => {
-    const checkRecoverySession = async () => {
+    const checkRecoverySession = async (attempt = 0) => {
       try {
         console.log("🔐 Checking recovery session...");
 
@@ -40,6 +40,11 @@ function ResetPasswordContent() {
         if (error) {
           console.error("Session error:", error);
 
+          if (attempt < 3) {
+            await new Promise((resolve) => setTimeout(resolve, 700));
+            return checkRecoverySession(attempt + 1);
+          }
+
           setMessageType("error");
           setMessage("Unable to verify your reset session.");
           setIsValidSession(false);
@@ -48,6 +53,17 @@ function ResetPasswordContent() {
         }
 
         if (!session) {
+          const hasRecoveryPayload =
+            typeof window !== "undefined" &&
+            (window.location.hash.includes("type=recovery") ||
+              window.location.hash.includes("access_token=") ||
+              new URLSearchParams(window.location.search).get("code"));
+
+          if (hasRecoveryPayload && attempt < 4) {
+            await new Promise((resolve) => setTimeout(resolve, 700));
+            return checkRecoverySession(attempt + 1);
+          }
+
           console.error("❌ No recovery session found");
 
           setMessageType("error");
@@ -66,6 +82,11 @@ function ResetPasswordContent() {
         setValidating(false);
       } catch (error) {
         console.error("Recovery session check failed:", error);
+
+        if (attempt < 3) {
+          await new Promise((resolve) => setTimeout(resolve, 700));
+          return checkRecoverySession(attempt + 1);
+        }
 
         setMessageType("error");
         setMessage("Failed to validate reset session. Please try again.");

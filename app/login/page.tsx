@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { registerCurrentSession } from "@/lib/apiClient";
 import { CheckCircle2, Lock, Mail, Phone, ShieldCheck, Sparkles, Zap } from "lucide-react";
-import { createPhoneFallbackEmail, isPhoneNumber, normalizePhoneNumber } from "@/lib/auth";
+import { createPhoneFallbackEmail, getAppUrl, isPhoneNumber, normalizePhoneNumber } from "@/lib/auth";
 
 const countryOptions = [
   { code: "+252", country: "Somalia", flag: "🇸🇴" },
@@ -297,7 +297,7 @@ export default function LoginPage() {
 
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(trimmedIdentifier, {
-        redirectTo: `https://myinventoryuse.com/auth/callback`,
+        redirectTo: getAppUrl("/auth/callback"),
       });
 
       setLoading(false);

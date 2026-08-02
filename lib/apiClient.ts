@@ -54,8 +54,13 @@ const defaultHeaders = {
   "Content-Type": "application/json",
 };
 
-async function handleUnauthorized() {
+async function handleUnauthorized(status: number) {
   if (typeof window === "undefined") return;
+
+  if (status === 403) {
+    console.warn('[SESSION] Received forbidden response; keeping the current session active.');
+    return;
+  }
 
   clearCurrentSessionId();
   try {
@@ -89,10 +94,16 @@ async function fetchApi<T>(input: RequestInfo, init: RequestInit = {}) {
   const json = body ? JSON.parse(body) : null;
 
   if (!response.ok) {
-    if (response.status === 401 || response.status === 403) {
-      await handleUnauthorized();
+    if (response.status === 401) {
+      await handleUnauthorized(401);
       throw new Error("Unauthorized. Redirecting to login.");
     }
+
+    if (response.status === 403) {
+      await handleUnauthorized(403);
+      throw new Error(json?.error || json?.message || "Forbidden.");
+    }
+
     const message = json?.error || json?.message || response.statusText;
     throw new Error(message);
   }

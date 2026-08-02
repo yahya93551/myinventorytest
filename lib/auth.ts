@@ -51,3 +51,25 @@ export function createPhoneFallbackEmail(phone: string) {
 
   return `${normalized.slice(1)}@phone.inventory.local`;
 }
+
+export function getAppUrl(path: string, fallbackOrigin = "https://myinventoryuse.com") {
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+
+  if (typeof window !== "undefined" && window.location?.origin) {
+    return `${window.location.origin}${normalizedPath}`;
+  }
+
+  const configuredOrigin =
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    process.env.NEXT_PUBLIC_APP_URL ||
+    process.env.NEXT_PUBLIC_FRONTEND_URL;
+
+  if (configuredOrigin) {
+    return new URL(
+      normalizedPath,
+      configuredOrigin.endsWith("/") ? configuredOrigin : `${configuredOrigin}/`
+    ).toString();
+  }
+
+  return `${fallbackOrigin}${normalizedPath}`;
+}

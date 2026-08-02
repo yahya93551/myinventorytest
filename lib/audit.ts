@@ -54,6 +54,19 @@ export function extractUserAgent(request: Request): string {
  * Log an audit trail entry
  * All state-changing operations should call this
  */
+function isSchemaCompatibilityError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+
+  const message = (error as { message?: string }).message || '';
+  return (
+    typeof message === 'string' &&
+    (message.includes("Could not find the '") ||
+      message.includes("does not exist") ||
+      message.includes("schema cache") ||
+      message.includes("column"))
+  );
+}
+
 export async function logAuditTrail(
   entry: AuditLogEntry,
   request?: Request
@@ -111,6 +124,10 @@ export async function logAuditTrail(
       });
 
     if (error) {
+      if (isSchemaCompatibilityError(error)) {
+        return false;
+      }
+
       // Log detailed info to make failures visible in server logs
       console.error('[AUDIT] Failed to insert activity_logs row. Error:', error, 'Payload:', {
         tenant_id: entry.tenantId,

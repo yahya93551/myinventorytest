@@ -15,52 +15,50 @@ function CallbackContent() {
     const handleCallback = async () => {
       console.log("🔐 Supabase auth callback");
 
-      // Supabase processes the recovery URL and creates
-      // the session automatically.
-      const {
-        data: { session },
-        error,
-      } = await supabase.auth.getSession();
+      const hasRecoveryPayload =
+        typeof window !== "undefined" &&
+        (window.location.hash.includes("type=recovery") ||
+          window.location.hash.includes("access_token=") ||
+          new URLSearchParams(window.location.search).get("code"));
+
+      const waitForRecoverySession = async (attempt = 0): Promise<boolean> => {
+        const {
+          data: { session },
+          error,
+        } = await supabase.auth.getSession();
+
+        if (!mounted) return false;
+
+        if (!error && session) {
+          return true;
+        }
+
+        if (hasRecoveryPayload && attempt < 4) {
+          await new Promise((resolve) => setTimeout(resolve, 700));
+          return waitForRecoverySession(attempt + 1);
+        }
+
+        return false;
+      };
+
+      const foundSession = await waitForRecoverySession();
 
       if (!mounted) return;
 
-      if (error) {
-        console.error("Supabase session error:", error);
-        router.replace("/login?error=reset_failed");
-        return;
-      }
-
-      if (session) {
+      if (foundSession) {
         console.log("✅ Recovery session found");
         router.replace("/auth/reset-password");
         return;
       }
 
-      // Sometimes the Supabase client needs a moment to
-      // process the URL hash and establish the session.
-      const timeout = setTimeout(async () => {
-        const {
-          data: { session: latestSession },
-          error: latestError,
-        } = await supabase.auth.getSession();
-
-        if (!mounted) return;
-
-        if (latestError || !latestSession) {
-          console.error(
-            "❌ No recovery session found",
-            latestError
-          );
-
-          router.replace("/login?error=invalid_reset_link");
-          return;
-        }
-
-        console.log("✅ Recovery session found after waiting");
+      if (hasRecoveryPayload) {
+        console.warn("Recovery link arrived but the session is still not ready. Showing reset form.");
         router.replace("/auth/reset-password");
-      }, 1000);
+        return;
+      }
 
-      return () => clearTimeout(timeout);
+      console.error("❌ No recovery session found");
+      router.replace("/login?error=invalid_reset_link");
     };
 
     handleCallback();
