@@ -13,7 +13,8 @@ import {
   SaleMetadata,
   Category,
   LoadingState,
-  ProductSchema,
+  ProductFormSchema,
+  ProductUpdateSchema,
   CategorySchema,
 } from "../types";
 
@@ -22,31 +23,30 @@ const formatZodError = (issues: any[]) =>
     .map((issue) => `${issue.path?.join?.(".") || "input"}: ${issue.message}`)
     .join(", ");
 
-const ProductFormSchema = ProductSchema.omit({ id: true, user_id: true });
-const ProductUpdateSchema = ProductSchema.partial().omit({ id: true, user_id: true }).refine(
-  (data) => Object.keys(data).length > 0,
-  {
-    message: "At least one field must be provided for update",
-  }
-);
-
 export function useInventory() {
   const itemsPerPage = 10;
   const [currentPage, setCurrentPage] = useState(1);
+  const [searchQuery, setSearchQuery] = useState("");
   const [sellItem, setSellItem] = useState<Product | null>(null);
   const [sellQty, setSellQty] = useState<number | "">(1);
+
+  const handleSearchQueryChange = (value: string) => {
+    setSearchQuery(value);
+    setCurrentPage(1);
+  };
   const queryClient = useQueryClient();
 
-  // ================= FETCH PRODUCTS WITH PAGINATION =================
+  // ================= FETCH PRODUCTS WITH PAGINATION AND SEARCH =================
   const {
     data: productsData,
     isLoading: productsLoading,
     error: productsError,
   } = useQuery({
-    queryKey: ["products", currentPage],
+    queryKey: ["products", currentPage, searchQuery],
     queryFn: async () => {
+      const queryString = `page=${currentPage}&per_page=${itemsPerPage}${searchQuery.trim() ? `&q=${encodeURIComponent(searchQuery.trim())}` : ""}`;
       const response = await apiGet<{ products: Product[]; count: number }>(
-        `/api/products?page=${currentPage}&per_page=${itemsPerPage}`
+        `/api/products?${queryString}`
       );
       return {
         products: response.data?.products || [],
@@ -198,6 +198,28 @@ export function useInventory() {
     },
   });
 
+  // ================= RETURN PRODUCT MUTATION =================
+  const returnProductMutation = useMutation({
+    mutationFn: async ({ productId, quantity, metadata }: { productId: string; quantity: number; metadata?: SaleMetadata }) => {
+      if (!productId) {
+        throw new Error("Product not specified");
+      }
+      if (quantity <= 0) {
+        throw new Error("Return quantity must be at least 1");
+      }
+      await apiPost<void>("/api/sales", {
+        product_id: productId,
+        quantity,
+        type: "return",
+        ...metadata,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+      queryClient.invalidateQueries({ queryKey: ["sales"] });
+    },
+  });
+
   // ================= SELL PRODUCT MUTATION =================
   const sellProductMutation = useMutation({
     mutationFn: async ({ productId, quantity, metadata }: { productId: string; quantity: number; metadata?: SaleMetadata }) => {
@@ -315,7 +337,7 @@ export function useInventory() {
   // ================= SELL FLOW =================
   const openSell = (product: Product) => {
     setSellItem(product);
-    setSellQty(1);
+    setSellQty("");
   };
 
   const confirmSell = async (metadata?: SaleMetadata): Promise<boolean> => {
@@ -413,6 +435,19 @@ export function useInventory() {
     }
   };
 
+  const returnProduct = async (
+    productId: string,
+    quantity: number,
+    metadata?: SaleMetadata
+  ): Promise<boolean> => {
+    try {
+      await returnProductMutation.mutateAsync({ productId, quantity, metadata });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   const sellProducts = async (
     items: BulkSaleItem[],
     metadata?: SaleMetadata
@@ -482,6 +517,8 @@ export function useInventory() {
     itemsPerPage,
     setCurrentPage,
     totalPages: Math.ceil((productsData?.count || 0) / itemsPerPage),
+    searchQuery,
+    setSearchQuery: handleSearchQueryChange,
 
     addProduct,
     addProductWithResult,
@@ -490,6 +527,7 @@ export function useInventory() {
     restockProduct,
     sellProduct,
     sellProducts,
+    returnProduct,
 
     addCategory,
     updateCategory,

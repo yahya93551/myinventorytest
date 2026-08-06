@@ -22,7 +22,7 @@ type OwnerMetrics = {
   unpaid_debts_count?: number;
 };
 
-export default function StatsCards({ products, visibleFieldNames, ownerMetrics }: { products: Product[]; visibleFieldNames?: string[]; ownerMetrics?: OwnerMetrics }) {
+export default function StatsCards({ products, visibleFieldNames, ownerMetrics, businessType }: { products: Product[]; visibleFieldNames?: string[]; ownerMetrics?: OwnerMetrics; businessType?: string }) {
   const total = products.length;
   const totalCost = products.reduce((acc, p) => acc + (p.cost_price ?? 0) * p.stock, 0);
   const totalSellValue = products.reduce((acc, p) => acc + p.price * p.stock, 0);
@@ -82,7 +82,7 @@ export default function StatsCards({ products, visibleFieldNames, ownerMetrics }
 
   // Owner-only metrics (taken but not sold, unpaid debts)
   if (ownerMetrics) {
-    if (typeof ownerMetrics.taken_not_sold_total === "number") {
+    if (businessType === "warehouse" && typeof ownerMetrics.taken_not_sold_total === "number") {
       const uniqueUsers = Array.from(new Set(ownerMetrics.taken_not_sold_user_emails || []));
       const userLabel = uniqueUsers.length
         ? `Taken by ${uniqueUsers.slice(0, 3).join(", ")}${uniqueUsers.length > 3 ? ` +${uniqueUsers.length - 3} more` : ""}`

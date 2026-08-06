@@ -22,6 +22,9 @@ type Product = {
   cost_price: number;
   price: number;
   stock: number;
+  base_unit?: string | null;
+  converted_unit?: string | null;
+  conversion_rate?: number | null;
   custom_data?: Record<string, any>;
 };
 
@@ -42,6 +45,9 @@ export default function AddPage() {
   const [costPrice, setCostPrice] = useState<number | "">("");
   const [price, setPrice] = useState<number | "">("");
   const [stock, setStock] = useState<number | "">("");
+  const [baseUnit, setBaseUnit] = useState("");
+  const [convertedUnit, setConvertedUnit] = useState("");
+  const [conversionRate, setConversionRate] = useState<number | "">("");
   const [customData, setCustomData] = useState<Record<string, any>>({});
 
   const [isSubmitting, setIsSubmitting] =
@@ -119,9 +125,27 @@ export default function AddPage() {
       const parsedCostPrice = costPrice === "" ? 0 : costPrice;
       const parsedPrice = price === "" ? 0 : price;
       const parsedStock = stock === "" ? 0 : stock;
+      const parsedBaseUnit = baseUnit.trim() || null;
+      const parsedConvertedUnit = convertedUnit.trim() || null;
+      const parsedConversionRate = conversionRate === "" ? null : conversionRate;
 
       if (!name.trim() || !category.trim() || (costPriceVisible && parsedCostPrice < 0) || (priceVisible && parsedPrice <= 0) || (stockVisible && parsedStock < 0)) {
         setMessage("⚠️ Fill all fields correctly");
+        return;
+      }
+
+      if (parsedConvertedUnit && !parsedBaseUnit) {
+        setMessage("⚠️ Base unit is required when a converted unit is provided");
+        return;
+      }
+
+      if (parsedConvertedUnit && parsedConversionRate === null) {
+        setMessage("⚠️ Conversion rate is required when a converted unit is provided");
+        return;
+      }
+
+      if (!parsedConvertedUnit && parsedConversionRate !== null) {
+        setMessage("⚠️ Converted unit is required when a conversion rate is provided");
         return;
       }
 
@@ -136,6 +160,9 @@ export default function AddPage() {
           cost_price: Number(costPrice),
           price: Number(price),
           stock: Number(stock),
+          base_unit: parsedBaseUnit,
+          converted_unit: parsedConvertedUnit,
+          conversion_rate: parsedConversionRate,
           custom_data: customData,
         });
 
@@ -148,6 +175,9 @@ export default function AddPage() {
         setPrice("");
         setStock("");
         setCostPrice("");
+        setBaseUnit("");
+        setConvertedUnit("");
+        setConversionRate("");
         setCustomData({});
 
         if (categories.length > 0) {
@@ -245,6 +275,12 @@ export default function AddPage() {
           setPrice={setPrice}
           stock={stock}
           setStock={setStock}
+          baseUnit={baseUnit}
+          setBaseUnit={setBaseUnit}
+          convertedUnit={convertedUnit}
+          setConvertedUnit={setConvertedUnit}
+          conversionRate={conversionRate}
+          setConversionRate={setConversionRate}
           categories={categories}
           loadingCategories={
             loadingCategories

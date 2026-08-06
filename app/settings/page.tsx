@@ -8,6 +8,7 @@ import { useTheme } from "@/lib/theme-context";
 import SalesRouteGuard from "@/components/SalesRouteGuard";
 import { useRequireAuth, logout } from "@/hooks/useRequireAuth";
 import { useSubscription } from "@/hooks/useSubscription";
+import { useBusinessSettings } from "@/hooks/useCustomFields";
 import { BusinessSettingsForm } from "@/components/BusinessSettingsForm";
 import { CustomFieldsManager } from "@/components/CustomFieldsManager";
 import { StandardFieldManager } from "@/components/StandardFieldManager";
@@ -33,7 +34,8 @@ export default function SettingsPage() {
   const [setupError, setSetupError] = useState<string>("");
   const [subUserLoading, setSubUserLoading] = useState(false);
   const [activeSection, setActiveSection] = useState<"owner" | "system" | "subuser" | "business" | "customfields" | "standardfields" | "subscription" | "activity">("owner");
-  const [businessType, setBusinessType] = useState<string>("custom");
+  const { data: businessSettings } = useBusinessSettings();
+  const [businessType, setBusinessType] = useState<string>(businessSettings?.business_type || "custom");
   const [quickActionsOpen, setQuickActionsOpen] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -109,6 +111,12 @@ export default function SettingsPage() {
     }
     router.push("/login");
   };
+
+  useEffect(() => {
+    if (businessSettings?.business_type) {
+      setBusinessType(businessSettings.business_type);
+    }
+  }, [businessSettings]);
 
   const handleUpdatePassword = async () => {
     setPasswordMessage("");

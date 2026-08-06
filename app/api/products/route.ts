@@ -1,6 +1,7 @@
 ﻿import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getServerTenantContext, requireRole, jsonError, jsonSuccess, logAudit, requireActiveSubscription } from "@/lib/api";
+import { mapProductRecord } from "@/lib/apiMappers";
 
 const missingColumnRegex = /Could not find the '(.+?)' column of 'products'/;
 
@@ -20,6 +21,15 @@ function stripMissingColumns<T extends Record<string, any>>(payload: T, missingC
   return cleaned;
 }
 
+function normalizeUnitMetadata(value: unknown) {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  return value ?? null;
+}
+
 const ProductCreateSchema = z.object({
   name: z.string().trim().min(1, "Product name is required"),
   category: z.string().trim().min(1, "Category is required"),
@@ -32,6 +42,10 @@ const ProductCreateSchema = z.object({
     .default(0),
   image_url: z.string().url("Image URL must be valid").optional(),
   custom_data: z.record(z.string(), z.unknown()).optional(),
+  base_unit: z.string().trim().max(50).optional(),
+  converted_unit: z.string().trim().max(50).optional(),
+  conversion_rate: z.coerce.number().positive("Conversion rate must be positive").optional(),
+  stock_remainder: z.coerce.number().int().min(0, 'Remainder cannot be negative').optional(),
 });
 
 const ProductUpdateSchema = z.object({
@@ -46,6 +60,10 @@ const ProductUpdateSchema = z.object({
     .optional(),
   image_url: z.string().url("Image URL must be valid").optional(),
   custom_data: z.record(z.string(), z.unknown()).optional(),
+  base_unit: z.string().trim().max(50).optional(),
+  converted_unit: z.string().trim().max(50).optional(),
+  conversion_rate: z.coerce.number().positive("Conversion rate must be positive").optional(),
+  stock_remainder: z.coerce.number().int().min(0, 'Remainder cannot be negative').optional(),
 }).refine(
   (data) => Object.keys(data).length > 0,
   {
@@ -77,14 +95,29 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const page = Math.max(1, Number(url.searchParams.get("page") || "1"));
   const perPage = Math.min(100, Math.max(1, Number(url.searchParams.get("per_page") || "10")));
+  const query = url.searchParams.get("q")?.trim() || "";
   const offset = (page - 1) * perPage;
 
-  const { data, error, count } = await supabaseAdmin
+  let productsQuery = supabaseAdmin
     .from("products")
     .select("*", { count: "exact" })
     .eq("tenant_id", tenantContext.tenantId)
-    .range(offset, offset + perPage - 1)
     .order("created_at", { ascending: false });
+
+  if (query) {
+    const numericSearch = Number(query);
+    const isNumberQuery = !Number.isNaN(numericSearch);
+    const filters = [`name.ilike.%${query}%`, `category.ilike.%${query}%`];
+
+    if (isNumberQuery) {
+      filters.push(`price.eq.${numericSearch}`, `cost_price.eq.${numericSearch}`);
+    }
+
+    productsQuery = productsQuery.or(filters.join(","));
+  }
+
+  const { data, error, count } = await productsQuery
+    .range(offset, offset + perPage - 1);
 
   if (error) {
     return jsonError(error.message, 500);
@@ -103,10 +136,12 @@ export async function GET(req: Request) {
     return acc;
   }, {});
 
-  const productsWithAllocation = (data || []).map((product: any) => ({
-    ...product,
-    allocated_quantity: allocationMap[product.id] ?? 0,
-  }));
+  const productsWithAllocation = (data || []).map((product: any) =>
+    mapProductRecord({
+      ...product,
+      allocated_quantity: allocationMap[product.id] ?? 0,
+    })
+  );
 
   return jsonSuccess({ products: productsWithAllocation, count: count ?? 0 });
 }
@@ -143,7 +178,11 @@ export async function POST(req: Request) {
       return jsonError(errorMessages, 422);
     }
 
-    const { name, category, cost_price, price, stock, image_url, custom_data } = parseResult.data;
+    const { name, category, cost_price, price, stock, image_url, custom_data, base_unit, converted_unit, conversion_rate, stock_remainder } = parseResult.data;
+    const normalizedBaseUnit = normalizeUnitMetadata(base_unit);
+    const normalizedConvertedUnit = normalizeUnitMetadata(converted_unit);
+    const normalizedConversionRate = typeof conversion_rate === "number" ? conversion_rate : null;
+    const normalizedStockRemainder = typeof stock_remainder === "number" ? Math.max(0, Math.floor(stock_remainder)) : null;
 
     // Sanitize custom_data: only allow keys that correspond to visible custom fields for this tenant.
     let sanitizedCustomData = custom_data || {};
@@ -199,6 +238,10 @@ export async function POST(req: Request) {
       stock,
       image_url,
       custom_data: sanitizedCustomData || {},
+      base_unit: normalizedBaseUnit,
+      converted_unit: normalizedConvertedUnit,
+      conversion_rate: normalizedConversionRate,
+      ...(normalizedStockRemainder !== null ? { stock_remainder: normalizedStockRemainder } : {}),
       tenant_id: tenantContext.tenantId,
       user_id: tenantContext.userId,
       created_by: tenantContext.userId,
@@ -233,7 +276,7 @@ export async function POST(req: Request) {
 
         if (!fallbackResult.error && fallbackResult.data) {
           console.log("[POST /api/products] Product inserted successfully after schema fallback:", { id: fallbackResult.data.id });
-          return jsonSuccess(fallbackResult.data, 201);
+          return jsonSuccess(mapProductRecord(fallbackResult.data), 201);
         }
 
         console.error("[POST /api/products] Fallback insert failed:", {
@@ -269,10 +312,10 @@ export async function POST(req: Request) {
       "product",
       req,
       insertedProduct.id,
-      { name, category, cost_price, price, stock }
+      { name, category, cost_price, price, stock, base_unit: normalizedBaseUnit, converted_unit: normalizedConvertedUnit, conversion_rate: normalizedConversionRate, ...(normalizedStockRemainder !== null ? { stock_remainder: normalizedStockRemainder } : {}) }
     );
     
-    return jsonSuccess(insertedProduct, 201);
+    return jsonSuccess(mapProductRecord(insertedProduct), 201);
   } catch (err) {
     // Phase 6: Catch-All for Unexpected Errors
     console.error("[POST /api/products] Unexpected error:", err instanceof Error ? err.message : String(err), err);
@@ -313,6 +356,12 @@ export async function PATCH(req: Request) {
   }
 
   const { id, updates } = parseResult.data;
+  const normalizedUpdates = {
+    ...updates,
+    ...(typeof updates.base_unit === "string" ? { base_unit: normalizeUnitMetadata(updates.base_unit) } : {}),
+    ...(typeof updates.converted_unit === "string" ? { converted_unit: normalizeUnitMetadata(updates.converted_unit) } : {}),
+    ...(typeof updates.conversion_rate === "number" ? { conversion_rate: updates.conversion_rate } : {}),
+  };
 
   const { data: product, error: productError } = await supabaseAdmin
     .from("products")
@@ -330,12 +379,12 @@ export async function PATCH(req: Request) {
 
   const { error } = await supabaseAdmin
     .from("products")
-    .update(updates)
+    .update(normalizedUpdates)
     .eq("id", id)
     .eq("tenant_id", tenantContext.tenantId);
 
-  const actionType = typeof updates.stock === "number"
-    ? updates.stock > product.stock
+  const actionType = typeof normalizedUpdates.stock === "number"
+    ? normalizedUpdates.stock > product.stock
       ? "RESTOCK"
       : "UPDATE"
     : "UPDATE";
@@ -403,7 +452,7 @@ export async function PATCH(req: Request) {
     }
   );
 
-  return jsonSuccess({ id, updates });
+  return jsonSuccess({ id, updates: normalizedUpdates });
 }
 
 export async function DELETE(req: Request) {

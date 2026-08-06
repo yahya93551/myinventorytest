@@ -13,6 +13,7 @@ import DebtModal, { DebtFormValues } from "../../components/DebtModal";
 import DebtCard, { DebtRecord } from "../../components/DebtCard";
 import Button from "../../components/Button";
 import { Search, Plus } from "lucide-react";
+import DebouncedDebtSearch from "./DebouncedDebtSearch";
 
 type DebtApiRecord = {
   id: string;
@@ -47,6 +48,8 @@ export default function DebtsPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [modalInitial, setModalInitial] = useState<Partial<DebtFormValues> | undefined>(undefined);
   const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<"all" | "unpaid">("all");
+  const [sortBy, setSortBy] = useState<"latest" | "high-balance">("latest");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -90,28 +93,60 @@ export default function DebtsPage() {
   const businessName = businessSettings?.business_name?.trim() || "Business";
 
   const customers = useMemo(() => {
+    type CustomerSummary = { name: string; phone: string; debts: DebtRecord[]; totalAmount: number; unpaidAmount: number; latestDate: string };
     const map = new Map<string, { name: string; phone: string; debts: DebtRecord[] }>();
     debts.forEach((d) => {
       const existing = map.get(d.phone);
-      const rec = { name: d.name || existing?.name || "", phone: d.phone, debts: existing ? [...existing.debts, { id: d.id, amount: d.amount, date: d.date, note: d.note, paid: d.paid }] : [{ id: d.id, amount: d.amount, date: d.date, note: d.note, paid: d.paid }] };
+      const rec = {
+        name: d.name || existing?.name || "",
+        phone: d.phone,
+        debts: existing ? [...existing.debts, { id: d.id, amount: d.amount, date: d.date, note: d.note, paid: d.paid }] : [{ id: d.id, amount: d.amount, date: d.date, note: d.note, paid: d.paid }],
+      };
       map.set(d.phone, rec);
     });
-    let arr = Array.from(map.values());
+    let arr: Array<CustomerSummary> = Array.from(map.values()) as Array<CustomerSummary>;
 
     if (query.trim()) {
       const q = query.toLowerCase();
-      arr = arr.filter((c) => c.name.toLowerCase().includes(q) || c.phone.toLowerCase().includes(q));
+      arr = arr.filter(
+        (c) =>
+          c.name.toLowerCase().includes(q) ||
+          c.phone.toLowerCase().includes(q) ||
+          c.debts.some((d) =>
+            String(d.amount).toLowerCase().includes(q) ||
+            d.date.toLowerCase().includes(q) ||
+            (d.note || "").toLowerCase().includes(q)
+          )
+      );
     }
 
-    // sort by latest debt date desc
-    arr.sort((a, b) => {
-      const aDate = a.debts[a.debts.length - 1]?.date || "";
-      const bDate = b.debts[b.debts.length - 1]?.date || "";
-      return bDate.localeCompare(aDate);
-    });
+    if (filter === "unpaid") {
+      arr = arr.filter((c) => c.debts.some((d) => !d.paid));
+    }
+
+    arr = arr.map((customer) => ({
+      ...customer,
+      totalAmount: customer.debts.reduce((sum, d) => sum + (d.amount || 0), 0),
+      unpaidAmount: customer.debts.reduce((sum, d) => sum + (d.paid ? 0 : d.amount || 0), 0),
+      latestDate: customer.debts[customer.debts.length - 1]?.date || "",
+    }));
+
+    if (sortBy === "high-balance") {
+      arr.sort((a, b) => b.unpaidAmount - a.unpaidAmount);
+    } else {
+      arr.sort((a, b) => b.latestDate.localeCompare(a.latestDate));
+    }
 
     return arr;
-  }, [debts, query]);
+  }, [debts, filter, query, sortBy]);
+
+  const debtStats = useMemo(() => {
+    const totalDebt = debts.reduce((sum, d) => sum + (d.amount || 0), 0);
+    const totalPaid = debts.reduce((sum, d) => sum + (d.paid ? d.amount || 0 : 0), 0);
+    const totalOutstanding = totalDebt - totalPaid;
+    const customerCount = new Set(debts.map((d) => d.phone)).size;
+    return { totalDebt, totalPaid, totalOutstanding, customerCount };
+  }, [debts]);
 
   const openAddModal = (phone?: string, name?: string) => {
     setModalInitial(phone ? { phone, name } : undefined);
@@ -251,26 +286,81 @@ export default function DebtsPage() {
                 {error}
               </div>
             )}
-            <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <h2 className="text-2xl font-bold">Debt Notebook</h2>
-                <p className="text-sm text-theme-secondary">Manage customer debts and save them to the database</p>
+            <div className="grid gap-6 lg:grid-cols-[1.5fr_auto] lg:items-start">
+              <div className="space-y-4">
+                <div>
+                  <h2 className="text-2xl font-bold">Debt Notebook</h2>
+                  <p className="text-sm text-theme-secondary">Manage customer debts and save them to the database</p>
+                </div>
+                <div className="max-w-md">
+                  <DebouncedDebtSearch value={query} onChange={setQuery} />
+                </div>
               </div>
 
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-                <div className="relative min-w-0 flex-1">
-                  <input
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    placeholder="Search by name or phone"
-                    className="w-full rounded-lg border border-theme px-3 py-2 pr-10 bg-transparent focus:outline-none focus:ring-2 focus:ring-theme focus:border-theme"
-                  />
-                  <Search className="absolute right-3 top-2.5 text-theme-secondary" />
-                </div>
-
+              <div className="flex flex-col items-start gap-4 sm:items-end">
                 <Button variant="primary" size="md" icon={<Plus />} onClick={() => openAddModal()}>
                   Add Debt
                 </Button>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setFilter("all")}
+                      className={`rounded-full border px-3 py-2 text-xs font-semibold transition ${
+                        filter === "all" ? "border-blue-500 bg-blue-500/10 text-blue-200" : "border-theme-stroke bg-theme-card text-theme-secondary"
+                      }`}
+                    >
+                      All customers
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFilter("unpaid")}
+                      className={`rounded-full border px-3 py-2 text-xs font-semibold transition ${
+                        filter === "unpaid" ? "border-rose-500 bg-rose-500/10 text-rose-200" : "border-theme-stroke bg-theme-card text-theme-secondary"
+                      }`}
+                    >
+                      Unpaid only
+                    </button>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs text-theme-secondary">Sort:</span>
+                    <button
+                      type="button"
+                      onClick={() => setSortBy("latest")}
+                      className={`rounded-full border px-3 py-2 text-xs font-semibold transition ${
+                        sortBy === "latest" ? "border-blue-500 bg-blue-500/10 text-blue-200" : "border-theme-stroke bg-theme-card text-theme-secondary"
+                      }`}
+                    >
+                      Latest
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSortBy("high-balance")}
+                      className={`rounded-full border px-3 py-2 text-xs font-semibold transition ${
+                        sortBy === "high-balance" ? "border-rose-500 bg-rose-500/10 text-rose-200" : "border-theme-stroke bg-theme-card text-theme-secondary"
+                      }`}
+                    >
+                      High balance
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="rounded-2xl border border-theme-stroke bg-theme-card p-4">
+                <div className="text-xs text-theme-secondary">Customers</div>
+                <div className="mt-2 text-xl font-semibold">{debtStats.customerCount}</div>
+              </div>
+              <div className="rounded-2xl border border-theme-stroke bg-theme-card p-4">
+                <div className="text-xs text-theme-secondary">Paid total</div>
+                <div className="mt-2 text-xl font-semibold">${debtStats.totalPaid.toFixed(2)}</div>
+              </div>
+              <div className="rounded-2xl border border-theme-stroke bg-theme-card p-4">
+                <div className="text-xs text-theme-secondary">Outstanding total</div>
+                <div className="mt-2 text-xl font-semibold">${debtStats.totalOutstanding.toFixed(2)}</div>
               </div>
             </div>
           </section>

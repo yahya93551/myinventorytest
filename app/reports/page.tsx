@@ -9,6 +9,7 @@ import SalesRouteGuard from "@/components/SalesRouteGuard";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { useTheme } from "@/lib/theme-context";
 import { jsPDF } from "jspdf";
+import { mapSaleRecord } from "@/lib/apiMappers";
 
 import {
   Download,
@@ -36,17 +37,14 @@ export default function ReportsPage() {
       try {
         const response = await apiGet<Sale[]>("/api/sales?limit=100");
 
-        const mapped: Sale[] = (response.data || []).map(
-          (sale: any) => ({
-            ...sale,
-            productName:
-              sale.product_name ||
-              sale.productName ||
-              "Unknown",
-            date:
-              sale.date || sale.created_at,
-          })
-        );
+        const mapped: Sale[] = (response.data || []).map((sale: any) => {
+          const normalized = mapSaleRecord(sale) as any;
+          return {
+            ...normalized,
+            productName: normalized.productName || normalized.product_name || "Unknown",
+            quantityUnit: normalized.quantityUnit || normalized.quantity_unit,
+          } as Sale;
+        });
 
         setSales(mapped);
       } catch (err) {
@@ -73,7 +71,7 @@ export default function ReportsPage() {
     sale: any
   ): Date | null => {
     const dateValue =
-      sale.date || sale.created_at;
+      sale.date || sale.createdAt || sale.created_at;
 
     if (!dateValue) return null;
 
@@ -248,7 +246,11 @@ export default function ReportsPage() {
       );
 
       doc.text(
-        String(sale.quantity ?? ""),
+        sale.quantityUnit
+          ? `${sale.quantity ?? ""} ${sale.quantityUnit}`
+          : sale.quantity_unit
+            ? `${sale.quantity ?? ""} ${sale.quantity_unit}`
+            : String(sale.quantity ?? ""),
         margin + 260,
         y
       );

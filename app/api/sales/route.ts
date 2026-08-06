@@ -1,10 +1,14 @@
 import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getServerTenantContext, jsonError, jsonSuccess, logAudit, requireActiveSubscription } from "@/lib/api";
+import { parseMissingSalesColumns, stripMissingSalesColumns } from "../../../lib/salesFallback";
+import { mapSaleRecord } from "../../../lib/apiMappers";
 
 const SaleItemSchema = z.object({
   product_id: z.string().uuid(),
-  quantity: z.number().int().positive(),
+  // quantity may be in base units or converted units depending on `unit` below
+  quantity: z.coerce.number().positive(),
+  unit: z.enum(["base", "converted"]).optional(),
 });
 
 const SaleMetadataSchema = z.object({
@@ -13,10 +17,14 @@ const SaleMetadataSchema = z.object({
   customer_address: z.string().optional(),
   customer_phone: z.string().optional(),
   paid: z.boolean().optional(),
+  type: z.enum(["sale", "return"]).optional(),
+  refund_reason: z.string().optional(),
 });
 
 const SingleSaleSchema = SaleItemSchema.merge(SaleMetadataSchema);
 const BulkSaleSchema = z.object({ items: z.array(SaleItemSchema).min(1) }).merge(SaleMetadataSchema);
+
+// parseMissingSalesColumns and stripMissingSalesColumns moved to lib/salesFallback.ts
 
 export async function GET(req: Request) {
   const tenantContext = await getServerTenantContext(req);
@@ -32,10 +40,12 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const limit = Number(url.searchParams.get("limit") || "100");
   const safeLimit = Math.min(Math.max(limit, 1), 100);
+  const q = (url.searchParams.get("q") || "").trim();
+  const dateFilter = (url.searchParams.get("date") || "").trim();
 
   let query = supabaseAdmin
     .from("sales")
-    .select("id, product_id, product_name, quantity, total, order_id, customer_name, customer_address, customer_phone, paid, user_id, created_by, created_at")
+    .select("*")
     .eq("tenant_id", tenantContext.tenantId)
     .order("created_at", { ascending: false })
     .limit(safeLimit);
@@ -44,16 +54,61 @@ export async function GET(req: Request) {
     query = query.eq("user_id", tenantContext.userId);
   }
 
-  const { data, error } = await query;
+  // Apply server-side query filter if present
+  if (q) {
+    // Search common searchable fields
+    const escaped = q.replace(/[,]/g, " ");
+    const textFilters = [
+      `product_name.ilike.%${escaped}%`,
+      `order_id.ilike.%${escaped}%`,
+      `customer_name.ilike.%${escaped}%`,
+      `customer_phone.ilike.%${escaped}%`,
+    ];
 
-  if (error) {
-    return jsonError(error.message, 500);
+    query = query.or(textFilters.join(","));
   }
 
-  const salesData = (data || []).map((sale: any) => ({
-    ...sale,
-    date: sale.created_at,
-  }));
+  // Filter by exact date (yyyy-mm-dd) if provided
+  if (dateFilter) {
+    // cast created_at to date string using Postgres date cast via range filter
+    query = query.eq("created_at::date", dateFilter as any);
+  }
+
+  const { data, error } = await query;
+
+  let salesData: any[] = [];
+
+  if (error) {
+    if (/column .* does not exist/i.test(error.message)) {
+      // Try a minimal fallback select (keep metadata intact if possible)
+      const fallbackQuery = supabaseAdmin
+        .from("sales")
+        .select("*")
+        .eq("tenant_id", tenantContext.tenantId)
+        .order("created_at", { ascending: false })
+        .limit(safeLimit);
+
+      if (tenantContext.role === "sales") {
+        fallbackQuery.eq("user_id", tenantContext.userId);
+      }
+
+      const { data: fallbackData, error: fallbackError } = await fallbackQuery;
+      if (fallbackError) {
+        return jsonError(fallbackError.message, 500);
+      }
+      salesData = (fallbackData || []).map((sale: any) => ({
+        ...sale,
+        date: sale.created_at,
+      }));
+    } else {
+      return jsonError(error.message, 500);
+    }
+  } else {
+    salesData = (data || []).map((sale: any) => ({
+      ...sale,
+      date: sale.created_at,
+    }));
+  }
   const userIds = Array.from(
     new Set(
       salesData
@@ -78,11 +133,13 @@ export async function GET(req: Request) {
     }
   }
 
-  const enrichedSales = salesData.map((sale: any) => ({
-    ...sale,
-    user_email:
-      sale.user_email || userEmailMap[sale.user_id] || sale.user_id || "unknown",
-  }));
+  const enrichedSales = salesData.map((sale: any) => {
+    const mappedSale = mapSaleRecord(sale);
+    return {
+      ...mappedSale,
+      user_email: sale.user_email || userEmailMap[sale.user_id] || sale.user_id || "unknown",
+    };
+  });
 
   return jsonSuccess(enrichedSales);
 }
@@ -127,39 +184,44 @@ export async function POST(req: Request) {
     : ([singlePayload.data] as Array<z.infer<typeof SaleItemSchema>>);
 
   const metadata = payloadData as z.infer<typeof SaleMetadataSchema>;
+  const isReturn = metadata.type === "return";
   const orderId = metadata.order_id || `INV-${Date.now()}`;
   const customerName = metadata.customer_name?.trim() || null;
   const customerAddress = metadata.customer_address?.trim() || null;
   const customerPhone = metadata.customer_phone?.trim() || null;
-  const isPaid = metadata.paid !== false;
+  const isPaid = isReturn ? true : metadata.paid !== false;
 
-  if (!isPaid && (!customerName || !customerPhone)) {
+  if (!isReturn && !isPaid && (!customerName || !customerPhone)) {
     return jsonError("Customer name and phone are required for unpaid sales", 422);
   }
 
-  const normalized = items.reduce<Array<{ product_id: string; quantity: number }>>(
-    (acc, item: { product_id: string; quantity: number }) => {
-      const existing = acc.find((entry) => entry.product_id === item.product_id);
-      if (existing) {
-        existing.quantity += item.quantity;
-      } else {
-        acc.push({ ...item });
-      }
-      return acc;
-    },
-    []
-  );
+  // For safety, do not attempt to normalize items before we fetch product conversion metadata.
+  // We'll process each item sequentially so we can honor `unit` (base or converted).
+  const normalized = items as Array<{ product_id: string; quantity: number; unit?: string }>;
 
-  const rollback: Array<{ id: string; stock: number }> = [];
+  const rollback: Array<{ id: string; stock: number; stock_remainder?: number }> = [];
   const allocationRollback: Array<{ id: string; quantity: number }> = [];
-  const productRows: Array<{ id: string; name: string; price: number; quantity: number }> = [];
+  const productRows: Array<{
+    id: string;
+    name: string;
+    price: number;
+    quantity: number;
+    unit: 'base' | 'converted';
+    quantity_unit: string;
+    lineTotal: number;
+  }> = [];
   const isSalesUser = tenantContext.role === "sales";
 
   const rollbackStock = async () => {
     for (const rollbackItem of rollback) {
+      const updatePayload: Record<string, any> = { stock: rollbackItem.stock };
+      if (typeof rollbackItem.stock_remainder === "number") {
+        updatePayload.stock_remainder = rollbackItem.stock_remainder;
+      }
+
       const { error: rollbackError } = await supabaseAdmin
         .from("products")
-        .update({ stock: rollbackItem.stock })
+        .update(updatePayload)
         .eq("id", rollbackItem.id)
         .eq("tenant_id", tenantContext.tenantId);
 
@@ -205,7 +267,7 @@ export async function POST(req: Request) {
   for (const item of normalized) {
     const { data: product, error: productError } = await supabaseAdmin
       .from("products")
-      .select("id, name, price, stock")
+      .select("id, name, price, stock, base_unit, converted_unit, conversion_rate, stock_remainder")
       .eq("id", item.product_id)
       .eq("tenant_id", tenantContext.tenantId)
       .single();
@@ -220,7 +282,63 @@ export async function POST(req: Request) {
       return jsonError(productError?.message || "Product not found", 404);
     }
 
-    if (isSalesUser) {
+    if (isReturn) {
+      const unitMode = (item as any).unit === "converted" ? "converted" : "base";
+      const conversionRate = typeof product.conversion_rate === "number" && Number.isFinite(product.conversion_rate)
+        ? product.conversion_rate
+        : null;
+
+      if (unitMode === "converted") {
+        if (!conversionRate) {
+          return jsonError(`Product ${product.name} does not support converted-unit returns`, 422);
+        }
+
+        const existingConverted = (product.stock || 0) * conversionRate + (product.stock_remainder || 0);
+        const newConverted = existingConverted + item.quantity;
+        const newStock = Math.floor(newConverted / conversionRate);
+        const newRemainder = newConverted % conversionRate;
+
+        const { data: updatedProducts, error: updateError } = await supabaseAdmin
+          .from("products")
+          .update({ stock: newStock, stock_remainder: newRemainder })
+          .eq("id", item.product_id)
+          .eq("tenant_id", tenantContext.tenantId)
+          .select();
+
+        if (updateError || !updatedProducts?.length) {
+          console.error("Sales route: failed to restore stock (converted return)", {
+            productId: item.product_id,
+            tenantId: tenantContext.tenantId,
+            quantity: item.quantity,
+            updateError,
+          });
+          return jsonError(updateError?.message || "Failed to restore stock", 500);
+        }
+
+        rollback.push({ id: product.id, stock: product.stock });
+      } else {
+        const newStock = (product.stock || 0) + item.quantity;
+
+        const { data: updatedProducts, error: updateError } = await supabaseAdmin
+          .from("products")
+          .update({ stock: newStock })
+          .eq("id", item.product_id)
+          .eq("tenant_id", tenantContext.tenantId)
+          .select();
+
+        if (updateError || !updatedProducts?.length) {
+          console.error("Sales route: failed to restore stock (return)", {
+            productId: item.product_id,
+            tenantId: tenantContext.tenantId,
+            quantity: item.quantity,
+            updateError,
+          });
+          return jsonError(updateError?.message || "Failed to restore stock", 500);
+        }
+
+        rollback.push({ id: product.id, stock: product.stock });
+      }
+    } else if (isSalesUser) {
       const { data: allocations, error: allocationsError } = await supabaseAdmin
         .from("inventory_takes")
         .select("id, remaining_quantity")
@@ -241,6 +359,7 @@ export async function POST(req: Request) {
       }
 
       const totalAvailable = (allocations || []).reduce((sum: number, allocation: any) => sum + (allocation.remaining_quantity || 0), 0);
+      // For sales users we expect `item.quantity` to be in base units (legacy behavior).
       if (totalAvailable < item.quantity) {
         if (rollback.length > 0) {
           await rollbackStock();
@@ -274,45 +393,135 @@ export async function POST(req: Request) {
         remainingToConsume -= consume;
       }
     } else {
-      if (product.stock < item.quantity) {
-        if (rollback.length > 0) {
-          await rollbackStock();
+      // Non-sales users can sell in either base or converted units. Honor the `unit` flag.
+      const unitMode = (item as any).unit === "converted" ? "converted" : "base";
+      const conversionRate = typeof product.conversion_rate === "number" && Number.isFinite(product.conversion_rate)
+        ? product.conversion_rate
+        : null;
+
+      if (unitMode === "converted") {
+        if (!conversionRate) {
+          if (rollback.length > 0) {
+            await rollbackStock();
+          }
+          return jsonError(`Product ${product.name} does not support converted-unit sales`, 422);
         }
-        return jsonError(`Insufficient stock for ${product.name}`, 400);
-      }
 
-      const { data: updatedProducts, error: updateError } = await supabaseAdmin
-        .from("products")
-        .update({ stock: product.stock - item.quantity })
-        .eq("id", item.product_id)
-        .eq("tenant_id", tenantContext.tenantId)
-        .gte("stock", item.quantity)
-        .select();
-
-      if (updateError || !updatedProducts?.length) {
-        console.error("Sales route: failed to reserve stock", {
-          productId: item.product_id,
-          tenantId: tenantContext.tenantId,
-          quantity: item.quantity,
-          updateError,
-        });
-        if (rollback.length > 0) {
-          await rollbackStock();
+        const availableInConverted = (product.stock || 0) * conversionRate + (product.stock_remainder || 0);
+        if ((item.quantity) > availableInConverted) {
+          if (rollback.length > 0) {
+            await rollbackStock();
+          }
+          return jsonError(`Insufficient stock for ${product.name}`, 400);
         }
-        return jsonError(updateError?.message || "Failed to reserve stock", 500);
-      }
 
-      rollback.push({ id: product.id, stock: product.stock });
+        // Compute new totals after selling `item.quantity` converted units
+        const remainingConverted = availableInConverted - item.quantity;
+        const newStock = Math.floor(remainingConverted / conversionRate);
+        const newRemainder = remainingConverted % conversionRate;
+
+        const { data: updatedProducts, error: updateError } = await supabaseAdmin
+          .from("products")
+          .update({ stock: newStock, stock_remainder: newRemainder })
+          .eq("id", item.product_id)
+          .eq("tenant_id", tenantContext.tenantId)
+          .gte("stock", 0)
+          .select();
+
+        if (updateError || !updatedProducts?.length) {
+          console.error("Sales route: failed to reserve stock (converted)", {
+            productId: item.product_id,
+            tenantId: tenantContext.tenantId,
+            quantity: item.quantity,
+            updateError,
+          });
+          if (rollback.length > 0) {
+            await rollbackStock();
+          }
+          return jsonError(updateError?.message || "Failed to reserve stock", 500);
+        }
+
+        rollback.push({ id: product.id, stock: product.stock });
+      } else {
+        // base unit sale (legacy behavior)
+        if (product.stock < item.quantity) {
+          if (rollback.length > 0) {
+            await rollbackStock();
+          }
+          return jsonError(`Insufficient stock for ${product.name}`, 400);
+        }
+
+        const { data: updatedProducts, error: updateError } = await supabaseAdmin
+          .from("products")
+          .update({ stock: product.stock - item.quantity })
+          .eq("id", item.product_id)
+          .eq("tenant_id", tenantContext.tenantId)
+          .gte("stock", item.quantity)
+          .select();
+
+        if (updateError || !updatedProducts?.length) {
+          console.error("Sales route: failed to reserve stock", {
+            productId: item.product_id,
+            tenantId: tenantContext.tenantId,
+            quantity: item.quantity,
+            updateError,
+          });
+          if (rollback.length > 0) {
+            await rollbackStock();
+          }
+          return jsonError(updateError?.message || "Failed to reserve stock", 500);
+        }
+
+        rollback.push({ id: product.id, stock: product.stock });
+      }
     }
 
-    productRows.push({ id: product.id, name: product.name, price: Number(product.price), quantity: item.quantity });
+    const unitMode = isReturn
+      ? (item.unit === "converted" ? "converted" : "base")
+      : isSalesUser
+        ? "base"
+        : item.unit === "converted"
+          ? "converted"
+          : "base";
+    const unitLabel = unitMode === "converted"
+      ? product.converted_unit?.trim() || "converted unit"
+      : product.base_unit?.trim() || "base unit";
+    const conversionRate = typeof product.conversion_rate === "number" && Number.isFinite(product.conversion_rate)
+      ? product.conversion_rate
+      : null;
+
+    let lineTotal = item.quantity * Number(product.price);
+    if (unitMode === "converted" && conversionRate) {
+      const baseQuantity = item.quantity / conversionRate;
+      lineTotal = baseQuantity * Number(product.price);
+    }
+
+    if (isReturn) {
+      lineTotal = -Math.abs(lineTotal);
+    }
+
+    productRows.push({
+      id: product.id,
+      name: product.name,
+      price: Number(product.price),
+      quantity: item.quantity,
+      unit: unitMode,
+      quantity_unit: unitLabel,
+      lineTotal,
+    });
   }
 
   const salesRows = productRows.map((product) => ({
     product_id: product.id,
     product_name: product.name,
     quantity: product.quantity,
-    total: product.quantity * product.price,
+    type: metadata.type || "sale",
+    ...(metadata.type === "return"
+      ? { refund_reason: metadata.refund_reason || null }
+      : {}),
+    unit: product.unit,
+    quantity_unit: product.quantity_unit,
+    total: product.lineTotal,
     tenant_id: tenantContext.tenantId,
     user_id: tenantContext.userId,
     created_by: tenantContext.userId,
@@ -323,8 +532,7 @@ export async function POST(req: Request) {
     paid: isPaid,
   }));
 
-  const fallbackRows = salesRows.map(({ order_id, customer_name, customer_address, customer_phone, created_by, paid, ...rest }) => rest);
-
+  // Try first insert
   let { data: inserted, error: insertError } = await supabaseAdmin
     .from("sales")
     .insert(salesRows)
@@ -336,25 +544,27 @@ export async function POST(req: Request) {
       insertError,
     });
 
-    const shouldRetryWithoutMeta = insertError?.message?.match(/order_id|customer_name|customer_address|customer_phone|paid/i);
-    if (shouldRetryWithoutMeta) {
-      console.warn("Sales route: retrying sale insert without invoice/customer metadata");
-      const retryResult = await supabaseAdmin
-        .from("sales")
-        .insert(fallbackRows)
-        .select("*");
-      inserted = retryResult.data;
-      insertError = retryResult.error;
-    }
-
-    const missingCreatedBy = insertError?.message?.includes("created_by") ||
-      insertError?.code === "PGRST204";
-
-    if (insertError && missingCreatedBy) {
-      console.warn("Sales route: retrying sale insert without created_by column");
+    // If DB reports missing columns, attempt a targeted retry that only strips the reported missing columns.
+    const missingColumns = parseMissingSalesColumns(insertError);
+    if (missingColumns.length > 0) {
+      console.warn("Sales route: retrying sale insert without missing sales columns", missingColumns);
+      const fallbackSalesRows = salesRows.map((row) => stripMissingSalesColumns(row, missingColumns));
       const fallbackResult = await supabaseAdmin
         .from("sales")
-        .insert(fallbackRows)
+        .insert(fallbackSalesRows)
+        .select("*");
+
+      inserted = fallbackResult.data;
+      insertError = fallbackResult.error;
+    }
+
+    // Special-case: if the error mentions `created_by`, attempt to insert without it (some older schemas lack it).
+    if ((insertError && /created_by/i.test(insertError.message)) && !inserted) {
+      console.warn("Sales route: retrying sale insert without created_by column");
+      const fallbackRowsWithoutCreatedBy = salesRows.map(({ created_by, ...rest }) => rest);
+      const fallbackResult = await supabaseAdmin
+        .from("sales")
+        .insert(fallbackRowsWithoutCreatedBy)
         .select("*");
 
       inserted = fallbackResult.data;

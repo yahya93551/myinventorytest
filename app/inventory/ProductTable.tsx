@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { ProductWithCustomData, CustomField } from "../../types";
-import { Search, ShoppingCart, Plus, Minus, Edit, Trash2, AlertCircle, DollarSign, Tag, SlidersHorizontal } from "lucide-react";
+import { Search, ShoppingCart, Plus, Minus, Edit, Trash2, AlertCircle, DollarSign, Tag, SlidersHorizontal, MoreHorizontal } from "lucide-react";
 import { getVisibleStandardFields } from "@/lib/customFields";
 
 export default function ProductTable({
@@ -10,6 +10,7 @@ export default function ProductTable({
   onEdit,
   onRestock,
   onLoad,
+  onReturn,
   onDrop,
   onDelete,
   loading = false,
@@ -18,6 +19,8 @@ export default function ProductTable({
   canRestock = false,
   canLoad = false,
   tenantRole = "",
+  searchQuery = "",
+  onSearch,
 }: {
   products?: ProductWithCustomData[];
   customFields?: CustomField[];
@@ -25,6 +28,7 @@ export default function ProductTable({
   onEdit?: (product: ProductWithCustomData) => void;
   onRestock?: (product: ProductWithCustomData) => void;
   onLoad?: (product: ProductWithCustomData) => void;
+  onReturn?: (product: ProductWithCustomData) => void;
   onDrop?: (product: ProductWithCustomData) => void;
   onDelete?: (id: string) => void;
   loading?: boolean;
@@ -33,30 +37,60 @@ export default function ProductTable({
   canRestock?: boolean;
   canLoad?: boolean;
   tenantRole?: string;
+  searchQuery?: string;
+  onSearch: (value: string) => void;
 }) {
-  const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
+  const [localSearch, setLocalSearch] = useState(searchQuery);
+
+  useEffect(() => {
+    setLocalSearch(searchQuery);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      onSearch(localSearch || "");
+    }, 300);
+    return () => clearTimeout(t);
+  }, [localSearch, onSearch]);
   const allVisibleFields = getVisibleStandardFields(customFields);
 
   const filteredProducts = useMemo(() => {
-    const normalizedQuery = searchQuery.trim().toLowerCase();
-
     return products.filter((product) => {
-      const productText = [product.name, product.category, String(product.price), String(product.cost_price)]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-
-      const searchMatches = !normalizedQuery || productText.includes(normalizedQuery);
       const stockStatus = product.stock === 0 ? "out" : product.stock <= 5 ? "critical" : product.stock < 20 ? "low" : "in";
       const statusMatches = filterStatus === "all" || filterStatus === stockStatus;
-
-      return searchMatches && statusMatches;
+      return statusMatches;
     });
-  }, [products, searchQuery, filterStatus]);
+  }, [products, filterStatus]);
 
   // Calculate total columns
   const totalCols = allVisibleFields.length + 2; // +1 for image +1 for actions
+
+  const getStockDisplay = (product: ProductWithCustomData) => {
+    const stockValue = Number(product.stock ?? 0);
+    const remainderValue = Number(product.stockRemainder ?? product.stock_remainder ?? 0);
+    const baseUnit = product.baseUnit?.trim() ?? product.base_unit?.trim();
+    const convertedUnit = product.convertedUnit?.trim() ?? product.converted_unit?.trim();
+    const conversionRate = Number(product.conversionRate ?? product.conversion_rate ?? 0);
+
+    if (!baseUnit && !convertedUnit && conversionRate <= 0) {
+      return `${stockValue}`;
+    }
+
+    if (baseUnit && convertedUnit && conversionRate > 0) {
+      const totalConverted = stockValue * conversionRate + remainderValue;
+      if (remainderValue > 0) {
+        return `${stockValue} ${baseUnit} + ${remainderValue} ${convertedUnit} · ${totalConverted} ${convertedUnit}`;
+      }
+      return `${stockValue} ${baseUnit} · ${totalConverted} ${convertedUnit}`;
+    }
+
+    if (baseUnit) {
+      return `${stockValue} ${baseUnit}`;
+    }
+
+    return `${stockValue}`;
+  };
 
   const renderFieldValue = (field: CustomField, product: ProductWithCustomData) => {
     let value;
@@ -87,7 +121,7 @@ export default function ProductTable({
                   : "bg-green-500/20 text-green-300"
               }`}
             >
-              {value}
+              {getStockDisplay(product)}
             </span>
           );
         default:
@@ -109,6 +143,104 @@ export default function ProductTable({
         return String(value);
     }
   };
+
+  const renderSecondaryActions = (product: ProductWithCustomData) => (
+    <div className="flex flex-col gap-2 p-2">
+      {canRestock && (
+        <button
+          type="button"
+          onClick={() => onRestock?.(product)}
+          className="inline-flex items-center gap-2 rounded-full border border-blue-500/20 bg-blue-500/5 px-3 py-2 text-xs font-semibold text-blue-200 transition hover:bg-blue-500/10"
+          title="Load goods into stock"
+        >
+          <Plus className="w-4 h-4" />
+          Load
+        </button>
+      )}
+
+      {canLoad && (
+        <button
+          type="button"
+          onClick={() => onLoad?.(product)}
+          disabled={product.stock === 0}
+          className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold transition ${
+            product.stock === 0
+              ? "border-slate-700 bg-slate-950/40 text-slate-500 cursor-not-allowed"
+              : "border-amber-500/20 bg-amber-500/5 text-amber-200 hover:bg-amber-500/10"
+          }`}
+          title={product.stock === 0 ? "Out of stock" : "Take from stock"}
+        >
+          <Minus className="w-4 h-4" />
+          Take
+        </button>
+      )}
+
+      {onReturn && (tenantRole === "owner" || tenantRole === "sales") && (
+        <button
+          type="button"
+          onClick={() => onReturn(product)}
+          className="inline-flex items-center gap-2 rounded-full border border-violet-500/20 bg-violet-500/5 px-3 py-2 text-xs font-semibold text-violet-200 transition hover:bg-violet-500/10"
+          title="Return sold product to inventory"
+        >
+          ↩
+          Return
+        </button>
+      )}
+
+      {canLoad && tenantRole === "sales" && onDrop && (
+        <button
+          type="button"
+          onClick={() => onDrop(product)}
+          disabled={(product.allocated_quantity ?? 0) === 0}
+          className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold transition ${
+            (product.allocated_quantity ?? 0) === 0
+              ? "border-slate-700 bg-slate-950/40 text-slate-500 cursor-not-allowed"
+              : "border-rose-500/20 bg-rose-500/5 text-rose-200 hover:bg-rose-500/10"
+          }`}
+          title={
+            (product.allocated_quantity ?? 0) === 0
+              ? "No taken stock available to drop"
+              : "Drop taken stock"
+          }
+        >
+          <Trash2 className="w-4 h-4" />
+          Drop
+        </button>
+      )}
+
+      {canEdit && (
+        <button
+          type="button"
+          onClick={() => onEdit?.(product)}
+          className="inline-flex items-center gap-2 rounded-full border border-amber-400/20 bg-amber-400/5 px-3 py-2 text-xs font-semibold text-amber-200 transition hover:bg-amber-400/10"
+          title="Edit product"
+        >
+          <Edit className="w-4 h-4" />
+          Edit
+        </button>
+      )}
+
+      {canDelete && (
+        <button
+          type="button"
+          onClick={() => onDelete?.(product.id)}
+          className="inline-flex items-center gap-2 rounded-full border border-rose-500/20 bg-rose-500/5 px-3 py-2 text-xs font-semibold text-rose-200 transition hover:bg-rose-500/10"
+          title="Delete product"
+        >
+          <Trash2 className="w-4 h-4" />
+          Delete
+        </button>
+      )}
+    </div>
+  );
+
+  const hasSecondaryActions =
+    canRestock ||
+    canLoad ||
+    (onReturn && (tenantRole === "owner" || tenantRole === "sales")) ||
+    (canLoad && tenantRole === "sales" && onDrop) ||
+    canEdit ||
+    canDelete;
 
   if (allVisibleFields.length === 0) {
     return (
@@ -134,8 +266,8 @@ export default function ProductTable({
             </span>
             <input
               id="inventory-search"
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
+              value={localSearch}
+              onChange={(event) => setLocalSearch(event.target.value)}
               placeholder="Search inventory by name, category, price..."
               className="w-full rounded-2xl border border-theme/50 bg-theme-surface px-4 py-3 pl-14 text-base text-theme-primary outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20"
             />
@@ -245,74 +377,103 @@ export default function ProductTable({
                       );
                     })()}
 
-                    {canRestock && (
+                    <div className="relative group">
                       <button
-                        onClick={() => onRestock?.(p)}
-                        className="inline-flex items-center gap-2 rounded-full border border-blue-500/20 bg-blue-500/5 px-3 py-2 text-xs font-semibold text-blue-200 transition hover:bg-blue-500/10"
-                        title="Load goods into stock"
+                        type="button"
+                        className="inline-flex items-center gap-2 rounded-full border border-theme/40 bg-theme-surface px-3 py-2 text-xs font-semibold text-theme-secondary transition hover:border-theme/60 hover:bg-theme/5"
+                        title="More actions"
                       >
-                        <Plus className="w-4 h-4" />
-                        Load
+                        <MoreHorizontal className="w-3.5 h-3.5" />
+                        More
                       </button>
-                    )}
+                      <div className="invisible opacity-0 pointer-events-none group-hover:visible group-hover:opacity-100 group-hover:pointer-events-auto absolute right-0 z-20 mt-2 min-w-[12rem] rounded-2xl border border-theme/50 bg-theme-card p-2 shadow-soft transition-all duration-200">
+                        {canRestock && (
+                          <button
+                            type="button"
+                            onClick={() => onRestock?.(p)}
+                            className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold text-blue-200 transition hover:bg-blue-500/10"
+                            title="Load goods into stock"
+                          >
+                            <Plus className="w-4 h-4" />
+                            Load
+                          </button>
+                        )}
 
-                    {canLoad && (
-                      <button
-                        onClick={() => onLoad?.(p)}
-                        disabled={p.stock === 0}
-                        className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold transition ${
-                          p.stock === 0
-                            ? "border-slate-700 bg-slate-950/40 text-slate-500 cursor-not-allowed"
-                            : "border-amber-500/20 bg-amber-500/5 text-amber-200 hover:bg-amber-500/10"
-                        }`}
-                        title={p.stock === 0 ? "Out of stock" : "Take from stock"}
-                      >
-                        <Minus className="w-4 h-4" />
-                        Take
-                      </button>
-                    )}
+                        {canLoad && (
+                          <button
+                            type="button"
+                            onClick={() => onLoad?.(p)}
+                            disabled={p.stock === 0}
+                            className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold transition ${
+                              p.stock === 0
+                                ? "cursor-not-allowed text-slate-500"
+                                : "text-amber-200 hover:bg-amber-500/10"
+                            }`}
+                            title={p.stock === 0 ? "Out of stock" : "Take from stock"}
+                          >
+                            <Minus className="w-4 h-4" />
+                            Take
+                          </button>
+                        )}
 
-                    {canLoad && tenantRole === "sales" && onDrop && (
-                      <button
-                        onClick={() => onDrop(p)}
-                        disabled={(p.allocated_quantity ?? 0) === 0}
-                        className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold transition ${
-                          (p.allocated_quantity ?? 0) === 0
-                            ? "border-slate-700 bg-slate-950/40 text-slate-500 cursor-not-allowed"
-                            : "border-rose-500/20 bg-rose-500/5 text-rose-200 hover:bg-rose-500/10"
-                        }`}
-                        title={
-                          (p.allocated_quantity ?? 0) === 0
-                            ? "No taken stock available to drop"
-                            : "Drop taken stock"
-                        }
-                      >
-                        <Trash2 className="w-4 h-4" />
-                        Drop
-                      </button>
-                    )}
+                        {onReturn && (tenantRole === "owner" || tenantRole === "sales") && (
+                          <button
+                            type="button"
+                            onClick={() => onReturn(p)}
+                            className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold text-violet-200 transition hover:bg-violet-500/10"
+                            title="Return sold product to inventory"
+                          >
+                            ↩
+                            Return
+                          </button>
+                        )}
 
-                    {canEdit && (
-                      <button
-                        onClick={() => onEdit?.(p)}
-                        className="inline-flex items-center gap-2 rounded-full border border-amber-400/20 bg-amber-400/5 px-3 py-2 text-xs font-semibold text-amber-200 transition hover:bg-amber-400/10"
-                        title="Edit product"
-                      >
-                        <Edit className="w-4 h-4" />
-                        Edit
-                      </button>
-                    )}
+                        {canLoad && tenantRole === "sales" && onDrop && (
+                          <button
+                            type="button"
+                            onClick={() => onDrop(p)}
+                            disabled={(p.allocated_quantity ?? 0) === 0}
+                            className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold transition ${
+                              (p.allocated_quantity ?? 0) === 0
+                                ? "cursor-not-allowed text-slate-500"
+                                : "text-rose-200 hover:bg-rose-500/10"
+                            }`}
+                            title={
+                              (p.allocated_quantity ?? 0) === 0
+                                ? "No taken stock available to drop"
+                                : "Drop taken stock"
+                            }
+                          >
+                            <Trash2 className="w-4 h-4" />
+                            Drop
+                          </button>
+                        )}
 
-                    {canDelete && (
-                      <button
-                        onClick={() => onDelete?.(p.id)}
-                        className="inline-flex items-center gap-2 rounded-full border border-rose-500/20 bg-rose-500/5 px-3 py-2 text-xs font-semibold text-rose-200 transition hover:bg-rose-500/10"
-                        title="Delete product"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                        Delete
-                      </button>
-                    )}
+                        {canEdit && (
+                          <button
+                            type="button"
+                            onClick={() => onEdit?.(p)}
+                            className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold text-amber-200 transition hover:bg-amber-400/10"
+                            title="Edit product"
+                          >
+                            <Edit className="w-4 h-4" />
+                            Edit
+                          </button>
+                        )}
+
+                        {canDelete && (
+                          <button
+                            type="button"
+                            onClick={() => onDelete?.(p.id)}
+                            className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold text-rose-200 transition hover:bg-rose-500/10"
+                            title="Delete product"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                            Delete
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   </td>
                 </tr>
               ))
@@ -456,6 +617,17 @@ export default function ProductTable({
                         >
                           <Minus className="w-5 h-5" />
                           Take
+                        </button>
+                      )}
+
+                      {onReturn && (tenantRole === "owner" || tenantRole === "sales") && (
+                        <button
+                          onClick={() => onReturn(product)}
+                          className="group inline-flex items-center justify-center gap-2 w-full px-3 py-3 rounded-2xl border border-violet-500/20 bg-violet-500/5 text-sm font-semibold text-violet-200 hover:bg-violet-500/10 transition min-h-11"
+                          title="Return sold product to inventory"
+                        >
+                          ↩
+                          Return
                         </button>
                       )}
 

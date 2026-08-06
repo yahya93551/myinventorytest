@@ -10,6 +10,7 @@ import { useTenantRole } from "@/hooks/useTenantRole";
 import { useBusinessSettings } from "@/hooks/useCustomFields";
 import { useTheme } from "@/lib/theme-context";
 import { generateReceiptHtml, printReceiptHtml } from "@/lib/receipt";
+import { mapSaleRecord } from "@/lib/apiMappers";
 
 import {
   LineChart,
@@ -26,6 +27,7 @@ export default function SalesPage() {
   const [error, setError] = useState<string | null>(null);
   const [filterDate, setFilterDate] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchInput, setSearchInput] = useState("");
   const { dark } = useTheme();
   const { data: tenantRoleData, isLoading: tenantRoleLoading } = useTenantRole();
   const { data: businessSettings } = useBusinessSettings();
@@ -42,14 +44,21 @@ export default function SalesPage() {
       setError(null);
 
       try {
-        const response = await apiGet<Sale[]>("/api/sales?limit=100");
+        const params = new URLSearchParams();
+        params.set("limit", "200");
+        if (searchQuery.trim()) params.set("q", searchQuery.trim());
+        if (filterDate) params.set("date", filterDate);
 
-        const mapped: Sale[] = (response.data || []).map((sale: any) => ({
-          ...sale,
-          productName:
-            sale.product_name || sale.productName || "Unknown",
-          date: sale.date || sale.created_at,
-        }));
+        const response = await apiGet<Sale[]>(`/api/sales?${params.toString()}`);
+
+        const mapped = (response.data || []).map((sale: any) => {
+          const normalized = mapSaleRecord(sale) as any;
+          return {
+            ...normalized,
+            productName: normalized.productName || normalized.product_name || "Unknown",
+            date: normalized.date || normalized.createdAt || normalized.created_at,
+          } as Sale;
+        });
 
         setSales(mapped);
       } catch (err) {
@@ -67,11 +76,19 @@ export default function SalesPage() {
     if (!loading) {
       fetchSales();
     }
-  }, [loading]);
+  }, [loading, searchQuery, filterDate]);
+
+  // Debounce search input -> update `searchQuery` after short delay
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setSearchQuery(searchInput.trim());
+    }, 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
 
   // ================= SAFE DATE =================
   const getSaleDate = (sale: any): string | null => {
-    const dateValue = sale.date || sale.created_at;
+    const dateValue = sale.date || sale.createdAt || sale.created_at;
 
     if (!dateValue) return null;
 
@@ -103,6 +120,11 @@ export default function SalesPage() {
     const totalValue = Number(sale.total || 0);
     const total = totalValue.toFixed(2);
     const unitPrice = quantity > 0 ? totalValue / quantity : 0;
+    const quantityLabel = sale.quantityUnit
+      ? `${sale.quantity} ${sale.quantityUnit}`
+      : sale.unit === "converted"
+        ? `${sale.quantity} converted`
+        : String(sale.quantity);
 
     const businessName = businessSettings?.business_name?.trim() || "Business";
     const businessAddress = businessSettings?.business_address?.trim() || "";
@@ -116,10 +138,10 @@ export default function SalesPage() {
         businessName,
         businessAddress,
         businessContact,
-        invoiceNumber: sale.order_id || "-",
+        invoiceNumber: sale.orderId || sale.order_id || "-",
         date: saleDate,
-        customerName: sale.customer_name || "Walk-in Customer",
-        customerPhone: sale.customer_phone || "-",
+        customerName: sale.customerName || sale.customer_name || "Walk-in Customer",
+        customerPhone: sale.customerPhone || sale.customer_phone || "-",
         title: "Sale Invoice",
       },
       [
@@ -167,8 +189,11 @@ export default function SalesPage() {
 
       const matchesDate = !filterDate || saleDay === filterDate;
       const searchTarget = [
+        s.orderId,
         s.order_id,
+        s.customerName,
         s.customer_name,
+        s.customerPhone,
         s.customer_phone,
         s.productName,
       ]
@@ -284,8 +309,8 @@ export default function SalesPage() {
             type="search"
             placeholder="Order, customer, product..."
             className="bg-theme-input border border-theme px-3 py-2 rounded-2xl outline-none text-theme-primary focus:border-cyan-400"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
           />
 
           <label className="text-sm text-theme-secondary">
@@ -344,7 +369,7 @@ export default function SalesPage() {
               {salesLoading ? (
                 <tr>
                   <td
-                    colSpan={6}
+                    colSpan={7}
                     className="p-8 text-center text-theme-secondary"
                   >
                     <div className="inline-flex items-center gap-2">
@@ -356,7 +381,7 @@ export default function SalesPage() {
               ) : filteredSales.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={6}
+                    colSpan={7}
                     className="p-6 text-center text-theme-secondary"
                   >
                     No sales found
@@ -369,17 +394,23 @@ export default function SalesPage() {
                     className="border-t border-theme hover:bg-theme-surface-soft transition-colors duration-150"
                   >
                     <td className="p-4 text-sm text-theme-secondary">
-                      {sale.order_id || "-"}
+                      {sale.orderId || sale.order_id || "-"}
                     </td>
                     <td className="p-4">
-                      {sale.customer_name || "Walk-in"}
+                      {sale.customerName || sale.customer_name || "Walk-in"}
                     </td>
                     <td className="p-4">
                       {sale.productName || "Unknown"}
                     </td>
 
                     <td className="p-4">
-                      {sale.quantity}
+                      {sale.quantityUnit
+                        ? `${sale.quantity} ${sale.quantityUnit}`
+                        : sale.quantity_unit
+                          ? `${sale.quantity} ${sale.quantity_unit}`
+                          : sale.unit === "converted"
+                            ? `${sale.quantity} converted`
+                            : String(sale.quantity)}
                     </td>
 
                     <td className="p-4 text-green-400 font-medium">

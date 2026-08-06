@@ -9,6 +9,7 @@ type SaleMeta = {
   customer_address?: string;
   customer_phone?: string;
   paid?: boolean;
+  unit?: 'base' | 'converted';
 };
 
 type Props = {
@@ -37,6 +38,7 @@ export default function SellModal({
   const [customerPhone, setCustomerPhone] = useState("");
   const [countryCode, setCountryCode] = useState("+252");
   const [isPaidSale, setIsPaidSale] = useState(true);
+  const [saleUnitMode, setSaleUnitMode] = useState<"base" | "converted">("base");
 
   const { data: businessSettings } = useBusinessSettings();
 
@@ -49,6 +51,7 @@ export default function SellModal({
       setCountryCode("+252");
       setPrintAfterSale(false);
       setIsPaidSale(true);
+      setSaleUnitMode("base");
       setError(null);
     }
   }, [sellItem]);
@@ -59,10 +62,31 @@ export default function SellModal({
   const formattedDate = now.toLocaleString("so-SO", {
     timeZone: "Africa/Mogadishu",
   });
-  const availableToSell = tenantRole === "sales" ? sellItem.allocated_quantity ?? 0 : sellItem.stock;
+  const useAllocatedQuantity = tenantRole === "sales" && businessSettings?.business_type === "warehouse";
+  const availableToSell = useAllocatedQuantity ? sellItem.allocated_quantity ?? 0 : sellItem.stock;
   const quantity = typeof sellQty === "number" ? sellQty : 0;
-  const total = quantity * sellItem.price;
-  const canConfirm = quantity >= 1 && quantity <= availableToSell;
+  const hasConversion = Boolean(
+    sellItem.base_unit?.trim() &&
+      sellItem.converted_unit?.trim() &&
+      typeof sellItem.conversion_rate === "number" &&
+      sellItem.conversion_rate > 0
+  );
+  const conversionRate = hasConversion ? sellItem.conversion_rate! : null;
+  const availableConvertedToSell = hasConversion && conversionRate
+    ? availableToSell * conversionRate + (sellItem.stock_remainder ?? 0)
+    : availableToSell;
+  const canConfirm = quantity >= 1 && quantity <= (saleUnitMode === "converted" ? availableConvertedToSell : availableToSell);
+  const baseQuantity = saleUnitMode === "converted" && conversionRate ? quantity / conversionRate : quantity;
+  const total = baseQuantity * sellItem.price;
+
+  // Show empty string when sellQty is empty so input is ready for typing
+  const displayInputValue = sellQty === ""
+    ? ""
+    : (sellQty as number);
+
+  const unitLabel = saleUnitMode === "converted" && sellItem.converted_unit?.trim()
+    ? sellItem.converted_unit.trim()
+    : sellItem.base_unit?.trim() || "unit";
 
   const printReceipt = () => {
     if (typeof window === "undefined") return;
@@ -154,6 +178,7 @@ export default function SellModal({
         customer_address: customerAddress || undefined,
         customer_phone: rawPhone ? normalizePhoneNumber(phoneValue) : undefined,
         paid: isPaidSale,
+        unit: saleUnitMode,
       });
 
       if (result === false) {
@@ -188,9 +213,9 @@ export default function SellModal({
           <p className="text-sm font-semibold mb-2">Invoice & Customer</p>
           <p className="text-xs text-theme-secondary mb-2">Invoice #: {orderId}</p>
           <p className="text-xs text-theme-secondary mb-3">
-            {tenantRole === "sales"
+            {useAllocatedQuantity
               ? "You can only sell the quantity you have taken from stock."
-              : "Enter invoice details and confirm the sale."}
+              : "You can sell directly from available stock."}
           </p>
           <div className="mb-3 text-sm text-theme-primary">
             Available to sell: {availableToSell}
@@ -283,17 +308,43 @@ export default function SellModal({
           </div>
         </div>
 
+        {hasConversion && (
+          <label className="mb-3 block text-sm text-theme-secondary">
+            Sell in
+            <select
+              className="mt-1 w-full rounded bg-theme-input px-3 py-2 text-theme-primary"
+              value={saleUnitMode}
+              onChange={(e) => {
+                const nextMode = e.target.value as "base" | "converted";
+                setSaleUnitMode(nextMode);
+                setSellQty("");
+                setError(null);
+              }}
+              disabled={isProcessing}
+            >
+              <option value="base">{sellItem.base_unit?.trim() || "Base unit"}</option>
+              <option value="converted">{sellItem.converted_unit?.trim() || "Converted unit"}</option>
+            </select>
+          </label>
+        )}
+
         <input
           className="p-2 rounded bg-theme-input w-full mb-2 text-theme-primary"
           type="number"
+          placeholder="Enter quantity"
           min={1}
-          max={availableToSell}
-          value={sellQty}
+          max={saleUnitMode === "converted" ? availableConvertedToSell : availableToSell}
+          value={displayInputValue as any}
           onChange={(e) => {
             const rawValue = e.target.value;
             const nextQty = rawValue === "" ? "" : Number(rawValue);
 
             setError(null);
+            if (nextQty === "" || Number.isNaN(nextQty)) {
+              setSellQty("");
+              return;
+            }
+
             setSellQty(nextQty);
           }}
           disabled={isProcessing}
@@ -311,7 +362,7 @@ export default function SellModal({
         </label>
 
         <p className="text-xs text-theme-secondary mb-3">
-          Enter a quantity between 1 and {availableToSell}.
+          Enter a quantity between 1 and {saleUnitMode === "converted" ? availableConvertedToSell : availableToSell} {unitLabel}.
         </p>
 
         {error && (

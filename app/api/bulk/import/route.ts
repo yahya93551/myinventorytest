@@ -3,11 +3,11 @@ import { z } from "zod";
 import { bulkInsertProducts } from "@/lib/bulk";
 import { getServerTenantContext, jsonError, jsonSuccess } from "@/lib/api";
 import { invalidateProductCaches } from "@/lib/cache";
-import { ProductSchema } from "@/types";
+import { BaseProductSchema } from "@/types";
 
 const BulkImportSchema = z.object({
   products: z.array(
-    ProductSchema.pick({
+    BaseProductSchema.pick({
       name: true,
       category: true,
       cost_price: true,

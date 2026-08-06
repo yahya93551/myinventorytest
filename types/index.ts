@@ -2,7 +2,7 @@
 import { z } from 'zod';
 
 // Validation schemas
-export const ProductSchema = z.object({
+export const BaseProductSchema = z.object({
   id: z.string().uuid(),
   name: z.string().min(1, 'Name is required').max(100, 'Name too long'),
   category: z.string().min(1, 'Category is required'),
@@ -12,7 +12,49 @@ export const ProductSchema = z.object({
   image_url: z.string().optional(),
   user_id: z.string().uuid().optional(),
   custom_data: z.record(z.string(), z.any()).optional(),
+  base_unit: z.string().trim().max(50).optional(),
+  converted_unit: z.string().trim().max(50).optional(),
+  conversion_rate: z.number().positive('Conversion rate must be positive').optional(),
+  stock_remainder: z.number().int().min(0, 'Remainder cannot be negative').optional(),
 });
+
+export const ProductSchema = BaseProductSchema.superRefine((data, ctx) => {
+  const hasConvertedUnit = !!data.converted_unit?.trim();
+  const hasBaseUnit = !!data.base_unit?.trim();
+  const hasConversionRate = typeof data.conversion_rate === 'number' && Number.isFinite(data.conversion_rate);
+
+  if (hasConvertedUnit && !hasBaseUnit) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Base unit is required when a converted unit is provided',
+      path: ['base_unit'],
+    });
+  }
+
+  if (hasConvertedUnit && !hasConversionRate) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Conversion rate is required when a converted unit is provided',
+      path: ['conversion_rate'],
+    });
+  }
+
+  if (!hasConvertedUnit && hasConversionRate) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Converted unit is required when a conversion rate is provided',
+      path: ['converted_unit'],
+    });
+  }
+});
+
+export const ProductFormSchema = BaseProductSchema.omit({ id: true, user_id: true });
+export const ProductUpdateSchema = BaseProductSchema.partial().omit({ id: true, user_id: true }).refine(
+  (data) => Object.keys(data).length > 0,
+  {
+    message: 'At least one field must be provided for update',
+  }
+);
 
 export const SaleSchema = z.object({
   id: z.string().uuid(),
@@ -20,20 +62,34 @@ export const SaleSchema = z.object({
   productName: z.string().min(1),
   quantity: z.number().int().positive('Quantity must be positive'),
   total: z.number().positive('Total must be positive'),
+  type: z.enum(['sale', 'return']).optional(),
+  refundReason: z.string().optional(),
+  refund_reason: z.string().optional(),
+  unit: z.enum(['base', 'converted']).optional(),
+  quantityUnit: z.string().optional(),
+  quantity_unit: z.string().optional(),
   date: z.string().datetime(),
+  createdAt: z.string().optional(),
+  orderId: z.string().optional(),
   order_id: z.string().optional(),
+  customerName: z.string().optional(),
   customer_name: z.string().optional(),
+  customerAddress: z.string().optional(),
   customer_address: z.string().optional(),
+  customerPhone: z.string().optional(),
   customer_phone: z.string().optional(),
   paid: z.boolean().optional(),
 });
 
 export type SaleMetadata = {
+  type?: 'sale' | 'return';
+  refund_reason?: string;
   order_id?: string;
   customer_name?: string;
   customer_address?: string;
   customer_phone?: string;
   paid?: boolean;
+  unit?: 'base' | 'converted';
 };
 
 export const CategorySchema = z.string().min(1, 'Category name required').max(50, 'Category name too long');
@@ -41,6 +97,12 @@ export const CategorySchema = z.string().min(1, 'Category name required').max(50
 // Types inferred from schemas
 export type Product = z.infer<typeof ProductSchema> & {
   allocated_quantity?: number;
+  baseUnit?: string;
+  convertedUnit?: string;
+  conversionRate?: number;
+  stockRemainder?: number;
+  createdAt?: string;
+  updatedAt?: string;
 };
 export type Sale = z.infer<typeof SaleSchema>;
 export type Category = z.infer<typeof CategorySchema>;

@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Product, ProductWithCustomData, CustomField, BulkSaleItem, ProductForm } from "../../types";
 import ProductTable from "./ProductTable";
 import SellModal from "./SellModal";
@@ -10,6 +11,7 @@ import AddProductForm from "./components/AddProductForm";
 import RestockModal from "./components/RestockModal";
 import LoadModal from "./components/LoadModal";
 import DropModal from "./components/DropModal";
+import ReturnModal from "./components/ReturnModal";
 import EditProductModal from "./components/EditProductModal";
 import { getVisibleSystemFieldNames } from "@/lib/customFields";
 import { apiGet } from "@/lib/apiClient";
@@ -46,6 +48,14 @@ type InventoryProps = {
     customer_address?: string;
     customer_phone?: string;
   }) => Promise<boolean>;
+  returnProduct: (productId: string, quantity: number, metadata?: {
+    order_id?: string;
+    customer_name?: string;
+    customer_address?: string;
+    customer_phone?: string;
+    paid?: boolean;
+    refund_reason?: string;
+  }) => Promise<boolean>;
   addProduct: (product: ProductForm) => Promise<boolean>;
   addProductWithResult?: (product: ProductForm) => Promise<Product | null>;
   loadProduct: (id: string, quantity: number, reason?: string) => Promise<boolean>;
@@ -57,6 +67,8 @@ type InventoryProps = {
   itemsPerPage: number;
   totalPages: number;
   setCurrentPage: (page: number) => void;
+  searchQuery: string;
+  setSearchQuery: (value: string) => void;
 };
 
 export default function Inventory(props: InventoryProps) {
@@ -77,6 +89,7 @@ export default function Inventory(props: InventoryProps) {
     openSell,
     confirmSell,
     sellProducts,
+    returnProduct,
     addProduct,
     addProductWithResult,
     currentPage,
@@ -84,6 +97,8 @@ export default function Inventory(props: InventoryProps) {
     itemsPerPage,
     totalPages,
     setCurrentPage,
+    searchQuery,
+    setSearchQuery,
   } = props;
 
   const [name, setName] = useState("");
@@ -91,6 +106,9 @@ export default function Inventory(props: InventoryProps) {
   const [costPrice, setCostPrice] = useState<number | "">("");
   const [price, setPrice] = useState<number | "">("");
   const [stock, setStock] = useState<number | "">("");
+  const [baseUnit, setBaseUnit] = useState("");
+  const [convertedUnit, setConvertedUnit] = useState("");
+  const [conversionRate, setConversionRate] = useState<number | "">("");
   const [customData, setCustomData] = useState<Record<string, any>>({});
 
   const [editItem, setEditItem] = useState<Product | null>(null);
@@ -101,6 +119,9 @@ export default function Inventory(props: InventoryProps) {
   const [loadNote, setLoadNote] = useState("");
   const [dropItem, setDropItem] = useState<Product | null>(null);
   const [dropAmount, setDropAmount] = useState<number | "">(1);
+  const [returnItem, setReturnItem] = useState<Product | null>(null);
+  const [returnAmount, setReturnAmount] = useState<number | "">(1);
+  const [returnReason, setReturnReason] = useState("");
   const [bulkSellOpen, setBulkSellOpen] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
@@ -177,6 +198,9 @@ export default function Inventory(props: InventoryProps) {
     const parsedCostPrice = costPrice === "" ? 0 : costPrice;
     const parsedPrice = price === "" ? 0 : price;
     const parsedStock = stock === "" ? 0 : stock;
+    const parsedBaseUnit = baseUnit.trim() || null;
+    const parsedConvertedUnit = convertedUnit.trim() || null;
+    const parsedConversionRate = conversionRate === "" ? null : conversionRate;
 
     if (costPriceVisible && costPrice === "") {
       showMessage("error", "Cost price is required");
@@ -208,6 +232,21 @@ export default function Inventory(props: InventoryProps) {
       return;
     }
 
+    if (parsedConvertedUnit && !parsedBaseUnit) {
+      showMessage("error", "Base unit is required when a converted unit is provided");
+      return;
+    }
+
+    if (parsedConvertedUnit && parsedConversionRate === null) {
+      showMessage("error", "Conversion rate is required when a converted unit is provided");
+      return;
+    }
+
+    if (!parsedConvertedUnit && parsedConversionRate !== null) {
+      showMessage("error", "Converted unit is required when a conversion rate is provided");
+      return;
+    }
+
     // Create product first (fast). If image provided, upload asynchronously and attach later.
     const created = await (addProductWithResult
       ? addProductWithResult({
@@ -216,6 +255,9 @@ export default function Inventory(props: InventoryProps) {
           cost_price: parsedCostPrice,
           price: parsedPrice,
           stock: parsedStock,
+          base_unit: parsedBaseUnit ?? undefined,
+          converted_unit: parsedConvertedUnit ?? undefined,
+          conversion_rate: parsedConversionRate ?? undefined,
           custom_data: customData,
         })
       : null);
@@ -230,6 +272,9 @@ export default function Inventory(props: InventoryProps) {
     setCostPrice("");
     setPrice("");
     setStock("");
+    setBaseUnit("");
+    setConvertedUnit("");
+    setConversionRate("");
     setCustomData({});
     showMessage("success", "Product added successfully");
     setIsAddModalOpen(false);
@@ -407,6 +452,36 @@ export default function Inventory(props: InventoryProps) {
     setDropAmount(1);
   };
 
+  const openReturnModal = (product: Product) => {
+    setReturnItem(product);
+    setReturnAmount(1);
+    setReturnReason("");
+  };
+
+  const saveReturn = async () => {
+    if (!returnItem) return;
+
+    const quantity = typeof returnAmount === "number" ? returnAmount : Number(returnAmount);
+    if (!quantity || quantity <= 0) {
+      showMessage("error", "Return quantity must be greater than 0");
+      return;
+    }
+
+    const success = await returnProduct(returnItem.id, quantity, {
+      refund_reason: returnReason || undefined,
+    });
+
+    if (success) {
+      showMessage("success", "Product returned successfully");
+    } else {
+      showMessage("error", "Failed to process product return");
+    }
+
+    setReturnItem(null);
+    setReturnAmount(1);
+    setReturnReason("");
+  };
+
   const saveDrop = async () => {
     if (!dropItem) return;
 
@@ -473,17 +548,37 @@ export default function Inventory(props: InventoryProps) {
             <button
               type="button"
               onClick={() => setIsAddModalOpen(true)}
-              className="rounded-2xl bg-theme-accent px-5 py-3 min-h-11 text-sm font-semibold text-slate-950 shadow-sm transition hover:bg-cyan-400"
+              disabled={isAdding}
+              className={`rounded-2xl px-5 py-3 min-h-11 text-sm font-semibold text-slate-950 shadow-sm transition ${
+                isAdding
+                  ? "bg-slate-600/60 cursor-not-allowed"
+                  : "bg-theme-accent hover:bg-cyan-400"
+              }`}
             >
-              + Add Product
+              {isAdding ? (
+                <span className="inline-flex items-center gap-2">
+                  <span className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                  Adding...
+                </span>
+              ) : (
+                "+ Add Product"
+              )}
             </button>
           )}
-          <button
-            onClick={() => setBulkSellOpen(true)}
-            className="rounded-2xl border border-theme bg-theme-card px-5 py-3 min-h-11 text-sm font-semibold text-theme-primary transition hover:bg-theme-surface"
-          >
-            Sell multiple items
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setBulkSellOpen(true)}
+              className="rounded-2xl border border-theme bg-theme-card px-5 py-3 min-h-11 text-sm font-semibold text-theme-primary transition hover:bg-theme-surface"
+            >
+              Sell multiple items
+            </button>
+            <Link
+              href="/sell-multiple"
+              className="rounded-2xl border border-theme px-4 py-3 min-h-11 text-sm font-semibold text-theme-primary transition hover:bg-theme-surface"
+            >
+              Open full page
+            </Link>
+          </div>
         </div>
       </div>
 
@@ -533,6 +628,12 @@ export default function Inventory(props: InventoryProps) {
               setPrice={setPrice}
               stock={stock}
               setStock={setStock}
+              baseUnit={baseUnit}
+              setBaseUnit={setBaseUnit}
+              convertedUnit={convertedUnit}
+              setConvertedUnit={setConvertedUnit}
+              conversionRate={conversionRate}
+              setConversionRate={setConversionRate}
               categories={categories}
               loadingCategories={false}
               customFields={customFields}
@@ -551,10 +652,16 @@ export default function Inventory(props: InventoryProps) {
             products={products}
             customFields={customFields}
             loading={loading.isLoading}
+            searchQuery={searchQuery}
+            onSearch={(value) => {
+              setCurrentPage(1);
+              setSearchQuery(value);
+            }}
             openSell={openSell}
             onEdit={setEditItem}
             onRestock={openRestockModal}
             onLoad={openLoadModal}
+            onReturn={tenantRole === 'owner' || tenantRole === 'sales' ? openReturnModal : undefined}
             onDrop={openDropModal}
             onDelete={deleteProductHandler}
             canEdit={tenantRole === 'owner' || tenantRole === 'accountant'}
@@ -662,6 +769,16 @@ export default function Inventory(props: InventoryProps) {
         setDropAmount={setDropAmount}
         setDropItem={setDropItem}
         saveDrop={saveDrop}
+      />
+
+      <ReturnModal
+        returnItem={returnItem}
+        returnAmount={returnAmount}
+        setReturnAmount={setReturnAmount}
+        returnReason={returnReason}
+        setReturnReason={setReturnReason}
+        setReturnItem={setReturnItem}
+        saveReturn={saveReturn}
       />
     </div>
   );

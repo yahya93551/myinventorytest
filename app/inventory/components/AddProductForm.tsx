@@ -18,6 +18,12 @@ type Props = {
   setPrice: (v: number | "") => void;
   stock: number | "";
   setStock: (v: number | "") => void;
+  baseUnit: string;
+  setBaseUnit: (v: string) => void;
+  convertedUnit: string;
+  setConvertedUnit: (v: string) => void;
+  conversionRate: number | "";
+  setConversionRate: (v: number | "") => void;
   categories: string[];
   loadingCategories?: boolean;
   customFields?: CustomField[];
@@ -38,6 +44,12 @@ export default function AddProductForm({
   setPrice,
   stock,
   setStock,
+  baseUnit,
+  setBaseUnit,
+  convertedUnit,
+  setConvertedUnit,
+  conversionRate,
+  setConversionRate,
   categories,
   loadingCategories = false,
   customFields = [],
@@ -277,6 +289,43 @@ export default function AddProductForm({
         {visibleStandardFields.map(
           renderStandardField
         )}
+
+        <div className="col-span-full rounded-3xl border border-theme bg-theme-input p-4 text-theme-secondary">
+          <p className="text-sm font-semibold text-theme-primary">Stock unit conversion</p>
+          <p className="mt-1 text-sm">Optionally track stock in a base unit and show it in a converted unit.</p>
+          <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div className={fieldWrapper}>
+              <label className={labelStyle}>Base unit</label>
+              <input
+                className={inputStyle}
+                value={baseUnit}
+                onChange={(e) => setBaseUnit(e.target.value)}
+                placeholder="e.g. box"
+              />
+            </div>
+            <div className={fieldWrapper}>
+              <label className={labelStyle}>Converted unit</label>
+              <input
+                className={inputStyle}
+                value={convertedUnit}
+                onChange={(e) => setConvertedUnit(e.target.value)}
+                placeholder="e.g. piece"
+              />
+            </div>
+            <div className={fieldWrapper}>
+              <label className={labelStyle}>Conversion rate</label>
+              <input
+                className={inputStyle}
+                type="number"
+                min={0}
+                step="0.01"
+                value={conversionRate}
+                onChange={(e) => setConversionRate(e.target.value === "" ? "" : Number(e.target.value))}
+                placeholder="e.g. 20"
+              />
+            </div>
+          </div>
+        </div>
 
         {FEATURE_CUSTOM_FIELDS && customFields.some(
           (field) => !field.is_system && field.is_visible

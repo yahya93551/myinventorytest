@@ -25,6 +25,9 @@ export default function EditProductModal({
   const [costPrice, setCostPrice] = useState<number | "">("");
   const [price, setPrice] = useState<number | "">("");
   const [stock, setStock] = useState(0);
+  const [baseUnit, setBaseUnit] = useState("");
+  const [convertedUnit, setConvertedUnit] = useState("");
+  const [conversionRate, setConversionRate] = useState<number | "">("");
   const [customData, setCustomData] = useState<Record<string, any>>({});
   const [canEditCostPrice, setCanEditCostPrice] = useState(false);
   const [canEditPrice, setCanEditPrice] = useState(false);
@@ -42,6 +45,9 @@ export default function EditProductModal({
     setCostPrice((editItem as any).cost_price ?? "");
     setPrice(editItem.price ?? "");
     setStock(editItem.stock);
+    setBaseUnit((editItem as any).base_unit ?? "");
+    setConvertedUnit((editItem as any).converted_unit ?? "");
+    setConversionRate((editItem as any).conversion_rate ?? "");
     setCustomData(editItem.custom_data || {});
     setCanEditCostPrice(false);
     setCanEditPrice(false);
@@ -99,6 +105,25 @@ export default function EditProductModal({
       return;
     }
 
+    const normalizedBaseUnit = baseUnit.trim() || null;
+    const normalizedConvertedUnit = convertedUnit.trim() || null;
+    const normalizedConversionRate = conversionRate === "" ? null : Number(conversionRate);
+
+    if (normalizedConvertedUnit && !normalizedBaseUnit) {
+      setError("Base unit is required when a converted unit is provided.");
+      return;
+    }
+
+    if (normalizedConvertedUnit && normalizedConversionRate === null) {
+      setError("Conversion rate is required when a converted unit is provided.");
+      return;
+    }
+
+    if (!normalizedConvertedUnit && normalizedConversionRate !== null) {
+      setError("Converted unit is required when a conversion rate is provided.");
+      return;
+    }
+
     const updates: Partial<Product> = {};
     const normalizedName = name.trim();
     const normalizedCategory = category.trim();
@@ -123,6 +148,18 @@ export default function EditProductModal({
 
     if (stock !== editItem.stock) {
       updates.stock = stock;
+    }
+
+    if (normalizedBaseUnit !== ((editItem as any).base_unit ?? null)) {
+      updates.base_unit = normalizedBaseUnit as any;
+    }
+
+    if (normalizedConvertedUnit !== ((editItem as any).converted_unit ?? null)) {
+      updates.converted_unit = normalizedConvertedUnit as any;
+    }
+
+    if (normalizedConversionRate !== ((editItem as any).conversion_rate ?? null)) {
+      updates.conversion_rate = normalizedConversionRate as any;
     }
 
     if (JSON.stringify(customData) !== JSON.stringify(editItem.custom_data || {})) {
@@ -299,6 +336,42 @@ export default function EditProductModal({
                 return null;
             }
           })}
+
+          <div className="col-span-full rounded-2xl border border-theme bg-theme-input p-4">
+            <p className="text-sm font-semibold text-theme-primary">Stock unit conversion</p>
+            <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+              <label className="block text-sm text-theme-secondary">
+                Base unit
+                <input
+                  className="mt-2 block w-full rounded bg-theme-card p-2 text-theme-primary border border-theme"
+                  value={baseUnit}
+                  onChange={(e) => setBaseUnit(e.target.value)}
+                  placeholder="e.g. box"
+                />
+              </label>
+              <label className="block text-sm text-theme-secondary">
+                Converted unit
+                <input
+                  className="mt-2 block w-full rounded bg-theme-card p-2 text-theme-primary border border-theme"
+                  value={convertedUnit}
+                  onChange={(e) => setConvertedUnit(e.target.value)}
+                  placeholder="e.g. piece"
+                />
+              </label>
+              <label className="block text-sm text-theme-secondary">
+                Conversion rate
+                <input
+                  className="mt-2 block w-full rounded bg-theme-card p-2 text-theme-primary border border-theme"
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={conversionRate}
+                  onChange={(e) => setConversionRate(e.target.value === "" ? "" : Number(e.target.value))}
+                  placeholder="e.g. 20"
+                />
+              </label>
+            </div>
+          </div>
 
           {/* Custom Fields */}
           {FEATURE_CUSTOM_FIELDS && customFields

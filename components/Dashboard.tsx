@@ -1,8 +1,9 @@
 ﻿//app/components/Dashboard.tsx
 "use client";
 import Link from "next/link";
+import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
 import { useInventory } from "../hooks/useInventory";
-import { useCustomFields } from "../hooks/useCustomFields";
+import { useBusinessSettings, useCustomFields } from "../hooks/useCustomFields";
 import StatsCards from "./StatsCards";
 import { getVisibleSystemFieldNames } from "@/lib/customFields";
 
@@ -10,6 +11,8 @@ export default function Dashboard() {
   // 🔥 Directly use the live hook – always up‑to-date
   const { products, sales, ownerMetrics, categories } = useInventory();
   const customFieldsQuery = useCustomFields();
+  const businessSettingsQuery = useBusinessSettings();
+  const businessType = businessSettingsQuery.data?.business_type;
   const customFields = customFieldsQuery.data || [];
   const visibleSystemFieldNames = getVisibleSystemFieldNames(customFields);
   const costPriceVisible = visibleSystemFieldNames.includes("cost_price");
@@ -56,6 +59,80 @@ export default function Dashboard() {
   const formatShortDate = (date: Date) =>
     date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 
+  const salesChartData = Object.entries(
+    sales.reduce((acc, sale) => {
+      const date = getSaleDate(sale);
+      if (!date) return acc;
+
+      const key = date.toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      });
+
+      const amount = Number(sale.total || 0);
+      const value = (sale.type ?? "sale") === "return" ? -amount : amount;
+
+      acc[key] = (acc[key] || 0) + value;
+      return acc;
+    }, {} as Record<string, number>)
+  )
+    .sort(([a], [b]) => new Date(a).getTime() - new Date(b).getTime())
+    .map(([date, total]) => ({ date, total }));
+
+  const now = new Date();
+  const salesOverview = sales.reduce(
+    (summary, sale) => {
+      const saleDate = getSaleDate(sale);
+      const saleType = sale.type ?? "sale";
+      const amount = Number(sale.total || 0);
+      const value = saleType === "return" ? -amount : amount;
+      const isSaleTransaction = saleType !== "return";
+
+      summary.netRevenue += value;
+      if (isSaleTransaction) {
+        summary.totalSales += 1;
+      }
+
+      if (saleDate) {
+        if (saleDate.getFullYear() === now.getFullYear() && saleDate.getMonth() === now.getMonth()) {
+          summary.salesThisMonth += 1;
+          summary.monthlyRevenue += value;
+        }
+      }
+
+      return summary;
+    },
+    { totalSales: 0, netRevenue: 0, salesThisMonth: 0, monthlyRevenue: 0 }
+  );
+
+  const averageSaleValue = salesOverview.totalSales > 0 ? salesOverview.netRevenue / salesOverview.totalSales : 0;
+
+  const revenueByProduct = sales.reduce((map, sale) => {
+    const name = getProductName(sale);
+    const saleType = sale.type ?? "sale";
+    const amount = Number(sale.total || 0);
+    const value = saleType === "return" ? -amount : amount;
+    const current = map[name] || { productName: name, revenue: 0, quantity: 0, returns: 0 };
+
+    current.revenue += value;
+    current.quantity += saleType === "return" ? -Number(sale.quantity || 0) : Number(sale.quantity || 0);
+    if (saleType === "return") {
+      current.returns += Number(sale.quantity || 0);
+    }
+
+    map[name] = current;
+    return map;
+  }, {} as Record<string, { productName: string; revenue: number; quantity: number; returns: number }>);
+
+  const topRevenueProduct = Object.values(revenueByProduct).sort((a, b) => b.revenue - a.revenue)[0];
+  const topProductShare = topRevenueProduct && salesOverview.netRevenue > 0
+    ? (topRevenueProduct.revenue / salesOverview.netRevenue) * 100
+    : 0;
+  const topProductInsight = topRevenueProduct
+    ? `${topRevenueProduct.productName} is your top revenue driver at ${formatShortNumber(topRevenueProduct.revenue)}${topProductShare > 0 ? `, ${topProductShare.toFixed(0)}% of revenue` : ''}`
+    : "No top product insight yet. Record sales to get performance guidance.";
+
   return (
     <div className="page-section">
       <div className="section-header flex flex-col sm:flex-row items-start sm:items-start justify-between gap-4">
@@ -79,16 +156,84 @@ export default function Dashboard() {
         products={products}
         visibleFieldNames={visibleSystemFieldNames}
         ownerMetrics={ownerMetrics ?? undefined}
+        businessType={businessType}
       />
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="card-standard">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
+          <div>
+            <h3 className="text-h3 font-semibold text-theme-primary">Sales Overview</h3>
+            <p className="text-sm text-theme-secondary mt-1">Key revenue trends and product momentum.</p>
+          </div>
+          <div className="badge-primary">Live results</div>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="card-compact bg-theme-surface">
+            <p className="text-body-sm text-theme-secondary">Net Revenue</p>
+            <p className="text-h4 font-bold text-cyan-400 mt-2">{formatShortNumber(salesOverview.netRevenue)}</p>
+          </div>
+          <div className="card-compact bg-theme-surface">
+            <p className="text-body-sm text-theme-secondary">Total Sales</p>
+            <p className="text-h4 font-bold text-theme-primary mt-2">{salesOverview.totalSales}</p>
+          </div>
+          <div className="card-compact bg-theme-surface">
+            <p className="text-body-sm text-theme-secondary">Average Sale</p>
+            <p className="text-h4 font-bold text-green-400 mt-2">{formatShortNumber(averageSaleValue)}</p>
+          </div>
+          <div className="card-compact bg-theme-surface">
+            <p className="text-body-sm text-theme-secondary">Sales This Month</p>
+            <p className="text-h4 font-bold text-theme-primary mt-2">{salesOverview.salesThisMonth}</p>
+          </div>
+        </div>
+
+        <div className="mt-6 rounded-3xl border border-theme-surface bg-theme-surface p-5">
+          <div className="flex items-center justify-between gap-4 mb-4">
+            <div>
+              <p className="text-xs uppercase tracking-[0.2em] font-semibold text-theme-secondary mb-2">Revenue Trend</p>
+              <h4 className="text-base font-semibold text-theme-primary">Recent sales trend</h4>
+            </div>
+            <div className="text-xs text-theme-secondary">{salesChartData.length} points</div>
+          </div>
+
+          <div className="h-52 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={salesChartData} margin={{ top: 10, right: 0, left: -10, bottom: 0 }}>
+                <CartesianGrid stroke="rgba(148, 163, 184, 0.12)" vertical={false} />
+                <XAxis dataKey="date" tick={{ fill: "rgb(148 163 184)", fontSize: 12 }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+                <YAxis tick={{ fill: "rgb(148 163 184)", fontSize: 12 }} tickLine={false} axisLine={false} width={40} />
+                <Tooltip
+                  contentStyle={{
+                    background: "rgba(15, 23, 42, 0.96)",
+                    border: "1px solid rgba(148, 163, 184, 0.16)",
+                    borderRadius: 16,
+                    color: "#f8fafc",
+                  }}
+                  labelStyle={{ color: "#f8fafc" }}
+                />
+                <Line type="monotone" dataKey="total" stroke="#22d3ee" strokeWidth={3} dot={{ r: 3, fill: "#22d3ee" }} activeDot={{ r: 5 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className="mt-6 rounded-3xl border border-theme-surface p-5 bg-theme-surface">
+          <p className="text-xs uppercase tracking-[0.2em] font-semibold text-theme-secondary mb-2">Top Product Insight</p>
+          <p className="text-body text-theme-primary leading-relaxed">{topProductInsight}</p>
+        </div>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-[1.4fr,1fr]">
         {/* Cash Flow Section */}
         <div className="card-standard">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-h3 font-semibold text-theme-primary">Cash Flow</h3>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
+            <div>
+              <h3 className="text-h3 font-semibold text-theme-primary">Cash Flow</h3>
+              <p className="text-sm text-theme-secondary mt-1">Snapshot of inventory value and profit capacity.</p>
+            </div>
             <div className="badge-primary">Overview</div>
           </div>
-          
+
           <div className="grid gap-3 sm:grid-cols-2">
             {costPriceVisible && (
               <div className="card-compact bg-theme-surface">

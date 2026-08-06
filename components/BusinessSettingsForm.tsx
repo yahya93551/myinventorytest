@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiPost } from "@/lib/apiClient";
 import { BusinessSettings } from "@/types";
 
@@ -48,6 +48,8 @@ export function BusinessSettingsForm({ onBusinessTypeChange }: BusinessSettingsF
     }
   }, [settings]);
 
+  const queryClient = useQueryClient();
+
   const saveMutation = useMutation({
     mutationFn: async (data: {
       business_type: string;
@@ -63,6 +65,7 @@ export function BusinessSettingsForm({ onBusinessTypeChange }: BusinessSettingsF
       return response.data;
     },
     onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["business_settings"] });
       if (data && onBusinessTypeChange) {
         onBusinessTypeChange(data.business_type);
       }
@@ -100,7 +103,9 @@ export function BusinessSettingsForm({ onBusinessTypeChange }: BusinessSettingsF
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
-          {BUSINESS_TYPES.map((type) => (
+          {BUSINESS_TYPES
+            .filter((t) => t.value !== "supermarket" && t.value !== "distributor")
+            .map((type) => (
             <button
               key={type.value}
               type="button"
