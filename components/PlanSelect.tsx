@@ -10,7 +10,7 @@ interface PlanSelectProps {
 const LABELS: Record<SubscriptionPlan, string> = {
   basic: 'Basic',
   pro: 'Pro',
-  team: 'Team',
+  unlimited: 'Unlimited',
 };
 
 export default function PlanSelect({ value, onChange, className }: PlanSelectProps) {
@@ -27,7 +27,7 @@ export default function PlanSelect({ value, onChange, className }: PlanSelectPro
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
 
-  const plans: SubscriptionPlan[] = ['basic', 'pro', 'team'];
+  const plans: SubscriptionPlan[] = ['basic', 'pro', 'unlimited'];
 
   return (
     <div ref={ref} className="relative">

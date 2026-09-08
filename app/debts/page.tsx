@@ -131,11 +131,20 @@ export default function DebtsPage() {
       latestDate: customer.debts[customer.debts.length - 1]?.date || "",
     }));
 
-    if (sortBy === "high-balance") {
-      arr.sort((a, b) => b.unpaidAmount - a.unpaidAmount);
-    } else {
-      arr.sort((a, b) => b.latestDate.localeCompare(a.latestDate));
-    }
+    arr.sort((a, b) => {
+      const aHasUnpaid = a.debts.some((debt) => !debt.paid);
+      const bHasUnpaid = b.debts.some((debt) => !debt.paid);
+
+      if (aHasUnpaid !== bHasUnpaid) {
+        return aHasUnpaid ? -1 : 1;
+      }
+
+      if (sortBy === "high-balance") {
+        return b.unpaidAmount - a.unpaidAmount;
+      }
+
+      return b.latestDate.localeCompare(a.latestDate);
+    });
 
     return arr;
   }, [debts, filter, query, sortBy]);
@@ -215,10 +224,43 @@ export default function DebtsPage() {
 
   if (authLoading || roleLoading || subscriptionLoading || loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white">
-        <div className="flex items-center gap-3">
-          <span className="h-5 w-5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-          <p>Loading debts...</p>
+      <div className={`flex min-h-screen items-start flex-col lg:flex-row ${dark ? "theme-dark" : "theme-light"}`}>
+        <Sidebar />
+        <div className="flex-1 min-w-0 p-4 sm:p-6">
+          <div className="w-full min-w-0 space-y-8 px-2 sm:px-4 lg:px-6 animate-pulse">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="space-y-3">
+                <div className="h-9 w-28 rounded-2xl bg-theme-surface" />
+                <div className="h-4 w-72 rounded-xl bg-theme-surface/80" />
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="h-11 w-32 rounded-2xl bg-theme-surface" />
+                <div className="h-11 w-28 rounded-2xl bg-theme-surface" />
+              </div>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <div key={index} className="rounded-3xl border border-theme-surface bg-theme-card p-4 shadow-soft">
+                  <div className="h-3 w-20 rounded-full bg-theme-surface" />
+                  <div className="mt-3 h-7 w-24 rounded-xl bg-theme-surface" />
+                  <div className="mt-2 h-3 w-28 rounded-full bg-theme-surface/80" />
+                </div>
+              ))}
+            </div>
+
+            <div className="rounded-3xl border border-theme-surface bg-theme-card p-5 shadow-soft">
+              <div className="flex items-center justify-between gap-2">
+                <div className="h-5 w-28 rounded-full bg-theme-surface" />
+                <div className="h-10 w-32 rounded-2xl bg-theme-surface" />
+              </div>
+              <div className="mt-5 space-y-3">
+                {Array.from({ length: 5 }).map((_, index) => (
+                  <div key={index} className="h-14 rounded-2xl bg-theme-surface/80" />
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -307,8 +349,8 @@ export default function DebtsPage() {
                     <button
                       type="button"
                       onClick={() => setFilter("all")}
-                      className={`rounded-full border px-3 py-2 text-xs font-semibold transition ${
-                        filter === "all" ? "border-blue-500 bg-blue-500/10 text-blue-200" : "border-theme-stroke bg-theme-card text-theme-secondary"
+                      className={`rounded-full border px-3 py-2 text-xs font-bold transition ${
+                        filter === "all" ? "border-blue-700 bg-blue-50 text-blue-900" : "border-slate-300 bg-white text-slate-600"
                       }`}
                     >
                       All customers
@@ -329,8 +371,8 @@ export default function DebtsPage() {
                     <button
                       type="button"
                       onClick={() => setSortBy("latest")}
-                      className={`rounded-full border px-3 py-2 text-xs font-semibold transition ${
-                        sortBy === "latest" ? "border-blue-500 bg-blue-500/10 text-blue-200" : "border-theme-stroke bg-theme-card text-theme-secondary"
+                      className={`rounded-full border px-3 py-2 text-xs font-bold transition ${
+                        sortBy === "latest" ? "border-blue-700 bg-blue-50 text-blue-900" : "border-slate-300 bg-white text-slate-600"
                       }`}
                     >
                       Latest
@@ -349,7 +391,7 @@ export default function DebtsPage() {
               </div>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-3">
+            <div className="mt-2 grid gap-4 sm:grid-cols-3">
               <div className="rounded-2xl border border-theme-stroke bg-theme-card p-4">
                 <div className="text-xs text-theme-secondary">Customers</div>
                 <div className="mt-2 text-xl font-semibold">{debtStats.customerCount}</div>
@@ -365,7 +407,7 @@ export default function DebtsPage() {
             </div>
           </section>
 
-          <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <section className="relative grid grid-cols-1 items-start gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {customers.map((c) => (
               <DebtCard
                 key={c.phone}

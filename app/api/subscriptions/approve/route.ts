@@ -85,16 +85,17 @@ export async function POST(req: Request) {
     );
   }
 
-  // Calculate next billing date (30 days from today)
   const today = new Date();
-  const nextBillingDate = new Date(today);
-  nextBillingDate.setDate(nextBillingDate.getDate() + 30);
+  const requestedDurationMonths = Number.isFinite(Number(subscription.subscription_duration_months))
+    ? Number(subscription.subscription_duration_months)
+    : 1;
+  const durationMonths = [1, 3, 6, 12].includes(requestedDurationMonths) ? requestedDurationMonths : 1;
 
-  // Calculate active_until (1 month from today)
   const activeUntil = new Date(today);
-  activeUntil.setMonth(activeUntil.getMonth() + 1);
+  activeUntil.setMonth(activeUntil.getMonth() + durationMonths);
 
-  // Update subscription
+  const nextBillingDate = new Date(activeUntil);
+
   const { data: updatedSubscription, error: updateError } = await supabaseAdmin
     .from("tenant_subscriptions")
     .update({
@@ -105,12 +106,41 @@ export async function POST(req: Request) {
       next_billing_date: nextBillingDate.toISOString().split("T")[0],
       active_until: activeUntil.toISOString(),
       notes: notes || null,
+      subscription_duration_months: durationMonths,
     })
     .eq("id", subscription_id)
     .select("*")
     .single();
 
   if (updateError) {
+    const updateErrorMessage = typeof updateError.message === 'string' ? updateError.message.toLowerCase() : '';
+    if (updateErrorMessage.includes("subscription_duration_months")) {
+      const fallbackUpdate = await supabaseAdmin
+        .from("tenant_subscriptions")
+        .update({
+          status: "active",
+          approved_at: new Date().toISOString(),
+          approved_by: adminId,
+          billing_date: today.toISOString().split("T")[0],
+          next_billing_date: nextBillingDate.toISOString().split("T")[0],
+          active_until: activeUntil.toISOString(),
+          notes: notes || null,
+        })
+        .eq("id", subscription_id)
+        .select("*")
+        .single();
+
+      if (fallbackUpdate.error) {
+        return NextResponse.json({ error: fallbackUpdate.error.message }, { status: 500 });
+      }
+
+      return NextResponse.json({
+        success: true,
+        data: fallbackUpdate.data,
+        message: "Subscription approved successfully"
+      });
+    }
+
     return NextResponse.json({ error: updateError.message }, { status: 500 });
   }
 

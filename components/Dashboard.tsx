@@ -1,9 +1,11 @@
 ﻿//app/components/Dashboard.tsx
 "use client";
 import Link from "next/link";
+import { Bell, Package } from "lucide-react";
 import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
 import { useInventory } from "../hooks/useInventory";
 import { useBusinessSettings, useCustomFields } from "../hooks/useCustomFields";
+import { useSubscription } from "@/hooks/useSubscription";
 import StatsCards from "./StatsCards";
 import { getVisibleSystemFieldNames } from "@/lib/customFields";
 
@@ -12,12 +14,19 @@ export default function Dashboard() {
   const { products, sales, ownerMetrics, categories } = useInventory();
   const customFieldsQuery = useCustomFields();
   const businessSettingsQuery = useBusinessSettings();
+  const { subscription, loading: subscriptionLoading } = useSubscription();
   const businessType = businessSettingsQuery.data?.business_type;
   const customFields = customFieldsQuery.data || [];
   const visibleSystemFieldNames = getVisibleSystemFieldNames(customFields);
   const costPriceVisible = visibleSystemFieldNames.includes("cost_price");
   const priceVisible = visibleSystemFieldNames.includes("price");
   const profitVisible = costPriceVisible && priceVisible;
+
+  const activeUntilDate = subscription?.active_until ? new Date(subscription.active_until) : null;
+  const subscriptionRemainingDays = activeUntilDate
+    ? Math.max(0, Math.ceil((activeUntilDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+    : null;
+  const subscriptionEndingSoon = !subscriptionLoading && subscription?.status === "active" && subscriptionRemainingDays !== null && subscriptionRemainingDays <= 10 && subscriptionRemainingDays >= 0;
 
   // Helper: safely extract a valid Date object from a sale (handles both 'date' and 'created_at')
   const getSaleDate = (sale: any): Date | null => {
@@ -142,24 +151,25 @@ export default function Dashboard() {
             Inventory overview, cash flow, and report summaries.
           </p>
         </div>
-
-        <div className="card-compact flex flex-col sm:flex-row items-start sm:items-center gap-2 min-w-0 self-start max-w-[18rem] p-3">
-          <div>
-            <p className="text-xs text-theme-secondary">Total Categories</p>
-            <p className="text-h4 font-bold text-cyan-400 mt-1">{categoryCount}</p>
-          </div>
-          <div className="h-10 w-px bg-theme-surface" />
-        </div>
       </div>
 
-      <StatsCards
-        products={products}
-        visibleFieldNames={visibleSystemFieldNames}
-        ownerMetrics={ownerMetrics ?? undefined}
-        businessType={businessType}
-      />
+      {subscriptionEndingSoon && (
+        <Link href="/settings" className="pointer-events-auto fixed right-4 top-4 z-50 animate-[floatIn_0.35s_ease-out] hover:scale-[1.02] transition-transform duration-200">
+          <div className="relative flex items-center justify-end">
+            <div className="mr-2 rounded-full border border-amber-500/40 bg-(--surface-card) px-3 py-2 text-[11px] text-(--text-primary) shadow-[0_12px_28px_rgba(0,0,0,0.18)] backdrop-blur-md">
+              <p className="font-semibold text-(--text-primary)">Your subscription is going to end</p>
+              <p className="text-[10px] text-(--text-secondary)">
+                {subscriptionRemainingDays} day{subscriptionRemainingDays === 1 ? "" : "s"} remaining
+              </p>
+            </div>
+            <div className="flex h-8 w-8 items-center justify-center rounded-full border border-amber-500/50 bg-amber-500/15 text-amber-600 shadow-[0_8px_20px_rgba(245,158,11,0.2)]">
+              <Bell className="h-3.5 w-3.5" />
+            </div>
+          </div>
+        </Link>
+      )}
 
-      <div className="card-standard">
+      <div className="card-standard mt-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
           <div>
             <h3 className="text-h3 font-semibold text-theme-primary">Sales Overview</h3>
@@ -222,6 +232,23 @@ export default function Dashboard() {
           <p className="text-body text-theme-primary leading-relaxed">{topProductInsight}</p>
         </div>
       </div>
+
+      <div className="mb-6 mt-6">
+        <div className="card-compact flex flex-col sm:flex-row items-start sm:items-center gap-2 min-w-0 self-start max-w-[18rem] p-3">
+          <div>
+            <p className="text-xs text-theme-secondary">Total Categories</p>
+            <p className="text-h4 font-bold text-cyan-400 mt-1">{categoryCount}</p>
+          </div>
+          <div className="h-10 w-px bg-theme-surface" />
+        </div>
+      </div>
+
+      <StatsCards
+        products={products}
+        visibleFieldNames={visibleSystemFieldNames}
+        ownerMetrics={ownerMetrics ?? undefined}
+        businessType={businessType}
+      />
 
       <div className="grid gap-6 lg:grid-cols-[1.4fr,1fr]">
         {/* Cash Flow Section */}
@@ -312,6 +339,7 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
     </div>
   );
 }

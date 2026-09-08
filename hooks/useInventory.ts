@@ -251,6 +251,9 @@ export function useInventory() {
         const existing = acc.find((entry) => entry.productId === item.productId);
         if (existing) {
           existing.quantity += item.quantity;
+          if (item.unit) {
+            existing.unit = item.unit;
+          }
         } else {
           acc.push({ ...item });
         }
@@ -271,6 +274,7 @@ export function useInventory() {
         items: normalizedItems.map((item) => ({
           product_id: item.productId,
           quantity: item.quantity,
+          unit: item.unit || 'base',
         })),
         ...payload.metadata,
       });
@@ -350,7 +354,6 @@ export function useInventory() {
       quantity,
       metadata,
     });
-    setSellItem(null);
     setSellQty(1);
     return true;
   };

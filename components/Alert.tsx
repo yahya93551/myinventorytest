@@ -32,27 +32,27 @@ export default function Alert({
 
   const variantConfig = {
     success: {
-      bg: "bg-green-500/10",
-      border: "border-green-500/30",
-      text: "text-green-300",
+      bg: "bg-emerald-50",
+      border: "border-emerald-400",
+      text: "text-emerald-900",
       icon: <CheckCircle2 className="w-5 h-5" />,
     },
     error: {
-      bg: "bg-red-500/10",
-      border: "border-red-500/30",
-      text: "text-red-300",
+      bg: "bg-rose-50",
+      border: "border-rose-400",
+      text: "text-rose-900",
       icon: <XCircle className="w-5 h-5" />,
     },
     warning: {
-      bg: "bg-amber-500/10",
-      border: "border-amber-500/30",
-      text: "text-amber-300",
+      bg: "bg-amber-50",
+      border: "border-amber-400",
+      text: "text-amber-900",
       icon: <AlertTriangle className="w-5 h-5" />,
     },
     info: {
-      bg: "bg-cyan-500/10",
-      border: "border-cyan-500/30",
-      text: "text-cyan-300",
+      bg: "bg-sky-50",
+      border: "border-sky-400",
+      text: "text-sky-900",
       icon: <AlertCircle className="w-5 h-5" />,
     },
   };
@@ -74,7 +74,7 @@ export default function Alert({
         {title && (
           <p className={`font-semibold ${config.text}`}>{title}</p>
         )}
-        <p className="text-theme-secondary text-sm mt-1">{children}</p>
+        <p className={`text-sm mt-1 ${config.text} opacity-90`}>{children}</p>
       </div>
 
       {closeable && (

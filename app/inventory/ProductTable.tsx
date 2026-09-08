@@ -2,6 +2,7 @@ import { useMemo, useState, useEffect } from "react";
 import { ProductWithCustomData, CustomField } from "../../types";
 import { Search, ShoppingCart, Plus, Minus, Edit, Trash2, AlertCircle, DollarSign, Tag, SlidersHorizontal, MoreHorizontal } from "lucide-react";
 import { getVisibleStandardFields } from "@/lib/customFields";
+import { useTheme } from "@/lib/theme-context";
 
 export default function ProductTable({
   products = [],
@@ -42,10 +43,24 @@ export default function ProductTable({
 }) {
   const [filterStatus, setFilterStatus] = useState("all");
   const [localSearch, setLocalSearch] = useState(searchQuery);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const { dark } = useTheme();
 
   useEffect(() => {
     setLocalSearch(searchQuery);
   }, [searchQuery]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Element | null;
+      if (!target?.closest("[data-menu-trigger='true']")) {
+        setOpenMenuId(null);
+      }
+    };
+
+    window.addEventListener("click", handleClickOutside);
+    return () => window.removeEventListener("click", handleClickOutside);
+  }, []);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -115,10 +130,16 @@ export default function ProductTable({
             <span
               className={`px-2 py-1 rounded text-xs font-semibold ${
                 value === 0
-                  ? "bg-red-500/20 text-red-300"
+                  ? dark
+                    ? "bg-red-500/20 text-red-300"
+                    : "bg-red-500/30 text-red-950"
                   : value < 10
-                  ? "bg-yellow-500/20 text-yellow-300"
-                  : "bg-green-500/20 text-green-300"
+                  ? dark
+                    ? "bg-yellow-500/20 text-yellow-300"
+                    : "bg-yellow-500/30 text-yellow-950"
+                  : dark
+                    ? "bg-green-500/20 text-green-300"
+                    : "bg-green-500/30 text-green-950"
               }`}
             >
               {getStockDisplay(product)}
@@ -150,7 +171,11 @@ export default function ProductTable({
         <button
           type="button"
           onClick={() => onRestock?.(product)}
-          className="inline-flex items-center gap-2 rounded-full border border-blue-500/20 bg-blue-500/5 px-3 py-2 text-xs font-semibold text-blue-200 transition hover:bg-blue-500/10"
+          className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold transition ${
+            dark
+              ? "border-blue-500/20 bg-blue-500/5 text-blue-200 hover:bg-blue-500/10"
+              : "border-blue-500/20 bg-blue-500/5 text-blue-900 hover:bg-blue-500/10"
+          }`}
           title="Load goods into stock"
         >
           <Plus className="w-4 h-4" />
@@ -166,7 +191,9 @@ export default function ProductTable({
           className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold transition ${
             product.stock === 0
               ? "border-slate-700 bg-slate-950/40 text-slate-500 cursor-not-allowed"
-              : "border-amber-500/20 bg-amber-500/5 text-amber-200 hover:bg-amber-500/10"
+              : dark
+                ? "border-amber-500/20 bg-amber-500/5 text-amber-200 hover:bg-amber-500/10"
+                : "border-amber-500/20 bg-amber-500/5 text-amber-900 hover:bg-amber-500/10"
           }`}
           title={product.stock === 0 ? "Out of stock" : "Take from stock"}
         >
@@ -179,7 +206,11 @@ export default function ProductTable({
         <button
           type="button"
           onClick={() => onReturn(product)}
-          className="inline-flex items-center gap-2 rounded-full border border-violet-500/20 bg-violet-500/5 px-3 py-2 text-xs font-semibold text-violet-200 transition hover:bg-violet-500/10"
+          className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold transition ${
+            dark
+              ? "border-violet-500/20 bg-violet-500/5 text-violet-200 hover:bg-violet-500/10"
+              : "border-violet-500/20 bg-violet-500/5 text-violet-900 hover:bg-violet-500/10"
+          }`}
           title="Return sold product to inventory"
         >
           ↩
@@ -352,15 +383,29 @@ export default function ProductTable({
 
                   <td className="p-3 flex flex-wrap items-center gap-2">
                     {(() => {
-                      const available = tenantRole === "sales" ? p.allocated_quantity ?? 0 : p.stock;
-                      const disabled = available === 0;
+                      const conversionRate = Number(p.conversionRate ?? p.conversion_rate ?? 0);
+                      const hasConvertedStock =
+                        Boolean(p.baseUnit || p.base_unit) &&
+                        Boolean(p.convertedUnit || p.converted_unit) &&
+                        conversionRate > 0;
+                      const convertedStockAvailable = hasConvertedStock
+                        ? Number(p.stock ?? 0) * conversionRate + Number(p.stockRemainder ?? p.stock_remainder ?? 0)
+                        : 0;
+                      const available = tenantRole === "sales"
+                        ? p.allocated_quantity ?? 0
+                        : hasConvertedStock
+                          ? Math.max(Number(p.stock ?? 0), convertedStockAvailable)
+                          : Number(p.stock ?? 0);
+                      const disabled = available <= 0;
                       return (
                         <button
                           onClick={() => !disabled && openSell(p)}
                           className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold transition ${
                             disabled
                               ? "border-slate-700 bg-slate-950/40 text-slate-500 cursor-not-allowed"
-                              : "border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/15 hover:text-emerald-100"
+                              : dark
+                                ? "border-emerald-400/60 bg-emerald-500/20 text-emerald-50 hover:bg-emerald-500/30 hover:text-emerald-50"
+                                : "border-emerald-500/40 bg-emerald-500/15 text-emerald-950 hover:bg-emerald-500/25 hover:text-emerald-950"
                           }`}
                           disabled={disabled}
                           title={
@@ -380,18 +425,36 @@ export default function ProductTable({
                     <div className="relative group">
                       <button
                         type="button"
+                        data-menu-trigger="true"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setOpenMenuId((current) => (current === p.id ? null : p.id));
+                        }}
+                        aria-expanded={openMenuId === p.id}
                         className="inline-flex items-center gap-2 rounded-full border border-theme/40 bg-theme-surface px-3 py-2 text-xs font-semibold text-theme-secondary transition hover:border-theme/60 hover:bg-theme/5"
                         title="More actions"
                       >
                         <MoreHorizontal className="w-3.5 h-3.5" />
                         More
                       </button>
-                      <div className="invisible opacity-0 pointer-events-none group-hover:visible group-hover:opacity-100 group-hover:pointer-events-auto absolute right-0 z-20 mt-2 min-w-[12rem] rounded-2xl border border-theme/50 bg-theme-card p-2 shadow-soft transition-all duration-200">
+                      <div
+                        className={`absolute right-0 z-20 mt-2 min-w-48 rounded-2xl border border-theme/50 bg-theme-card p-2 shadow-soft transition-all duration-200 ${
+                          openMenuId === p.id
+                            ? "visible opacity-100 pointer-events-auto"
+                            : "invisible opacity-0 pointer-events-none"
+                        }`}
+                      >
                         {canRestock && (
                           <button
                             type="button"
-                            onClick={() => onRestock?.(p)}
-                            className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold text-blue-200 transition hover:bg-blue-500/10"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setOpenMenuId(null);
+                              onRestock?.(p);
+                            }}
+                            className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold transition ${
+                              dark ? "text-sky-100 hover:bg-sky-500/10" : "text-sky-700 hover:bg-sky-500/10"
+                            }`}
                             title="Load goods into stock"
                           >
                             <Plus className="w-4 h-4" />
@@ -402,12 +465,18 @@ export default function ProductTable({
                         {canLoad && (
                           <button
                             type="button"
-                            onClick={() => onLoad?.(p)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setOpenMenuId(null);
+                              onLoad?.(p);
+                            }}
                             disabled={p.stock === 0}
                             className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold transition ${
                               p.stock === 0
                                 ? "cursor-not-allowed text-slate-500"
-                                : "text-amber-200 hover:bg-amber-500/10"
+                                : dark
+                                  ? "text-amber-200 hover:bg-amber-500/10"
+                                  : "text-amber-900 hover:bg-amber-500/10"
                             }`}
                             title={p.stock === 0 ? "Out of stock" : "Take from stock"}
                           >
@@ -416,27 +485,21 @@ export default function ProductTable({
                           </button>
                         )}
 
-                        {onReturn && (tenantRole === "owner" || tenantRole === "sales") && (
-                          <button
-                            type="button"
-                            onClick={() => onReturn(p)}
-                            className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold text-violet-200 transition hover:bg-violet-500/10"
-                            title="Return sold product to inventory"
-                          >
-                            ↩
-                            Return
-                          </button>
-                        )}
-
                         {canLoad && tenantRole === "sales" && onDrop && (
                           <button
                             type="button"
-                            onClick={() => onDrop(p)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setOpenMenuId(null);
+                              onDrop(p);
+                            }}
                             disabled={(p.allocated_quantity ?? 0) === 0}
                             className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold transition ${
                               (p.allocated_quantity ?? 0) === 0
                                 ? "cursor-not-allowed text-slate-500"
-                                : "text-rose-200 hover:bg-rose-500/10"
+                                : dark
+                                  ? "text-rose-200 hover:bg-rose-500/10"
+                                  : "text-rose-900 hover:bg-rose-500/10"
                             }`}
                             title={
                               (p.allocated_quantity ?? 0) === 0
@@ -452,8 +515,14 @@ export default function ProductTable({
                         {canEdit && (
                           <button
                             type="button"
-                            onClick={() => onEdit?.(p)}
-                            className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold text-amber-200 transition hover:bg-amber-400/10"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setOpenMenuId(null);
+                              onEdit?.(p);
+                            }}
+                            className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold transition ${
+                              dark ? "text-amber-200 hover:bg-amber-400/10" : "text-amber-900 hover:bg-amber-400/10"
+                            }`}
                             title="Edit product"
                           >
                             <Edit className="w-4 h-4" />
@@ -464,8 +533,14 @@ export default function ProductTable({
                         {canDelete && (
                           <button
                             type="button"
-                            onClick={() => onDelete?.(p.id)}
-                            className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold text-rose-200 transition hover:bg-rose-500/10"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setOpenMenuId(null);
+                              onDelete?.(p.id);
+                            }}
+                            className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold transition ${
+                              dark ? "text-rose-200 hover:bg-rose-500/10" : "text-rose-900 hover:bg-rose-500/10"
+                            }`}
                             title="Delete product"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -554,10 +629,16 @@ export default function ProductTable({
                       <div
                         className={`inline-flex w-full items-center justify-center rounded-full px-3 py-2 text-sm font-semibold ${
                           product.stock === 0
-                            ? "bg-red-500/20 text-red-300"
+                            ? dark
+                              ? "bg-red-500/20 text-red-300"
+                              : "bg-red-500/30 text-red-950"
                             : product.stock < 10
-                            ? "bg-yellow-500/20 text-yellow-300"
-                            : "bg-green-500/20 text-green-300"
+                            ? dark
+                              ? "bg-yellow-500/20 text-yellow-300"
+                              : "bg-yellow-500/30 text-yellow-950"
+                            : dark
+                              ? "bg-green-500/20 text-green-300"
+                              : "bg-green-500/30 text-green-950"
                         }`}
                       >
                         {product.stock}
@@ -577,7 +658,9 @@ export default function ProductTable({
                             className={`group inline-flex items-center justify-center gap-2 w-full px-3 py-3 rounded-2xl border text-sm font-semibold transition min-h-11 ${
                               disabled
                                 ? "border-slate-700 bg-slate-950/40 text-slate-500 cursor-not-allowed"
-                                : "border-emerald-500/20 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/15"
+                                : dark
+                                  ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/15"
+                                  : "border-emerald-500/40 bg-emerald-500/15 text-emerald-950 hover:bg-emerald-500/25 hover:text-emerald-950"
                             }`}
                             title={
                               disabled
@@ -596,7 +679,11 @@ export default function ProductTable({
                       {canRestock && (
                         <button
                           onClick={() => onRestock?.(product)}
-                          className="group inline-flex items-center justify-center gap-2 w-full px-3 py-3 rounded-2xl border border-blue-500/20 bg-blue-500/5 text-sm font-semibold text-blue-200 hover:bg-blue-500/10 transition min-h-11"
+                          className={`group inline-flex items-center justify-center gap-2 w-full px-3 py-3 rounded-2xl border text-sm font-semibold transition min-h-11 ${
+                            dark
+                              ? "border-blue-500/20 bg-blue-500/5 text-blue-200 hover:bg-blue-500/10"
+                              : "border-blue-500/20 bg-blue-500/5 text-blue-900 hover:bg-blue-500/10"
+                          }`}
                           title="Load goods into stock"
                         >
                           <Plus className="w-5 h-5" />

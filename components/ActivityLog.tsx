@@ -30,15 +30,15 @@ interface ActivityLogProps {
 }
 
 const actionColors: Record<string, string> = {
-  CREATE: "bg-green-500/20 text-green-400 border-green-500/30",
-  SELL: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
-  LOAD: "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
-  RESTOCK: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
-  BULK_CREATE: "bg-fuchsia-500/20 text-fuchsia-400 border-fuchsia-500/30",
-  UPDATE: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-  DELETE: "bg-red-500/20 text-red-400 border-red-500/30",
-  LOGIN: "bg-purple-500/20 text-purple-400 border-purple-500/30",
-  LOGOUT: "bg-gray-500/20 text-gray-400 border-gray-500/30",
+  CREATE: "bg-emerald-100 text-emerald-900 border-emerald-400",
+  SELL: "bg-teal-100 text-teal-900 border-teal-400",
+  LOAD: "bg-cyan-100 text-cyan-900 border-cyan-400",
+  RESTOCK: "bg-amber-100 text-amber-900 border-amber-400",
+  BULK_CREATE: "bg-violet-100 text-violet-900 border-violet-400",
+  UPDATE: "bg-sky-100 text-sky-900 border-sky-400",
+  DELETE: "bg-rose-100 text-rose-900 border-rose-400",
+  LOGIN: "bg-indigo-100 text-indigo-900 border-indigo-400",
+  LOGOUT: "bg-slate-200 text-slate-900 border-slate-400",
 };
 
 const entityIcons: Record<string, string> = {
@@ -107,6 +107,13 @@ export default function ActivityLog({
     return entityIcons[ent] || entityIcons.default;
   };
 
+  const getDisplayActionLabel = (action: string, entity: string): string => {
+    if (action === "CREATE" && entity === "product") {
+      return "Add Product";
+    }
+    return action;
+  };
+
   const formatDate = (dateString: string): string => {
     const date = new Date(dateString);
     const now = new Date();
@@ -154,8 +161,8 @@ export default function ActivityLog({
 
   if (error) {
     return (
-      <Card className="border-red-500/30 bg-red-500/5">
-        <div className="text-red-400">Error: {error}</div>
+      <Card className="border-red-300 bg-red-50">
+        <div className="text-red-900 font-medium">Error: {error}</div>
         <Button
           variant="secondary"
           size="sm"
@@ -194,7 +201,7 @@ export default function ActivityLog({
                       activity.action
                     )}`}
                   >
-                    {activity.action}
+                    {getDisplayActionLabel(activity.action, activity.entity)}
                   </span>
                   <span className="text-theme-secondary text-sm">
                     on <span className="font-semibold text-theme">{activity.entity}</span>
@@ -221,6 +228,9 @@ export default function ActivityLog({
                     {activity.details.name && activity.action === "CREATE" && (
                       <p>Created: <span className="text-theme">{activity.details.name}</span></p>
                     )}
+                    {(activity.details.stock != null || activity.details.initialStock != null) && (
+                      <p>Initial stock: <span className="text-theme font-semibold">{activity.details.initialStock ?? activity.details.stock}</span></p>
+                    )}
                     {activity.action === "DELETE" && activity.entity_id && (
                       <p>Deleted ID: <span className="text-theme font-mono text-xs">{activity.entity_id.slice(0, 8)}...</span></p>
                     )}
@@ -243,10 +253,10 @@ export default function ActivityLog({
                 <div
                   className={`inline-block px-2 py-1 rounded text-xs font-mono ${
                     activity.status_code >= 200 && activity.status_code < 300
-                      ? "text-green-400"
+                      ? "text-green-700 bg-green-100"
                       : activity.status_code >= 400
-                      ? "text-red-400"
-                      : "text-yellow-400"
+                      ? "text-red-700 bg-red-100"
+                      : "text-yellow-700 bg-yellow-100"
                   }`}
                 >
                   {activity.status_code}

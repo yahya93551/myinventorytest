@@ -1,0 +1,76 @@
+Attached Element Context from Integrated Browser
+
+Element: th.pb-3
+
+URL: http://localhost:3000/reports
+
+HTML Path: div.flex.min-h-screen.items-start.flex-col.lg:flex-row.bg-slate-950.text-slate-100 > div.flex-1.p-4.sm:p-6.overflow-x-hidden > div.mx-auto.max-w-7xl > div.bg-theme-card.p-6.rounded-2xl.mb-6.border.border-theme > div.overflow-x-auto > table.w-full.min-w-175.text-left > thead.text-theme-secondary > tr > th.pb-3
+
+Outer HTML:
+```html
+<th class="pb-3">Sold</th>
+```
+
+Dimensions:
+- top: 234px
+- left: 308px
+- width: 158px
+- height: 36px
+
+CSS:
+```css
+*, :after, :before, ::backdrop { box-sizing: border-box;
+    border: 0 solid;
+    margin: 0;
+    padding: 0; }
+.pb-3 { padding-bottom: calc(var(--spacing) * 3); }
+
+/* Pseudo-elements */
+::selection { color: #f8fafc;
+  background: #06b6d43d; }
+
+/* Inherited */
+.text-theme-secondary { color: var(--text-secondary) }
+table { text-indent: 0 }
+.text-left { text-align: left }
+.text-slate-100 { color: var(--color-slate-100) }
+body { color: var(--foreground); font-family: var(--font-sans), Arial, Helvetica, sans-serif }
+html, :host { tab-size: 4; line-height: 1.5; font-family: var(--default-font-family, ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"); font-feature-settings: var(--default-font-feature-settings, normal) }
+.theme-dark, .theme-light { color: var(--foreground) }
+
+/* Resolved values */
+margin: 0px;
+padding: 0px 0px 12px;
+border: 0px solid rgba(248, 250, 252, 0.72);
+background-attachment: scroll;
+background-clip: border-box;
+background-color: rgba(0, 0, 0, 0);
+background-image: none;
+background-origin: padding-box;
+background-position-x: 0%;
+background-position-y: 0%;
+background-repeat: repeat;
+background-size: auto;
+box-sizing: border-box;
+color: rgba(248, 250, 252, 0.72);
+display: table-cell;
+font-family: Inter, "Inter Fallback", Arial, Helvetica, sans-serif;
+font-feature-settings: normal;
+font-weight: 700 /*UA*/;
+height: 36.4444px;
+line-height: 24px;
+tab-size: 4;
+text-align: left;
+text-indent: 0px;
+unicode-bidi: isolate /*UA*/;
+vertical-align: middle /*UA*/;
+width: 157.792px;
+
+/* CSS variables */
+--font-sans: "Inter", "Inter Fallback";
+--default-font-family: "Inter", "Inter Fallback";
+--text-secondary: #f8fafcb8;
+--spacing: .25rem;
+--color-slate-100: lab(96.286% -.852466 -2.46847);
+--foreground: #f8fafc;
+```

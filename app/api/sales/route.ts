@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getServerTenantContext, jsonError, jsonSuccess, logAudit, requireActiveSubscription } from "@/lib/api";
-import { parseMissingSalesColumns, stripMissingSalesColumns } from "../../../lib/salesFallback";
+import { parseMissingSalesColumns, stripMissingSalesColumns } from "@/lib/salesFallback";
 import { mapSaleRecord } from "../../../lib/apiMappers";
 
 const SaleItemSchema = z.object({
@@ -212,6 +212,63 @@ export async function POST(req: Request) {
   }> = [];
   const isSalesUser = tenantContext.role === "sales";
 
+  const getSoldQuantityBalance = async (productId: string, orderId?: string | null, customerName?: string | null) => {
+    let query = supabaseAdmin
+      .from("sales")
+      .select("quantity, type, user_id, order_id, customer_name")
+      .eq("tenant_id", tenantContext.tenantId)
+      .eq("product_id", productId);
+
+    if (orderId) {
+      query = query.eq("order_id", orderId);
+    }
+
+    if (customerName) {
+      query = query.ilike("customer_name", customerName);
+    }
+
+    if (tenantContext.role === "sales") {
+      query = query.eq("user_id", tenantContext.userId);
+    }
+
+    let data: Array<{ quantity: number; type?: string; user_id?: string }> | null = null;
+    let error: { message?: string } | null = null;
+
+    ({ data, error } = await query);
+
+    if (error && /column .*type.* does not exist|Could not find the 'type' column/i.test(error.message || "")) {
+      let fallbackQuery = supabaseAdmin
+        .from("sales")
+        .select("quantity, user_id")
+        .eq("tenant_id", tenantContext.tenantId)
+        .eq("product_id", productId);
+
+      if (tenantContext.role === "sales") {
+        fallbackQuery = fallbackQuery.eq("user_id", tenantContext.userId);
+      }
+
+      const fallbackResult = await fallbackQuery;
+      data = (fallbackResult.data || []) as Array<{ quantity: number; type?: string; user_id?: string }>;
+      error = fallbackResult.error;
+    }
+
+    if (error) {
+      throw new Error(error.message || "Unable to validate return quantity");
+    }
+
+    const rows = (data || []) as Array<{ quantity: number; type?: string; user_id?: string }>;
+    const netSold = rows.reduce((total: number, row: any) => {
+      const quantity = Number(row?.quantity ?? 0);
+      if (!Number.isFinite(quantity) || quantity <= 0) return total;
+      if (typeof row?.type === "string") {
+        return row.type === "return" ? total - quantity : total + quantity;
+      }
+      return total + quantity;
+    }, 0);
+
+    return Math.max(0, netSold);
+  };
+
   const rollbackStock = async () => {
     for (const rollbackItem of rollback) {
       const updatePayload: Record<string, any> = { stock: rollbackItem.stock };
@@ -288,6 +345,25 @@ export async function POST(req: Request) {
         ? product.conversion_rate
         : null;
 
+      let soldBalance = 0;
+      try {
+        soldBalance = await getSoldQuantityBalance(
+          item.product_id,
+          metadata.order_id || orderId || null,
+          customerName || null,
+        );
+      } catch (returnCheckError) {
+        return jsonError(
+          returnCheckError instanceof Error ? returnCheckError.message : "Unable to validate return quantity",
+          500
+        );
+      }
+
+      const maxReturnableQuantity = Math.max(0, soldBalance);
+      if (item.quantity > maxReturnableQuantity) {
+        return jsonError(`Return quantity for ${product.name} exceeds the remaining sold quantity (${maxReturnableQuantity})`, 422);
+      }
+
       if (unitMode === "converted") {
         if (!conversionRate) {
           return jsonError(`Product ${product.name} does not support converted-unit returns`, 422);
@@ -338,68 +414,66 @@ export async function POST(req: Request) {
 
         rollback.push({ id: product.id, stock: product.stock });
       }
-    } else if (isSalesUser) {
-      const { data: allocations, error: allocationsError } = await supabaseAdmin
-        .from("inventory_takes")
-        .select("id, remaining_quantity")
-        .eq("tenant_id", tenantContext.tenantId)
-        .eq("user_id", tenantContext.userId)
-        .eq("product_id", item.product_id)
-        .gt("remaining_quantity", 0)
-        .order("created_at", { ascending: true });
+    } else {
+      const unitMode = (item as any).unit === "converted" ? "converted" : "base";
+      const conversionRate = typeof product.conversion_rate === "number" && Number.isFinite(product.conversion_rate)
+        ? product.conversion_rate
+        : null;
 
-      if (allocationsError) {
-        if (rollback.length > 0) {
-          await rollbackStock();
-        }
-        if (allocationRollback.length > 0) {
-          await rollbackAllocations();
-        }
-        return jsonError(allocationsError.message, 500);
-      }
-
-      const totalAvailable = (allocations || []).reduce((sum: number, allocation: any) => sum + (allocation.remaining_quantity || 0), 0);
-      // For sales users we expect `item.quantity` to be in base units (legacy behavior).
-      if (totalAvailable < item.quantity) {
-        if (rollback.length > 0) {
-          await rollbackStock();
-        }
-        if (allocationRollback.length > 0) {
-          await rollbackAllocations();
-        }
-        return jsonError(`Insufficient taken stock for ${product.name}`, 400);
-      }
-
-      let remainingToConsume = item.quantity;
-      for (const allocation of allocations || []) {
-        if (remainingToConsume <= 0) break;
-        const consume = Math.min(allocation.remaining_quantity, remainingToConsume);
-        const { error: allocationUpdateError } = await supabaseAdmin
+      if (isSalesUser && unitMode === "base") {
+        const { data: allocations, error: allocationsError } = await supabaseAdmin
           .from("inventory_takes")
-          .update({ remaining_quantity: allocation.remaining_quantity - consume })
-          .eq("id", allocation.id);
+          .select("id, remaining_quantity")
+          .eq("tenant_id", tenantContext.tenantId)
+          .eq("user_id", tenantContext.userId)
+          .eq("product_id", item.product_id)
+          .gt("remaining_quantity", 0)
+          .order("created_at", { ascending: true });
 
-        if (allocationUpdateError) {
+        if (allocationsError) {
           if (rollback.length > 0) {
             await rollbackStock();
           }
           if (allocationRollback.length > 0) {
             await rollbackAllocations();
           }
-          return jsonError(allocationUpdateError.message || "Failed to consume taken stock", 500);
+          return jsonError(allocationsError.message, 500);
         }
 
-        allocationRollback.push({ id: allocation.id, quantity: consume });
-        remainingToConsume -= consume;
-      }
-    } else {
-      // Non-sales users can sell in either base or converted units. Honor the `unit` flag.
-      const unitMode = (item as any).unit === "converted" ? "converted" : "base";
-      const conversionRate = typeof product.conversion_rate === "number" && Number.isFinite(product.conversion_rate)
-        ? product.conversion_rate
-        : null;
+        const totalAvailable = (allocations || []).reduce((sum: number, allocation: any) => sum + (allocation.remaining_quantity || 0), 0);
+        if (totalAvailable < item.quantity) {
+          if (rollback.length > 0) {
+            await rollbackStock();
+          }
+          if (allocationRollback.length > 0) {
+            await rollbackAllocations();
+          }
+          return jsonError(`Insufficient taken stock for ${product.name}`, 400);
+        }
 
-      if (unitMode === "converted") {
+        let remainingToConsume = item.quantity;
+        for (const allocation of allocations || []) {
+          if (remainingToConsume <= 0) break;
+          const consume = Math.min(allocation.remaining_quantity, remainingToConsume);
+          const { error: allocationUpdateError } = await supabaseAdmin
+            .from("inventory_takes")
+            .update({ remaining_quantity: allocation.remaining_quantity - consume })
+            .eq("id", allocation.id);
+
+          if (allocationUpdateError) {
+            if (rollback.length > 0) {
+              await rollbackStock();
+            }
+            if (allocationRollback.length > 0) {
+              await rollbackAllocations();
+            }
+            return jsonError(allocationUpdateError.message || "Failed to consume taken stock", 500);
+          }
+
+          allocationRollback.push({ id: allocation.id, quantity: consume });
+          remainingToConsume -= consume;
+        }
+      } else if (unitMode === "converted") {
         if (!conversionRate) {
           if (rollback.length > 0) {
             await rollbackStock();
@@ -408,14 +482,13 @@ export async function POST(req: Request) {
         }
 
         const availableInConverted = (product.stock || 0) * conversionRate + (product.stock_remainder || 0);
-        if ((item.quantity) > availableInConverted) {
+        if (item.quantity > availableInConverted) {
           if (rollback.length > 0) {
             await rollbackStock();
           }
           return jsonError(`Insufficient stock for ${product.name}`, 400);
         }
 
-        // Compute new totals after selling `item.quantity` converted units
         const remainingConverted = availableInConverted - item.quantity;
         const newStock = Math.floor(remainingConverted / conversionRate);
         const newRemainder = remainingConverted % conversionRate;
@@ -443,7 +516,6 @@ export async function POST(req: Request) {
 
         rollback.push({ id: product.id, stock: product.stock });
       } else {
-        // base unit sale (legacy behavior)
         if (product.stock < item.quantity) {
           if (rollback.length > 0) {
             await rollbackStock();
@@ -478,11 +550,9 @@ export async function POST(req: Request) {
 
     const unitMode = isReturn
       ? (item.unit === "converted" ? "converted" : "base")
-      : isSalesUser
-        ? "base"
-        : item.unit === "converted"
-          ? "converted"
-          : "base";
+      : (item as any).unit === "converted"
+        ? "converted"
+        : "base";
     const unitLabel = unitMode === "converted"
       ? product.converted_unit?.trim() || "converted unit"
       : product.base_unit?.trim() || "base unit";
@@ -497,7 +567,7 @@ export async function POST(req: Request) {
     }
 
     if (isReturn) {
-      lineTotal = -Math.abs(lineTotal);
+      lineTotal = Math.abs(lineTotal);
     }
 
     productRows.push({
@@ -533,38 +603,40 @@ export async function POST(req: Request) {
   }));
 
   // Try first insert
+  let currentRows: Array<Record<string, any>> = salesRows as Array<Record<string, any>>;
   let { data: inserted, error: insertError } = await supabaseAdmin
     .from("sales")
-    .insert(salesRows)
+    .insert(currentRows as any)
     .select("*");
 
   if (insertError || !inserted) {
     console.error("Sales route: failed to insert sale rows", {
-      salesRows,
+      salesRows: currentRows,
       insertError,
     });
 
-    // If DB reports missing columns, attempt a targeted retry that only strips the reported missing columns.
-    const missingColumns = parseMissingSalesColumns(insertError);
-    if (missingColumns.length > 0) {
+    let missingColumns = parseMissingSalesColumns(insertError);
+    while (missingColumns.length > 0 && !inserted) {
       console.warn("Sales route: retrying sale insert without missing sales columns", missingColumns);
-      const fallbackSalesRows = salesRows.map((row) => stripMissingSalesColumns(row, missingColumns));
+      currentRows = currentRows.map((row) => stripMissingSalesColumns(row, missingColumns));
+
       const fallbackResult = await supabaseAdmin
         .from("sales")
-        .insert(fallbackSalesRows)
+        .insert(currentRows as any)
         .select("*");
 
       inserted = fallbackResult.data;
       insertError = fallbackResult.error;
+      missingColumns = parseMissingSalesColumns(insertError);
     }
 
     // Special-case: if the error mentions `created_by`, attempt to insert without it (some older schemas lack it).
     if ((insertError && /created_by/i.test(insertError.message)) && !inserted) {
       console.warn("Sales route: retrying sale insert without created_by column");
-      const fallbackRowsWithoutCreatedBy = salesRows.map(({ created_by, ...rest }) => rest);
+      currentRows = currentRows.map(({ created_by, ...rest }) => rest);
       const fallbackResult = await supabaseAdmin
         .from("sales")
-        .insert(fallbackRowsWithoutCreatedBy)
+        .insert(currentRows as any)
         .select("*");
 
       inserted = fallbackResult.data;

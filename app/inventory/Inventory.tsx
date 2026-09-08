@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Product, ProductWithCustomData, CustomField, BulkSaleItem, ProductForm } from "../../types";
 import ProductTable from "./ProductTable";
@@ -20,6 +20,7 @@ import { supabase } from "@/lib/supabase";
 
 type InventoryProps = {
   products: ProductWithCustomData[];
+  sales?: any[];
   customFields?: CustomField[];
   categories: string[];
   loading: {
@@ -74,6 +75,7 @@ type InventoryProps = {
 export default function Inventory(props: InventoryProps) {
   const {
     products,
+    sales = [],
     customFields = [],
     categories,
     loading,
@@ -122,9 +124,15 @@ export default function Inventory(props: InventoryProps) {
   const [returnItem, setReturnItem] = useState<Product | null>(null);
   const [returnAmount, setReturnAmount] = useState<number | "">(1);
   const [returnReason, setReturnReason] = useState("");
+  const [returnContext, setReturnContext] = useState({
+    invoiceNumber: `INV-${Date.now()}`,
+    customerName: "Walk-in customer",
+    returnDate: new Date().toLocaleString(),
+  });
   const [bulkSellOpen, setBulkSellOpen] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
+  const isAddingRef = useRef(false);
 
   const [message, setMessage] = useState<{
     type: "success" | "error";
@@ -184,6 +192,9 @@ export default function Inventory(props: InventoryProps) {
   // ✅ API FUNCTION
   // =====================================================
   const addProductHandler = async (imageFile?: File | null) => {
+    if (isAddingRef.current || isAdding) return;
+
+    isAddingRef.current = true;
     setIsAdding(true);
     try {
     if (!name.trim()) {
@@ -201,6 +212,21 @@ export default function Inventory(props: InventoryProps) {
     const parsedBaseUnit = baseUnit.trim() || null;
     const parsedConvertedUnit = convertedUnit.trim() || null;
     const parsedConversionRate = conversionRate === "" ? null : conversionRate;
+
+    const normalizedName = name.trim();
+    const normalizedCategory = category.trim();
+    const duplicateProduct = products.some((product) =>
+      product.name.trim().toLowerCase() === normalizedName.toLowerCase() &&
+      product.category.trim().toLowerCase() === normalizedCategory.toLowerCase() &&
+      Number(product.cost_price ?? 0) === Number(parsedCostPrice ?? 0) &&
+      Number(product.price ?? 0) === Number(parsedPrice ?? 0) &&
+      Number(product.stock ?? 0) === Number(parsedStock ?? 0)
+    );
+
+    if (duplicateProduct) {
+      showMessage("error", "A product with the same name, category, cost price, sell price, and stock already exists.");
+      return;
+    }
 
     if (costPriceVisible && costPrice === "") {
       showMessage("error", "Cost price is required");
@@ -341,6 +367,7 @@ export default function Inventory(props: InventoryProps) {
       })();
     }
     } finally {
+      isAddingRef.current = false;
       setIsAdding(false);
     }
   };
@@ -395,11 +422,11 @@ export default function Inventory(props: InventoryProps) {
   };
 
   const saveRestock = async () => {
-    if (!restockItem) return;
+    if (!restockItem) return false;
 
     if (restockAmount === "" || restockAmount <= 0) {
       showMessage("error", "Restock amount must be greater than 0");
-      return;
+      return false;
     }
 
     const success = await restockProduct(restockItem.id, restockAmount);
@@ -410,8 +437,8 @@ export default function Inventory(props: InventoryProps) {
       showMessage("error", "Failed to restock product");
     }
 
-    setRestockItem(null);
     setRestockAmount("");
+    return success;
   };
 
   const openLoadModal = (product: Product) => {
@@ -453,17 +480,58 @@ export default function Inventory(props: InventoryProps) {
   };
 
   const openReturnModal = (product: Product) => {
+    const matchingSale = [...sales]
+      .filter((sale) => {
+        const saleProductId = sale?.product_id ?? sale?.productId;
+        const saleProductName = sale?.product_name ?? sale?.productName;
+        return (
+          saleProductId === product.id ||
+          saleProductName === product.name
+        );
+      })
+      .sort((a, b) => {
+        const dateA = new Date(a?.created_at ?? a?.createdAt ?? a?.date ?? 0).getTime();
+        const dateB = new Date(b?.created_at ?? b?.createdAt ?? b?.date ?? 0).getTime();
+        return dateB - dateA;
+      })[0];
+
     setReturnItem(product);
     setReturnAmount(1);
     setReturnReason("");
+    setReturnContext({
+      invoiceNumber:
+        matchingSale?.order_id ??
+        matchingSale?.orderId ??
+        `INV-${Date.now()}`,
+      customerName:
+        matchingSale?.customer_name ??
+        matchingSale?.customerName ??
+        "Walk-in customer",
+      returnDate:
+        matchingSale?.created_at ??
+        matchingSale?.createdAt ??
+        matchingSale?.date ??
+        new Date().toLocaleString(),
+    });
   };
 
   const saveReturn = async () => {
     if (!returnItem) return;
 
     const quantity = typeof returnAmount === "number" ? returnAmount : Number(returnAmount);
-    if (!quantity || quantity <= 0) {
-      showMessage("error", "Return quantity must be greater than 0");
+
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      showMessage("error", "Please enter a valid return quantity above 0.");
+      return;
+    }
+
+    if (!Number.isInteger(quantity)) {
+      showMessage("error", "Return quantity must be a whole number.");
+      return;
+    }
+
+    if (quantity > 1000000) {
+      showMessage("error", "Return quantity is too large to process.");
       return;
     }
 
@@ -472,9 +540,9 @@ export default function Inventory(props: InventoryProps) {
     });
 
     if (success) {
-      showMessage("success", "Product returned successfully");
+      showMessage("success", `${returnItem.name} has been returned to inventory.`);
     } else {
-      showMessage("error", "Failed to process product return");
+      showMessage("error", "Unable to process this return. Please check the quantity and try again.");
     }
 
     setReturnItem(null);
@@ -572,12 +640,6 @@ export default function Inventory(props: InventoryProps) {
             >
               Sell multiple items
             </button>
-            <Link
-              href="/sell-multiple"
-              className="rounded-2xl border border-theme px-4 py-3 min-h-11 text-sm font-semibold text-theme-primary transition hover:bg-theme-surface"
-            >
-              Open full page
-            </Link>
           </div>
         </div>
       </div>
@@ -640,6 +702,7 @@ export default function Inventory(props: InventoryProps) {
               customData={customData}
               setCustomData={setCustomData}
               addProductHandler={addProductHandler}
+              isSubmitting={isAdding}
             />
           </div>
         </div>
@@ -779,6 +842,7 @@ export default function Inventory(props: InventoryProps) {
         setReturnReason={setReturnReason}
         setReturnItem={setReturnItem}
         saveReturn={saveReturn}
+        returnContext={returnContext}
       />
     </div>
   );

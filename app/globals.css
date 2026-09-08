@@ -93,6 +93,32 @@ body {
 }
 
 @layer utilities {
+  .theme-dark .toast-success {
+    border-color: rgba(52, 211, 153, 0.7);
+    background-color: rgba(6, 95, 70, 0.38);
+    color: #ecfdf5;
+    box-shadow: 0 10px 15px -3px rgba(16, 185, 129, 0.18);
+  }
+
+  .theme-dark .toast-error {
+    border-color: rgba(248, 113, 113, 0.7);
+    background-color: rgba(127, 29, 29, 0.38);
+    color: #fef2f2;
+    box-shadow: 0 10px 15px -3px rgba(239, 68, 68, 0.18);
+  }
+
+  .theme-light .toast-success {
+    border-color: rgba(16, 185, 129, 0.7);
+    background-color: rgba(16, 185, 129, 0.12);
+    color: #022c22;
+  }
+
+  .theme-light .toast-error {
+    border-color: rgba(239, 68, 68, 0.7);
+    background-color: rgba(239, 68, 68, 0.08);
+    color: #7f1d1d;
+  }
+
   /* ===== SHADOWS ===== */
   .shadow-soft {
     box-shadow: 0 12px 40px -18px rgba(0, 0, 0, 0.45);
@@ -196,8 +222,9 @@ body {
     appearance: none;
     -webkit-appearance: none;
     -moz-appearance: none;
-    background-color: var(--surface) !important;
-    color: var(--text-primary) !important;
+    background-color: var(--surface-input);
+    color: var(--text-primary);
+    border-color: var(--border);
   }
 
   select,
@@ -206,16 +233,27 @@ body {
     appearance: none;
     -webkit-appearance: none;
     -moz-appearance: none;
-    color-scheme: dark !important;
-    background: var(--surface) !important;
-    color: var(--text-primary) !important;
-    accent-color: var(--color-accent-primary) !important;
+    background: var(--surface-input);
+    color: var(--text-primary);
+    accent-color: var(--color-accent-primary);
+  }
+
+  .theme-dark select,
+  .theme-dark select option,
+  .theme-dark select optgroup {
+    color-scheme: dark;
+  }
+
+  .theme-light select,
+  .theme-light select option,
+  .theme-light select optgroup {
+    color-scheme: light;
   }
 
   .select-base option,
   .select-base optgroup {
-    background: var(--surface-input) !important;
-    color: var(--text-primary) !important;
+    background: var(--surface-input);
+    color: var(--text-primary);
   }
 
   .select-base option:hover,

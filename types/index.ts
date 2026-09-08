@@ -113,6 +113,7 @@ export type SaleForm = Omit<Sale, 'id' | 'date'>;
 export type BulkSaleItem = {
   productId: string;
   quantity: number;
+  unit?: 'base' | 'converted';
 };
 
 export type TenantRole = 'owner' | 'accountant' | 'sales' | 'admin';
@@ -133,7 +134,8 @@ export interface Subscription {
   id: string;
   tenant_id: string;
   status: SubscriptionStatus;
-  plan?: 'basic' | 'pro' | 'team' | null;
+  plan?: 'basic' | 'pro' | 'unlimited' | null;
+  subscription_duration_months?: number | null;
   monthly_fee: number;
   billing_date: string | null;
   next_billing_date: string | null;

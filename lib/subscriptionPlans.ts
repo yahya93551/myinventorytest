@@ -1,25 +1,25 @@
-export type SubscriptionPlan = "basic" | "pro" | "team";
+export type SubscriptionPlan = "basic" | "pro" | "unlimited";
 
 export const SUBSCRIPTION_PLAN_PRODUCT_LIMITS: Record<SubscriptionPlan, number | null> = {
   basic: 1000,
   pro: 5000,
-  team: null,
+  unlimited: null,
 };
 
 export const SUBSCRIPTION_PLAN_USER_LIMITS: Record<SubscriptionPlan, number | null> = {
   basic: 3,
   pro: 10,
-  team: null,
+  unlimited: null,
 };
 
 export const SUBSCRIPTION_PLAN_MONTHLY_FEE: Record<SubscriptionPlan, number> = {
   basic: 5.0,
-  pro: 9.0,
-  team: 19.0,
+  pro: 7.0,
+  unlimited: 10.0,
 };
 
 export function isSubscriptionPlan(value: unknown): value is SubscriptionPlan {
-  return value === "basic" || value === "pro" || value === "team";
+  return value === "basic" || value === "pro" || value === "unlimited";
 }
 
 export function getSubscriptionPlan(subscription: { monthly_fee?: number | null; plan?: unknown } | null): SubscriptionPlan {
@@ -40,7 +40,7 @@ export function getSubscriptionPlan(subscription: { monthly_fee?: number | null;
     return "pro";
   }
 
-  return "team";
+  return "unlimited";
 }
 
 export function getSubscriptionPlanLimits(plan: SubscriptionPlan) {
@@ -52,4 +52,18 @@ export function getSubscriptionPlanLimits(plan: SubscriptionPlan) {
 
 export function getSubscriptionMonthlyFeeForPlan(plan: SubscriptionPlan) {
   return SUBSCRIPTION_PLAN_MONTHLY_FEE[plan];
+}
+
+export function getSubscriptionDiscountForDuration(months: number): number {
+  if (months >= 12) return 20;
+  if (months >= 6) return 15;
+  if (months >= 3) return 10;
+  return 0;
+}
+
+export function getSubscriptionDurationPrice(plan: SubscriptionPlan, months: number): number {
+  const baseMonthly = getSubscriptionMonthlyFeeForPlan(plan);
+  const discount = getSubscriptionDiscountForDuration(months);
+  const discountedMonthly = baseMonthly * (1 - discount / 100);
+  return Number((discountedMonthly * months).toFixed(2));
 }

@@ -3,8 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Sidebar from "@/components/Sidebar";
-import { Sale } from "../../types";
-import { apiGet } from "@/lib/apiClient";
+import { Sale, Product } from "../../types";
+import { apiGet, apiPost } from "@/lib/apiClient";
+import ReturnModal from "../inventory/components/ReturnModal";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { useTenantRole } from "@/hooks/useTenantRole";
 import { useBusinessSettings } from "@/hooks/useCustomFields";
@@ -28,6 +29,11 @@ export default function SalesPage() {
   const [filterDate, setFilterDate] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchInput, setSearchInput] = useState("");
+  const [returnItem, setReturnItem] = useState<Product | null>(null);
+  const [returnSale, setReturnSale] = useState<Sale | null>(null);
+  const [returnAmount, setReturnAmount] = useState<number | "">(1);
+  const [returnReason, setReturnReason] = useState("");
+  const [returnStatus, setReturnStatus] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const { dark } = useTheme();
   const { data: tenantRoleData, isLoading: tenantRoleLoading } = useTenantRole();
   const { data: businessSettings } = useBusinessSettings();
@@ -36,6 +42,16 @@ export default function SalesPage() {
 
   const showBackToDashboard =
     !tenantRoleLoading && tenantRoleData?.role !== "sales";
+
+  useEffect(() => {
+    if (!returnStatus) return;
+
+    const timeoutId = window.setTimeout(() => {
+      setReturnStatus(null);
+    }, 5000);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [returnStatus]);
 
   // ================= FETCH SALES =================
   useEffect(() => {
@@ -95,6 +111,16 @@ export default function SalesPage() {
     return dateValue;
   };
 
+  const getSaleProductId = (sale: any) => sale?.productId || sale?.product_id;
+  const getSaleProductName = (sale: any) => sale?.productName || sale?.product_name || "Unknown";
+  const getSaleCustomerName = (sale: any) => sale?.customerName || sale?.customer_name || "Customer not available";
+  const getSaleInvoiceNumber = (sale: any) => sale?.orderId || sale?.order_id || "No sale record";
+  const getSaleCreatedAt = (sale: any) => sale?.createdAt || sale?.created_at || sale?.date;
+  const getSignedSaleTotal = (sale: any) => {
+    const value = Number(sale?.total || 0);
+    return (sale?.type ?? "sale") === "return" ? -Math.abs(value) : Math.abs(value);
+  };
+
   // ================= FORMAT DATE =================
   const formatDate = (sale: any) => {
     const dateValue = getSaleDate(sale);
@@ -112,6 +138,54 @@ export default function SalesPage() {
     });
   };
 
+  const getRemainingReturnQuantity = (sale: Sale) => {
+    const saleOrderId = getSaleInvoiceNumber(sale);
+    const saleProductId = getSaleProductId(sale);
+    const saleCustomerName = getSaleCustomerName(sale);
+
+    let soldQty = 0;
+    let returnedQty = 0;
+
+    for (const candidate of sales) {
+      const candidateOrderId = getSaleInvoiceNumber(candidate);
+      const candidateProductId = getSaleProductId(candidate);
+      const candidateCustomerName = getSaleCustomerName(candidate);
+      const sameInvoice = !saleOrderId || !candidateOrderId || candidateOrderId === saleOrderId;
+      const sameProduct = candidateProductId === saleProductId || getSaleProductName(candidate) === getSaleProductName(sale);
+      const sameCustomer = !saleCustomerName || !candidateCustomerName || candidateCustomerName === saleCustomerName;
+
+      if (!sameInvoice || !sameProduct || !sameCustomer) {
+        continue;
+      }
+
+      const quantity = Number(candidate.quantity || 0);
+      if (!Number.isFinite(quantity) || quantity <= 0) continue;
+
+      if ((candidate.type ?? "sale") === "return") {
+        returnedQty += quantity;
+      } else {
+        soldQty += quantity;
+      }
+    }
+
+    return Math.max(0, soldQty - returnedQty);
+  };
+
+  const getQuantityLabel = (sale: Sale) => {
+    const quantity = Number(sale.quantity ?? 0);
+    const explicitUnit = sale.quantityUnit || sale.quantity_unit;
+
+    if (sale.unit === "converted") {
+      return `${quantity} ${explicitUnit || "converted"}`;
+    }
+
+    if (explicitUnit) {
+      return `${quantity} ${explicitUnit}`;
+    }
+
+    return String(quantity);
+  };
+
   const handlePrintSale = (sale: Sale) => {
     if (typeof window === "undefined") return;
 
@@ -120,11 +194,7 @@ export default function SalesPage() {
     const totalValue = Number(sale.total || 0);
     const total = totalValue.toFixed(2);
     const unitPrice = quantity > 0 ? totalValue / quantity : 0;
-    const quantityLabel = sale.quantityUnit
-      ? `${sale.quantity} ${sale.quantityUnit}`
-      : sale.unit === "converted"
-        ? `${sale.quantity} converted`
-        : String(sale.quantity);
+    const quantityLabel = getQuantityLabel(sale);
 
     const businessName = businessSettings?.business_name?.trim() || "Business";
     const businessAddress = businessSettings?.business_address?.trim() || "";
@@ -155,6 +225,110 @@ export default function SalesPage() {
     );
 
     printReceiptHtml(receiptHtml);
+  };
+
+  const handleReturnSale = (sale: Sale) => {
+    const productId = getSaleProductId(sale) || "";
+    const productName = getSaleProductName(sale) || "Product";
+
+    setReturnSale(sale);
+    setReturnItem({
+      id: productId || `temp-${sale.id}`,
+      name: productName,
+      category: "",
+      cost_price: 0,
+      price: Number(sale.total || 0),
+      stock: 0,
+      image_url: undefined,
+      user_id: undefined,
+      custom_data: {},
+      base_unit: sale.quantityUnit || sale.quantity_unit || "unit",
+      converted_unit: undefined,
+      conversion_rate: undefined,
+      stock_remainder: 0,
+      createdAt: getSaleCreatedAt(sale) || sale.date || sale.createdAt,
+      updatedAt: getSaleCreatedAt(sale) || sale.date || sale.createdAt,
+    } as Product);
+    setReturnAmount(1);
+    setReturnReason("");
+    setReturnStatus(null);
+  };
+
+  const saveReturn = async () => {
+    if (!returnItem) return;
+
+    const quantity = typeof returnAmount === "number" ? returnAmount : Number(returnAmount);
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      setReturnStatus({ type: "error", text: "Please enter a valid return quantity above 0." });
+      return;
+    }
+
+    const saleForReturn = returnSale ?? sales.find((sale) => {
+      const saleProductId = getSaleProductId(sale);
+      return saleProductId === returnItem.id || getSaleProductName(sale) === returnItem.name;
+    });
+
+    try {
+      await apiPost<void>("/api/sales", {
+        product_id: returnItem.id,
+        quantity,
+        type: "return",
+        order_id: saleForReturn ? getSaleInvoiceNumber(saleForReturn) : undefined,
+        customer_name: saleForReturn ? getSaleCustomerName(saleForReturn) : undefined,
+        customer_phone: saleForReturn ? (saleForReturn.customerPhone || saleForReturn.customer_phone) : undefined,
+        refund_reason: returnReason || undefined,
+      });
+
+      const returnRowBase = saleForReturn || returnSale || {
+        id: returnItem.id,
+        productId: returnItem.id,
+        productName: returnItem.name,
+        quantity: 0,
+        total: 0,
+        type: "sale",
+        orderId: undefined,
+        order_id: undefined,
+        customerName: "Walk-in",
+        customer_name: "Walk-in",
+        createdAt: new Date().toISOString(),
+      } as Sale;
+
+      const originalQty = Number(returnRowBase.quantity || 0);
+      const returnTotal = originalQty > 0
+        ? Number(returnRowBase.total || 0) * (quantity / originalQty)
+        : Number(returnRowBase.total || 0);
+
+      setSales((prevSales) => [
+        {
+          ...returnRowBase,
+          id: `${returnRowBase.id || returnItem.id}-return-${Date.now()}`,
+          productId: returnItem.id,
+          product_id: returnItem.id,
+          productName: returnItem.name,
+          product_name: returnItem.name,
+          quantity,
+          total: returnTotal,
+          type: "return",
+          orderId: getSaleInvoiceNumber(returnRowBase),
+          order_id: getSaleInvoiceNumber(returnRowBase),
+          customerName: getSaleCustomerName(returnRowBase),
+          customer_name: getSaleCustomerName(returnRowBase),
+          date: getSaleCreatedAt(returnRowBase) || new Date().toISOString(),
+          createdAt: getSaleCreatedAt(returnRowBase) || new Date().toISOString(),
+        } as Sale,
+        ...prevSales,
+      ]);
+
+      setReturnStatus({ type: "success", text: `${returnItem.name} has been returned to inventory.` });
+      setReturnItem(null);
+      setReturnSale(null);
+      setReturnAmount(1);
+      setReturnReason("");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unable to process this return.";
+      setReturnStatus({ type: "error", text: message });
+      throw err;
+    }
   };
 
   // ================= SORT SALES =================
@@ -211,7 +385,7 @@ export default function SalesPage() {
   // ================= TOTAL REVENUE =================
   const totalRevenue = useMemo(() => {
     return filteredSales.reduce(
-      (acc, sale) => acc + Number(sale.total || 0),
+      (acc, sale) => acc + getSignedSaleTotal(sale),
       0
     );
   }, [filteredSales]);
@@ -230,7 +404,7 @@ export default function SalesPage() {
         .slice(0, 10);
 
       map[day] =
-        (map[day] || 0) + Number(sale.total || 0);
+        (map[day] || 0) + getSignedSaleTotal(sale);
     });
 
     return map;
@@ -270,6 +444,27 @@ export default function SalesPage() {
       <Sidebar />
 
       <div className="flex-1 p-4 sm:p-6 overflow-x-hidden">
+        {returnItem && (
+          <ReturnModal
+            returnItem={returnItem}
+            returnAmount={returnAmount}
+            setReturnAmount={setReturnAmount}
+            returnReason={returnReason}
+            setReturnReason={setReturnReason}
+            setReturnItem={(value) => {
+              setReturnItem(value);
+              if (!value) setReturnSale(null);
+            }}
+            saveReturn={saveReturn}
+            saleContext={returnSale}
+            returnContext={{
+              invoiceNumber: getSaleInvoiceNumber(returnSale || {}),
+              customerName: getSaleCustomerName(returnSale || {}),
+              returnDate: getSaleCreatedAt(returnSale || {}) || new Date().toLocaleString(),
+            }}
+          />
+        )}
+
         {/* HEADER */}
         <div className="mb-6 flex flex-col gap-4">
           {showBackToDashboard && (
@@ -388,55 +583,91 @@ export default function SalesPage() {
                   </td>
                 </tr>
               ) : (
-                filteredSales.map((sale) => (
-                  <tr
-                    key={sale.id}
-                    className="border-t border-theme hover:bg-theme-surface-soft transition-colors duration-150"
-                  >
-                    <td className="p-4 text-sm text-theme-secondary">
-                      {sale.orderId || sale.order_id || "-"}
-                    </td>
-                    <td className="p-4">
-                      {sale.customerName || sale.customer_name || "Walk-in"}
-                    </td>
-                    <td className="p-4">
-                      {sale.productName || "Unknown"}
-                    </td>
+                filteredSales.map((sale) => {
+                  const isReturnedSale = (sale.type ?? "sale") === "return";
+                  const signedTotal = getSignedSaleTotal(sale);
+                  const remainingReturnQty = getRemainingReturnQuantity(sale);
+                  const returnedQty = Math.max(0, Number(sale.quantity || 0) - remainingReturnQty);
+                  const canReturnSale = !isReturnedSale && remainingReturnQty > 0;
 
-                    <td className="p-4">
-                      {sale.quantityUnit
-                        ? `${sale.quantity} ${sale.quantityUnit}`
-                        : sale.quantity_unit
-                          ? `${sale.quantity} ${sale.quantity_unit}`
-                          : sale.unit === "converted"
-                            ? `${sale.quantity} converted`
-                            : String(sale.quantity)}
-                    </td>
+                  return (
+                    <tr
+                      key={sale.id}
+                      className={`border-t border-theme transition-colors duration-150 ${
+                        isReturnedSale
+                          ? "bg-rose-500/8 border-l-2 border-l-rose-400"
+                          : "hover:bg-theme-surface-soft"
+                      }`}
+                    >
+                      <td className="p-4 text-sm text-theme-secondary">
+                        {sale.orderId || sale.order_id || "-"}
+                      </td>
+                      <td className="p-4">
+                        {sale.customerName || sale.customer_name || "Walk-in"}
+                      </td>
+                      <td className="p-4">
+                        {sale.productName || "Unknown"}
+                      </td>
 
-                    <td className="p-4 text-green-400 font-medium">
-                      $
-                      {Number(
-                        sale.total || 0
-                      ).toFixed(2)}
-                    </td>
+                      <td className="p-4">
+                        <div className="flex flex-col gap-1">
+                          <span>{getQuantityLabel(sale)}</span>
+                          {!isReturnedSale && Number(sale.quantity || 0) > 0 && returnedQty > 0 && (
+                            <span className="text-[10px] text-amber-300">
+                              {remainingReturnQty > 0 ? `${returnedQty} returned · ${remainingReturnQty} left` : `${returnedQty} returned`}
+                            </span>
+                          )}
+                        </div>
+                      </td>
 
-                    <td className="p-4 text-sm text-theme-secondary">
-                      {formatDate(sale)}
-                    </td>
-                    <td className="p-4 text-right">
-                      <button
-                        onClick={() => handlePrintSale(sale)}
-                        className="text-sm text-cyan-300 hover:text-cyan-200 transition"
-                      >
-                        Print
-                      </button>
-                    </td>
-                  </tr>
-                ))
+                      <td className={`p-4 font-medium ${isReturnedSale ? "text-rose-300" : "text-green-400"}`}>
+                        {signedTotal >= 0 ? "$" : "-$"}
+                        {Math.abs(signedTotal).toFixed(2)}
+                      </td>
+
+                      <td className="p-4 text-sm text-theme-secondary">
+                        {formatDate(sale)}
+                      </td>
+                      <td className="p-4 text-right">
+                        <div className="flex items-center justify-end gap-3">
+                          <button
+                            onClick={() => handleReturnSale(sale)}
+                            disabled={!canReturnSale}
+                            className={`min-w-[92px] whitespace-nowrap rounded-xl border px-3 py-1.5 text-xs font-bold transition ${
+                              canReturnSale
+                                ? "border-amber-600 bg-amber-50 text-amber-900 hover:bg-amber-100"
+                                : "border-slate-300 bg-slate-100 text-slate-400 cursor-not-allowed"
+                            }`}
+                          >
+                            {isReturnedSale ? "Returned" : canReturnSale ? "Return" : "No return left"}
+                          </button>
+                          {!isReturnedSale && (
+                            <button
+                              onClick={() => handlePrintSale(sale)}
+                              className="rounded-xl border border-cyan-700 bg-cyan-50 px-3 py-1.5 text-xs font-bold text-cyan-900 transition hover:bg-cyan-100"
+                            >
+                              Print
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
+
+        {returnStatus && (
+          <div
+            className={`fixed left-1/2 top-4 z-60 max-w-sm -translate-x-1/2 rounded-xl border border-opacity-80 px-3 py-2 text-center text-sm font-bold shadow-lg backdrop-blur-sm ${
+              returnStatus.type === "success" ? "toast-success" : "toast-error"
+            }`}
+          >
+            {returnStatus.text}
+          </div>
+        )}
 
         {/* DAILY SUMMARY */}
         <div className="bg-theme-card border border-theme p-5 rounded-2xl mb-6 shadow-soft">

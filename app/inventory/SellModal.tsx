@@ -31,6 +31,7 @@ export default function SellModal({
 }: Props) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [saleStatus, setSaleStatus] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [printAfterSale, setPrintAfterSale] = useState(false);
   const [orderId, setOrderId] = useState(() => `INV-${Date.now()}`);
   const [customerName, setCustomerName] = useState("");
@@ -51,10 +52,28 @@ export default function SellModal({
       setCountryCode("+252");
       setPrintAfterSale(false);
       setIsPaidSale(true);
-      setSaleUnitMode("base");
+      const hasConversionStock =
+        typeof sellItem.conversion_rate === "number" &&
+        sellItem.conversion_rate > 0 &&
+        ((sellItem.stock ?? 0) * sellItem.conversion_rate + (sellItem.stock_remainder ?? 0) > 0);
+      setSaleUnitMode((sellItem.stock ?? 0) > 0 || !hasConversionStock ? "base" : "converted");
       setError(null);
+      setSaleStatus(null);
     }
   }, [sellItem]);
+
+  useEffect(() => {
+    if (!saleStatus) return;
+
+    const timeoutId = window.setTimeout(() => {
+      setSaleStatus(null);
+      if (saleStatus.type === "success") {
+        setSellItem(null);
+      }
+    }, 5000);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [saleStatus, setSellItem]);
 
   if (!sellItem) return null;
 
@@ -63,7 +82,6 @@ export default function SellModal({
     timeZone: "Africa/Mogadishu",
   });
   const useAllocatedQuantity = tenantRole === "sales" && businessSettings?.business_type === "warehouse";
-  const availableToSell = useAllocatedQuantity ? sellItem.allocated_quantity ?? 0 : sellItem.stock;
   const quantity = typeof sellQty === "number" ? sellQty : 0;
   const hasConversion = Boolean(
     sellItem.base_unit?.trim() &&
@@ -72,10 +90,12 @@ export default function SellModal({
       sellItem.conversion_rate > 0
   );
   const conversionRate = hasConversion ? sellItem.conversion_rate! : null;
+  const availableBaseToSell = useAllocatedQuantity ? sellItem.allocated_quantity ?? 0 : sellItem.stock;
   const availableConvertedToSell = hasConversion && conversionRate
-    ? availableToSell * conversionRate + (sellItem.stock_remainder ?? 0)
-    : availableToSell;
-  const canConfirm = quantity >= 1 && quantity <= (saleUnitMode === "converted" ? availableConvertedToSell : availableToSell);
+    ? (sellItem.stock ?? 0) * conversionRate + (sellItem.stock_remainder ?? 0)
+    : availableBaseToSell;
+  const availableToSell = saleUnitMode === "converted" ? availableConvertedToSell : availableBaseToSell;
+  const canConfirm = quantity >= 1 && quantity <= availableToSell;
   const baseQuantity = saleUnitMode === "converted" && conversionRate ? quantity / conversionRate : quantity;
   const total = baseQuantity * sellItem.price;
 
@@ -182,6 +202,10 @@ export default function SellModal({
       });
 
       if (result === false) {
+        setSaleStatus({
+          type: "error",
+          text: "Sale could not be completed. Please verify the quantity and try again.",
+        });
         setError("Sale could not be completed. Please verify the quantity and try again.");
         return;
       }
@@ -190,10 +214,14 @@ export default function SellModal({
         printReceipt();
       }
 
-      setSellItem(null);
+      setSaleStatus({
+        type: "success",
+        text: `${sellItem.name} was sold successfully.`,
+      });
     } catch (error) {
       console.error("Sale error:", error);
       const message = error instanceof Error ? error.message : "Unable to complete sale. Please try again.";
+      setSaleStatus({ type: "error", text: message });
       setError(message);
     } finally {
       setIsProcessing(false);
@@ -202,6 +230,16 @@ export default function SellModal({
 
   return (
     <div className="fixed inset-0 bg-black/60 overflow-y-auto px-4 py-6 flex items-center justify-center z-50">
+      {saleStatus && (
+        <div
+          className={`fixed left-1/2 top-4 z-60 max-w-sm -translate-x-1/2 rounded-xl border border-opacity-80 px-3 py-2 text-center text-sm font-bold shadow-lg backdrop-blur-sm ${
+            saleStatus.type === "success" ? "toast-success" : "toast-error"
+          }`}
+        >
+          {saleStatus.text}
+        </div>
+      )}
+
       <div className="border border-theme bg-theme-card p-6 rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto text-theme-primary">
         <h2 className="text-xl mb-2">Sell Product</h2>
         <p className="text-theme-secondary mb-1">
@@ -330,22 +368,36 @@ export default function SellModal({
 
         <input
           className="p-2 rounded bg-theme-input w-full mb-2 text-theme-primary"
-          type="number"
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
           placeholder="Enter quantity"
           min={1}
           max={saleUnitMode === "converted" ? availableConvertedToSell : availableToSell}
           value={displayInputValue as any}
+          onWheel={(e) => e.preventDefault()}
+          onKeyDown={(e) => {
+            if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", "e", "E", "+", "-", ".", ","].includes(e.key)) {
+              e.preventDefault();
+            }
+          }}
           onChange={(e) => {
             const rawValue = e.target.value;
-            const nextQty = rawValue === "" ? "" : Number(rawValue);
+            const normalized = rawValue.replace(/[^0-9]/g, "");
 
             setError(null);
-            if (nextQty === "" || Number.isNaN(nextQty)) {
+
+            if (rawValue === "") {
               setSellQty("");
               return;
             }
 
-            setSellQty(nextQty);
+            if (normalized === "") {
+              setSellQty("");
+              return;
+            }
+
+            setSellQty(Number(normalized));
           }}
           disabled={isProcessing}
         />

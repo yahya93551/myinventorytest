@@ -1,7 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { useSubscription } from '@/hooks/useSubscription';
 import { apiPost } from '@/lib/apiClient';
-import { getSubscriptionMonthlyFeeForPlan, getSubscriptionPlan, isSubscriptionPlan, SubscriptionPlan } from '@/lib/subscriptionPlans';
+import {
+  getSubscriptionDiscountForDuration,
+  getSubscriptionDurationPrice,
+  getSubscriptionMonthlyFeeForPlan,
+  getSubscriptionPlan,
+  isSubscriptionPlan,
+  SubscriptionPlan
+} from '@/lib/subscriptionPlans';
 import PlanSelect from '@/components/PlanSelect';
 import Button from '@/components/Button';
 import Card from '@/components/Card';
@@ -23,11 +30,11 @@ const PLAN_DETAILS: Record<SubscriptionPlan, { label: string; products: string; 
     users: 'Up to 10 users',
     description: 'For growing teams who need more capacity and collaboration.',
   },
-  team: {
-    label: 'Team',
+  unlimited: {
+    label: 'Unlimited',
     products: 'Unlimited products',
     users: 'Unlimited users',
-    description: 'Designed for larger organizations with advanced needs and team access.',
+    description: 'Designed for high-growth businesses that need full access and scale.',
   },
 };
 
@@ -42,6 +49,7 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
   const [additionalNotes, setAdditionalNotes] = useState('');
   const [requestMessage, setRequestMessage] = useState('');
   const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan>(() => getSubscriptionPlan(subscription ?? null));
+  const [selectedDurationMonths, setSelectedDurationMonths] = useState<number>(1);
   const [showUpgradeForm, setShowUpgradeForm] = useState(false);
 
   useEffect(() => {
@@ -51,6 +59,8 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
   }, [subscription]);
 
   const selectedPlanFee = getSubscriptionMonthlyFeeForPlan(selectedPlan);
+  const selectedDurationDiscount = getSubscriptionDiscountForDuration(selectedDurationMonths);
+  const selectedDurationTotal = getSubscriptionDurationPrice(selectedPlan, selectedDurationMonths);
 
   const activeUntilDate = subscription?.active_until ? new Date(subscription.active_until) : null;
   const remainingDays = activeUntilDate
@@ -64,6 +74,7 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
     try {
       await apiPost('/api/subscriptions', {
         plan: selectedPlan,
+        subscription_duration_months: selectedDurationMonths,
         monthly_fee: selectedPlanFee,
         payer_name: payerName,
         payment_phone: paymentPhone,
@@ -215,8 +226,6 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
                       onChange={(p) => setSelectedPlan(p)}
                       className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
                     />
-
-                    
                   </div>
                   <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
                     <p className="font-semibold text-slate-900">{PLAN_DETAILS[selectedPlan].label} plan details</p>
@@ -226,6 +235,36 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
                       <li>{PLAN_DETAILS[selectedPlan].description}</li>
                     </ul>
                   </div>
+
+                  <div className="relative">
+                    <label className="text-sm font-medium text-theme-primary">Subscription duration</label>
+                    <select
+                      value={selectedDurationMonths}
+                      onChange={(e) => setSelectedDurationMonths(Number(e.target.value))}
+                      className="mt-1 w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
+                    >
+                      <option value={1}>1 month</option>
+                      <option value={3}>3 months</option>
+                      <option value={6}>6 months</option>
+                      <option value={12}>1 year</option>
+                    </select>
+                  </div>
+
+                  <div className="rounded-2xl border border-cyan-200 bg-cyan-50 p-4 text-sm text-cyan-900">
+                    <p className="font-semibold">Selected duration</p>
+                    <p className="mt-1">
+                      {selectedDurationMonths === 12 ? '1 year' : `${selectedDurationMonths} months`}
+                    </p>
+                    {selectedDurationDiscount > 0 && (
+                      <p className="mt-2 font-medium text-cyan-700">
+                        Save {selectedDurationDiscount}% with this plan.
+                      </p>
+                    )}
+                    <p className="mt-2 font-semibold text-cyan-900">
+                      Total: ${selectedDurationTotal}
+                    </p>
+                  </div>
+
                   <input
                     value={payerName}
                     onChange={(e) => setPayerName(e.target.value)}

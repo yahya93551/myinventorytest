@@ -5,6 +5,19 @@ import { getSubscriptionPlan, getSubscriptionMonthlyFeeForPlan, isSubscriptionPl
 type AuthUserResponse = Awaited<ReturnType<typeof supabaseAdmin.auth.getUser>>;
 type AuthUser = NonNullable<NonNullable<AuthUserResponse["data"]>["user"]>;
 
+const VALID_SUBSCRIPTION_DURATIONS = [1, 3, 6, 12] as const;
+
+function normalizeSubscriptionDurationMonths(value: unknown): number {
+  const parsed = typeof value === 'string' ? Number(value) : value;
+  if (typeof parsed !== 'number' || Number.isNaN(parsed)) {
+    return 1;
+  }
+
+  return VALID_SUBSCRIPTION_DURATIONS.includes(parsed as typeof VALID_SUBSCRIPTION_DURATIONS[number])
+    ? parsed
+    : 1;
+}
+
 interface OwnerAuthSuccess {
   user: AuthUser;
   tenantId: string;
@@ -144,6 +157,7 @@ export async function POST(req: Request) {
   const paymentReference = typeof payload.payment_reference === 'string' ? payload.payment_reference.trim() : '';
   const notes = typeof payload.notes === 'string' ? payload.notes.trim() : '';
   const requestedPlan = typeof payload.plan === 'string' && isSubscriptionPlan(payload.plan) ? payload.plan : "basic";
+  const requestedDurationMonths = normalizeSubscriptionDurationMonths(payload.subscription_duration_months);
   const monthly_fee = getSubscriptionMonthlyFeeForPlan(requestedPlan);
 
   const notesParts = [
@@ -154,6 +168,7 @@ export async function POST(req: Request) {
     paymentReference ? `Payment reference: ${paymentReference}` : null,
     notes ? `Details: ${notes}` : null,
     `Selected plan: ${requestedPlan}`,
+    `Selected duration: ${requestedDurationMonths} month${requestedDurationMonths === 1 ? "" : "s"}`,
   ].filter(Boolean);
   const formattedNotes = notesParts.length > 0 ? notesParts.join(' | ') : null;
 
@@ -187,14 +202,16 @@ export async function POST(req: Request) {
         requested_at: new Date().toISOString(),
         notes: formattedNotes,
         plan: requestedPlan,
+        subscription_duration_months: requestedDurationMonths,
       })
       .eq("id", existingSubscription.id)
       .select("*")
       .single();
 
     if (updateError) {
-      // If the DB schema doesn't have `plan`, retry without that column to remain backward compatible
-      if (typeof updateError.message === 'string' && updateError.message.toLowerCase().includes("plan")) {
+      const updateErrorMessage = typeof updateError.message === 'string' ? updateError.message.toLowerCase() : '';
+      // If the DB schema is older and does not include these newer columns, retry without them while preserving the rest of the flow.
+      if (updateErrorMessage.includes("plan") || updateErrorMessage.includes("subscription_duration_months")) {
         const { data: updatedSubscriptionRetry, error: updateErrorRetry } = await supabaseAdmin
           .from("tenant_subscriptions")
           .update({
@@ -236,13 +253,14 @@ export async function POST(req: Request) {
       requested_at: new Date().toISOString(),
       notes: formattedNotes,
       plan: requestedPlan,
+      subscription_duration_months: requestedDurationMonths,
     })
     .select("*")
     .single();
 
   if (createError) {
-    // Retry without `plan` if the DB doesn't have that column yet
-    if (typeof createError.message === 'string' && createError.message.toLowerCase().includes("plan")) {
+    const createErrorMessage = typeof createError.message === 'string' ? createError.message.toLowerCase() : '';
+    if (createErrorMessage.includes("plan") || createErrorMessage.includes("subscription_duration_months")) {
       const res = await supabaseAdmin
         .from("tenant_subscriptions")
         .insert({

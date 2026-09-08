@@ -59,6 +59,9 @@ export default function AddPage() {
   const customFieldsQuery = useCustomFields();
   const customFields = customFieldsQuery.data || [];
   const visibleStandardFieldNames = getVisibleSystemFieldNames(customFields);
+  const theme = dark
+    ? "bg-slate-950 text-slate-100"
+    : "bg-slate-100 text-slate-950";
 
   // ================= LOAD CATEGORIES =================
   useEffect(() => {
@@ -190,10 +193,40 @@ export default function AddPage() {
 
   if (loading || subscriptionLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-950/90 text-white">
-        <div className="flex items-center gap-3">
-          <span className="h-5 w-5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-          <p>Loading inventory tools…</p>
+      <div className={`flex min-h-screen items-start flex-col lg:flex-row ${theme}`}>
+        <Sidebar />
+        <div className="flex-1 min-w-0 p-4 sm:p-6">
+          <div className="w-full min-w-0 space-y-8 px-2 sm:px-4 lg:px-6 animate-pulse">
+            <div className="mb-6 flex flex-col gap-4">
+              <div className="h-10 w-28 rounded-full bg-theme-surface" />
+              <div className="space-y-2">
+                <div className="h-9 w-40 rounded-2xl bg-theme-surface" />
+                <div className="h-4 w-52 rounded-xl bg-theme-surface/80" />
+              </div>
+            </div>
+
+            <div className="rounded-3xl border border-theme-surface bg-theme-card p-5 shadow-soft">
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {Array.from({ length: 6 }).map((_, index) => (
+                  <div key={index} className="space-y-2">
+                    <div className="h-3 w-24 rounded-full bg-theme-surface" />
+                    <div className="h-12 rounded-2xl bg-theme-surface" />
+                  </div>
+                ))}
+              </div>
+              <div className="mt-6 grid gap-4 md:grid-cols-2">
+                {Array.from({ length: 2 }).map((_, index) => (
+                  <div key={index} className="space-y-2">
+                    <div className="h-3 w-24 rounded-full bg-theme-surface" />
+                    <div className="h-12 rounded-2xl bg-theme-surface" />
+                  </div>
+                ))}
+              </div>
+              <div className="mt-6 flex justify-end">
+                <div className="h-12 w-40 rounded-2xl bg-theme-surface" />
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -214,11 +247,6 @@ export default function AddPage() {
       </div>
     );
   }
-
-  const theme = dark
-    ? "bg-slate-950 text-slate-100"
-    : "bg-slate-100 text-slate-950";
-  
 
   return (
     <div

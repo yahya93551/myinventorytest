@@ -10,6 +10,20 @@ import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { useTheme } from "@/lib/theme-context";
 import { jsPDF } from "jspdf";
 import { mapSaleRecord } from "@/lib/apiMappers";
+import { formatNetSoldWithUnits, formatQuantityWithUnits } from "@/lib/productUnitConversion";
+
+type ProductMetrics = {
+  product_id: string;
+  product_name: string;
+  stock_loaded: number;
+  started: number | null;
+  sold: number;
+  returned: number;
+  remaining: number;
+  base_unit?: string | null;
+  converted_unit?: string | null;
+  conversion_rate?: number | null;
+};
 
 import {
   Download,
@@ -24,47 +38,127 @@ export default function ReportsPage() {
   const { dark } = useTheme();
 
   const [sales, setSales] = useState<Array<Sale & { user_email?: string; user_id?: string }>>([]);
+  const [productMetrics, setProductMetrics] = useState<ProductMetrics[]>([]);
   const [filter, setFilter] = useState<"7d" | "30d" | "all">("all");
   const [loadingSales, setLoadingSales] = useState(true);
+  const [loadingMetrics, setLoadingMetrics] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<string>("Not updated yet");
 
-  // ================= LOAD SALES =================
+  const loadMetrics = async () => {
+    setLoadingMetrics(true);
+    setError(null);
+
+    try {
+      const response = await apiGet<ProductMetrics[]>(`/api/reports/product-metrics?filter=${filter}`);
+      setProductMetrics(response.data || []);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to load product metrics"
+      );
+      setProductMetrics([]);
+    } finally {
+      setLoadingMetrics(false);
+    }
+  };
+
+  const loadSales = async () => {
+    setLoadingSales(true);
+    setError(null);
+
+    try {
+      const response = await apiGet<Sale[]>("/api/sales?limit=100");
+
+      const mapped: Sale[] = (response.data || []).map((sale: any) => {
+        const normalized = mapSaleRecord(sale) as any;
+        return {
+          ...normalized,
+          productName: normalized.productName || normalized.product_name || "Unknown",
+          quantityUnit: normalized.quantityUnit || normalized.quantity_unit,
+        } as Sale;
+      });
+
+      setSales(mapped);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to load reports"
+      );
+
+      setSales([]);
+    } finally {
+      setLoadingSales(false);
+    }
+  };
+
+  const formatMetricValue = (metric: ProductMetrics, field: "stock_loaded" | "started" | "sold" | "returned" | "remaining") => {
+    const value = metric[field];
+    const numericValue = Number(value ?? 0);
+    const baseUnit = metric.base_unit?.trim();
+    const convertedUnit = metric.converted_unit?.trim();
+    const conversionRate = typeof metric.conversion_rate === "number" && Number.isFinite(metric.conversion_rate) && metric.conversion_rate > 0
+      ? metric.conversion_rate
+      : null;
+
+    if (value === null || value === undefined) {
+      return "—";
+    }
+
+    if (baseUnit && convertedUnit && conversionRate) {
+      return formatQuantityWithUnits(numericValue, {
+        base_unit: baseUnit,
+        converted_unit: convertedUnit,
+        conversion_rate: conversionRate,
+      });
+    }
+
+    if (baseUnit && Number.isFinite(numericValue)) {
+      return `${numericValue} ${baseUnit}`;
+    }
+
+    return String(value);
+  };
+
+  const getMetricDisplayValue = (
+    metric: ProductMetrics,
+    field: "stock_loaded" | "started" | "sold" | "returned" | "remaining"
+  ) => {
+    const value = metric[field];
+    if (value === null || value === undefined) {
+      return "—";
+    }
+    return formatMetricValue(metric, field);
+  };
+
+  const refreshReports = async () => {
+    if (loading) return;
+
+    await Promise.all([loadSales(), loadMetrics()]);
+    const now = new Date();
+    setLastUpdated(
+      now.toLocaleString("en-US", {
+        timeZone: "Africa/Mogadishu",
+        dateStyle: "medium",
+        timeStyle: "short",
+      })
+    );
+  };
+
   useEffect(() => {
-    const loadSales = async () => {
-      setLoadingSales(true);
-      setError(null);
-
-      try {
-        const response = await apiGet<Sale[]>("/api/sales?limit=100");
-
-        const mapped: Sale[] = (response.data || []).map((sale: any) => {
-          const normalized = mapSaleRecord(sale) as any;
-          return {
-            ...normalized,
-            productName: normalized.productName || normalized.product_name || "Unknown",
-            quantityUnit: normalized.quantityUnit || normalized.quantity_unit,
-          } as Sale;
-        });
-
-        setSales(mapped);
-      } catch (err) {
-        setError(
-          err instanceof Error
-            ? err.message
-            : "Failed to load reports"
-        );
-
-        setSales([]);
-      } finally {
-        setLoadingSales(false);
-      }
-    };
-
     // Wait until auth finishes
     if (!loading) {
-      loadSales();
+      refreshReports();
     }
   }, [loading]);
+
+  useEffect(() => {
+    if (!loading) {
+      loadMetrics();
+    }
+  }, [loading, filter]);
 
   // ================= SAFE DATE =================
   const getSaleDate = (
@@ -186,20 +280,46 @@ export default function ReportsPage() {
 
   // ================= PER PRODUCT =================
   const perProduct = useMemo(() => {
-    const map: Record<string, number> =
-      {};
+    const map: Record<
+      string,
+      {
+        quantity: number;
+        unit?: string | null;
+        base_unit?: string | null;
+        converted_unit?: string | null;
+        conversion_rate?: number | null;
+      }
+    > = {};
 
     filteredSales.forEach((sale) => {
-      const name =
-        sale.productName || "Unknown";
+      const name = sale.productName || "Unknown";
+      const productMeta = productMetrics.find((metric) => metric.product_name === name);
 
-      map[name] =
-        (map[name] || 0) +
-        Number(sale.quantity || 0);
+      const current = map[name] || {
+        quantity: 0,
+        unit: sale.quantityUnit || sale.quantity_unit || null,
+        base_unit: productMeta?.base_unit ?? null,
+        converted_unit: productMeta?.converted_unit ?? null,
+        conversion_rate: productMeta?.conversion_rate ?? null,
+      };
+
+      current.quantity += Number(sale.quantity || 0);
+
+      if (productMeta) {
+        current.base_unit = productMeta.base_unit ?? current.base_unit ?? null;
+        current.converted_unit = productMeta.converted_unit ?? current.converted_unit ?? null;
+        current.conversion_rate = productMeta.conversion_rate ?? current.conversion_rate ?? null;
+      }
+
+      if (!current.unit && productMeta?.base_unit) {
+        current.unit = productMeta.base_unit;
+      }
+
+      map[name] = current;
     });
 
     return map;
-  }, [filteredSales]);
+  }, [filteredSales, productMetrics]);
 
   // ================= DOWNLOAD PDF =================
   const downloadPdf = () => {
@@ -331,6 +451,9 @@ export default function ReportsPage() {
               <p className="text-theme-secondary mt-2">
                 Latest sale: {latestSale}
               </p>
+              <p className="text-theme-secondary mt-1 text-sm">
+                Last updated: {lastUpdated}
+              </p>
 
               {/* FILTERS */}
               <div className="flex flex-wrap gap-2 mt-4 items-center">
@@ -374,10 +497,10 @@ export default function ReportsPage() {
                 </button>
 
                 <button
-                  onClick={() => setFilter("all")}
+                  onClick={() => refreshReports()}
                   className="ml-auto rounded-full border border-theme px-4 py-2 text-sm font-semibold text-theme-primary hover:bg-theme-card transition"
                 >
-                  View all
+                  Refresh
                 </button>
               </div>
             </div>
@@ -394,7 +517,7 @@ export default function ReportsPage() {
 
           {/* ERROR */}
           {error && (
-            <div className="mb-6 rounded-2xl bg-red-500/10 border border-red-500/20 p-4 text-red-100">
+            <div className="mb-6 rounded-2xl border border-red-300 bg-red-100 p-4 text-sm font-medium text-red-900 shadow-sm">
               {error}
             </div>
           )}
@@ -491,16 +614,85 @@ export default function ReportsPage() {
             </h3>
 
             {Object.entries(perProduct).map(
-              ([product, qty], index) => (
-                <div
-                  key={`${product}-${index}`}
-                  className="flex justify-between py-2 border-b border-theme"
-                >
-                  <span>{product}</span>
+              ([product, item], index) => {
+                const quantityText = item.base_unit && item.converted_unit && item.conversion_rate
+                  ? formatQuantityWithUnits(item.quantity, {
+                      base_unit: item.base_unit,
+                      converted_unit: item.converted_unit,
+                      conversion_rate: item.conversion_rate,
+                    })
+                  : item.unit
+                    ? `${item.quantity} ${item.unit}`
+                    : `${item.quantity} pcs`;
 
-                  <span>{qty} pcs</span>
-                </div>
-              )
+                return (
+                  <div
+                    key={`${product}-${index}`}
+                    className="flex justify-between py-2 border-b border-theme"
+                  >
+                    <span>{product}</span>
+
+                    <span>{quantityText}</span>
+                  </div>
+                );
+              }
+            )}
+          </div>
+
+          <div className="bg-theme-card p-6 rounded-2xl mb-6 border border-theme">
+            <div className="mb-4 flex items-center justify-between gap-4">
+              <h3 className="text-lg font-semibold">
+                Product inventory metrics
+              </h3>
+              <span className="text-sm text-theme-secondary">
+                {loadingMetrics ? "Refreshing..." : `${productMetrics.length} products`}
+              </span>
+            </div>
+
+            {loadingMetrics ? (
+              <div className="rounded-2xl bg-theme-input p-4 text-theme-secondary">
+                Loading product metrics...
+              </div>
+            ) : productMetrics.length === 0 ? (
+              <div className="rounded-2xl bg-theme-input p-4 text-theme-secondary">
+                No product metrics available.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-175 text-left border border-theme border-collapse">
+                  <thead className="text-theme-secondary">
+                    <tr>
+                      <th className="px-3 py-3 border-r border-b border-theme bg-slate-200/80 text-slate-900 dark:bg-slate-800/80 dark:text-slate-100">Product</th>
+                      <th className="px-3 py-3 border-r border-b border-theme bg-slate-200/80 text-slate-900 dark:bg-slate-800/80 dark:text-slate-100">Started</th>
+                      <th className="px-3 py-3 border-r border-b border-theme bg-slate-200/80 text-slate-900 dark:bg-slate-800/80 dark:text-slate-100">Added</th>
+                      <th className="px-3 py-3 border-r border-b border-theme bg-slate-200/80 text-slate-900 dark:bg-slate-800/80 dark:text-slate-100">Sold</th>
+                      <th className="px-3 py-3 border-r border-b border-theme bg-slate-200/80 text-slate-900 dark:bg-slate-800/80 dark:text-slate-100">Returned</th>
+                      <th className="px-3 py-3 border-r border-b border-theme bg-slate-200/80 text-slate-900 dark:bg-slate-800/80 dark:text-slate-100">Net sold</th>
+                      <th className="px-3 py-3 border-b border-theme bg-slate-200/80 text-slate-900 dark:bg-slate-800/80 dark:text-slate-100">Remaining</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {productMetrics.map((metric) => (
+                      <tr key={metric.product_id} className="border-b border-theme">
+                        <td className="px-3 py-3 border-r border-theme">{metric.product_name}</td>
+                        <td className="px-3 py-3 border-r border-theme">{getMetricDisplayValue(metric, "started")}</td>
+                        <td className="px-3 py-3 border-r border-theme">{getMetricDisplayValue(metric, "stock_loaded")}</td>
+                        <td className="px-3 py-3 border-r border-theme">{getMetricDisplayValue(metric, "sold")}</td>
+                        <td className="px-3 py-3 border-r border-theme">{getMetricDisplayValue(metric, "returned")}</td>
+                        <td className="px-3 py-3 border-r border-theme">{formatNetSoldWithUnits(
+                          Math.max(0, (metric.sold ?? 0) - (metric.returned ?? 0)),
+                          {
+                            base_unit: metric.base_unit,
+                            converted_unit: metric.converted_unit,
+                            conversion_rate: metric.conversion_rate,
+                          }
+                        )}</td>
+                        <td className="px-3 py-3">{getMetricDisplayValue(metric, "remaining")}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
 

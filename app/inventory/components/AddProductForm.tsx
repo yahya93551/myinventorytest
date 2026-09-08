@@ -226,16 +226,49 @@ export default function AddProductForm({
 
             <input
               className={inputStyle}
-              type="number"
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
               placeholder="Enter stock quantity"
               value={stock}
-              onChange={(e) =>
-                setStock(
-                  e.target.value === ""
-                    ? ""
-                    : Number(e.target.value)
-                )
-              }
+              onWheel={(e) => e.preventDefault()}
+              onKeyDown={(e) => {
+                if (
+                  [
+                    "ArrowUp",
+                    "ArrowDown",
+                    "PageUp",
+                    "PageDown",
+                    "Home",
+                    "End",
+                    "e",
+                    "E",
+                    "+",
+                    "-",
+                    ".",
+                    ",",
+                  ].includes(e.key)
+                ) {
+                  e.preventDefault();
+                }
+              }}
+              onChange={(e) => {
+                const raw = e.target.value;
+
+                if (raw === "") {
+                  setStock("");
+                  return;
+                }
+
+                const nextValue = raw.replace(/[^0-9]/g, "");
+
+                if (nextValue === "") {
+                  setStock("");
+                  return;
+                }
+
+                setStock(Number(nextValue));
+              }}
               required={field.is_required}
             />
           </div>

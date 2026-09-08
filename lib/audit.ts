@@ -67,6 +67,20 @@ function isSchemaCompatibilityError(error: unknown): boolean {
   );
 }
 
+export function buildActivityLogInsertPayload(entry: AuditLogEntry): Record<string, unknown> {
+  const createdAt = new Date().toISOString();
+
+  return {
+    tenant_id: entry.tenantId,
+    performed_by: entry.performedBy,
+    action: entry.action,
+    entity: entry.entity,
+    entity_id: entry.entityId || null,
+    details: entry.details || {},
+    created_at: createdAt,
+  };
+}
+
 export async function logAuditTrail(
   entry: AuditLogEntry,
   request?: Request
@@ -77,8 +91,6 @@ export async function logAuditTrail(
     const userAgent = entry.userAgent || (request ? extractUserAgent(request) : undefined);
     const httpMethod = entry.httpMethod || request?.method;
     const endpoint = entry.endpoint || new URL(request?.url || '').pathname;
-
-    // Store in database
 
     // If this is a LOGIN action, avoid noisy repeated logins (e.g., page refreshes)
     if (entry.action === 'LOGIN' && entry.performedBy) {
@@ -95,40 +107,37 @@ export async function logAuditTrail(
 
         if (lastLogin && (lastLogin as any).created_at) {
           const lastTime = new Date((lastLogin as any).created_at).getTime();
-          // Skip if last login logged within 5 minutes
           if (Date.now() - lastTime < 5 * 60 * 1000) {
             return true;
           }
         }
       } catch (e) {
-        // If this check fails, continue to attempt logging as normal
         console.error('[AUDIT] Failed to check last LOGIN timestamp:', e);
       }
     }
 
-    const { error } = await supabaseAdmin
-      .from('activity_logs')
-      .insert({
-        tenant_id: entry.tenantId,
-        performed_by: entry.performedBy,
-        action: entry.action,
-        entity: entry.entity,
-        entity_id: entry.entityId || null,
-        details: entry.details || {},
-        ip_address: ipAddress,
-        user_agent: userAgent,
-        http_method: httpMethod,
-        endpoint: endpoint,
-        status_code: entry.statusCode,
-        created_at: new Date().toISOString(),
-      });
+    const basePayload = buildActivityLogInsertPayload(entry);
+    const enhancedPayload = {
+      ...basePayload,
+      ...(ipAddress ? { ip_address: ipAddress } : {}),
+      ...(userAgent ? { user_agent: userAgent } : {}),
+      ...(httpMethod ? { http_method: httpMethod } : {}),
+      ...(endpoint ? { endpoint } : {}),
+      ...(typeof entry.statusCode === 'number' ? { status_code: entry.statusCode } : {}),
+    };
+
+    const tryInsert = async (payload: Record<string, unknown>) =>
+      supabaseAdmin.from('activity_logs').insert(payload);
+
+    let { error } = await tryInsert(enhancedPayload);
+
+    if (error && isSchemaCompatibilityError(error)) {
+      console.warn('[AUDIT] Enhanced activity log payload not supported by schema; retrying with minimal payload.', error.message);
+      const fallbackResult = await tryInsert(basePayload);
+      error = fallbackResult.error;
+    }
 
     if (error) {
-      if (isSchemaCompatibilityError(error)) {
-        return false;
-      }
-
-      // Log detailed info to make failures visible in server logs
       console.error('[AUDIT] Failed to insert activity_logs row. Error:', error, 'Payload:', {
         tenant_id: entry.tenantId,
         performed_by: entry.performedBy,
@@ -137,23 +146,12 @@ export async function logAuditTrail(
         entity_id: entry.entityId || null,
       });
 
-      // Try a minimal fallback insert to avoid issues from optional fields
       try {
-        const { error: fallbackError } = await supabaseAdmin
-          .from('activity_logs')
-          .insert({
-            tenant_id: entry.tenantId,
-            performed_by: entry.performedBy,
-            action: entry.action,
-            entity: entry.entity,
-            created_at: new Date().toISOString(),
-          });
-
-        if (fallbackError) {
-          console.error('[AUDIT] Fallback insert failed:', fallbackError);
+        const fallbackResult = await tryInsert(basePayload);
+        if (fallbackResult.error) {
+          console.error('[AUDIT] Fallback insert failed:', fallbackResult.error);
           return false;
         }
-
         return true;
       } catch (fallbackEx) {
         console.error('[AUDIT] Exception during fallback insert:', fallbackEx);

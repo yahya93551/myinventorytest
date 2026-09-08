@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
@@ -61,6 +61,7 @@ export default function SettingsPage() {
   const [toastType, setToastType] = useState<"success" | "error">("success");
   const [showToast, setShowToast] = useState(false);
   const [createMemberFormOpen, setCreateMemberFormOpen] = useState(false);
+  const subscriptionSectionRef = useRef<HTMLElement | null>(null);
   const router = useRouter();
   const { subscription, isActive: subscriptionActive, loading: subscriptionLoading } = useSubscription();
 
@@ -101,7 +102,15 @@ export default function SettingsPage() {
     { id: "customfields", label: "Custom Fields", icon: Layers },
     { id: "system", label: "System Controls", icon: Settings2 },
     { id: "subuser", label: "Create Sub-user", icon: PlusCircle },
-  ];
+  ] as const;
+
+  const handleSectionChange = (section: (typeof settingTabs)[number]["id"]) => {
+    setActiveSection(section);
+    const params = new URLSearchParams(window.location.search);
+    params.set("tab", section);
+    const query = params.toString();
+    router.replace(query ? `/settings?${query}` : "/settings", { scroll: false });
+  };
 
   const handleLogout = async () => {
     try {
@@ -117,6 +126,26 @@ export default function SettingsPage() {
       setBusinessType(businessSettings.business_type);
     }
   }, [businessSettings]);
+
+  useEffect(() => {
+    const tabFromUrl = new URLSearchParams(window.location.search).get("tab");
+    if (!tabFromUrl) return;
+
+    const matchingTab = settingTabs.find((tab) => tab.id === tabFromUrl);
+    if (matchingTab) {
+      setActiveSection(matchingTab.id);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeSection === "subscription") {
+      const timer = window.setTimeout(() => {
+        subscriptionSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 50);
+
+      return () => window.clearTimeout(timer);
+    }
+  }, [activeSection]);
 
   const handleUpdatePassword = async () => {
     setPasswordMessage("");
@@ -647,7 +676,7 @@ const token = await getAccessToken();
                       <button
                         key={tab.id}
                         type="button"
-                        onClick={() => setActiveSection(tab.id as "owner" | "system" | "subuser" | "business" | "customfields" | "standardfields" | "subscription")}
+                        onClick={() => handleSectionChange(tab.id)}
                         className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm whitespace-nowrap transition-all duration-200 ${
                           selected
                             ? "bg-cyan-500 text-slate-950 shadow-[0_4px_12px_rgba(6,182,212,0.3)]"
@@ -936,7 +965,7 @@ CREATE TABLE IF NOT EXISTS tenant_members (
 
               {/* Subscription Management */}
               {activeSection === "subscription" && (
-                <section>
+                <section ref={subscriptionSectionRef}>
                   <div className="mb-6">
                     <h2 className="text-2xl font-bold text-theme-primary">Subscription Management</h2>
                     <p className="text-theme-secondary mt-1">View and manage your subscription details.</p>
@@ -963,7 +992,7 @@ CREATE TABLE IF NOT EXISTS tenant_members (
                         <p className="text-theme-secondary mt-2">Only the tenant owner can view activity logs.</p>
                       </div>
                     ) : (
-                      <ActivityLog perPage={20} />
+                      <ActivityLog perPage={100} />
                     )}
                   </div>
                 </section>

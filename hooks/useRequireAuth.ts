@@ -24,7 +24,7 @@ export function useRequireAuth() {
         if (error || !data.session?.user) {
           router.replace("/login");
           return;
-        }
+        } 
 
         setUser(data.session.user);
       } catch (err) {

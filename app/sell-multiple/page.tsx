@@ -36,9 +36,25 @@ export default function SellMultiplePage() {
     if (!loading) load();
   }, [loading]);
 
-  const handleConfirm = async (items: Array<{ productId: string; quantity: number }>, metadata?: Record<string, any>) => {
+  const handleConfirm = async (
+    items: Array<{ productId: string; quantity: number; unit?: 'base' | 'converted' }>,
+    metadata?: Record<string, any>
+  ) => {
     try {
-      const res = await apiPost('/api/sales/bulk', { items, metadata });
+      const payload = {
+        items: items.map((item) => ({
+          product_id: item.productId,
+          quantity: item.quantity,
+          unit: item.unit || 'base',
+        })),
+        order_id: metadata?.order_id,
+        customer_name: metadata?.customer_name,
+        customer_address: metadata?.customer_address,
+        customer_phone: metadata?.customer_phone,
+        paid: metadata?.paid,
+      };
+
+      const res = await apiPost('/api/sales', payload);
       if (res.success) {
         setMessage({ type: 'success', text: 'Bulk sale completed successfully.' });
         return true;

@@ -229,7 +229,26 @@ export async function POST(req: Request) {
       return jsonError("Stock must be a non-negative integer", 400);
     }
 
-    // Phase 5: Database Insert
+    // Phase 5: Prevent duplicate rows by exact key columns
+    const { data: existingProducts, error: duplicateLookupError } = await supabaseAdmin
+      .from("products")
+      .select("id")
+      .eq("tenant_id", tenantContext.tenantId)
+      .ilike("name", name.trim())
+      .ilike("category", category.trim())
+      .eq("cost_price", cost_price)
+      .eq("price", price)
+      .eq("stock", stock)
+      .limit(1);
+
+    if (duplicateLookupError) {
+      console.warn("[POST /api/products] Duplicate lookup warning:", duplicateLookupError.message);
+    }
+
+    if ((existingProducts || []).length > 0) {
+      return jsonError("A product with the same name, category, cost price, sell price, and stock already exists.", 409);
+    }
+
     const productPayload = {
       name,
       category,
@@ -312,7 +331,18 @@ export async function POST(req: Request) {
       "product",
       req,
       insertedProduct.id,
-      { name, category, cost_price, price, stock, base_unit: normalizedBaseUnit, converted_unit: normalizedConvertedUnit, conversion_rate: normalizedConversionRate, ...(normalizedStockRemainder !== null ? { stock_remainder: normalizedStockRemainder } : {}) }
+      {
+        name,
+        category,
+        cost_price,
+        price,
+        stock,
+        initialStock: stock,
+        base_unit: normalizedBaseUnit,
+        converted_unit: normalizedConvertedUnit,
+        conversion_rate: normalizedConversionRate,
+        ...(normalizedStockRemainder !== null ? { stock_remainder: normalizedStockRemainder } : {})
+      }
     );
     
     return jsonSuccess(mapProductRecord(insertedProduct), 201);
