@@ -185,8 +185,9 @@ export async function POST(req: Request) {
 
   if (existingSubscription) {
     const normalizedExisting = normalizeSubscription(existingSubscription);
-    // If there's an active or pending subscription/request, block new requests
-    if (normalizedExisting.status === "active" || normalizedExisting.status === "pending") {
+    // A pending request must finish before another request can be submitted.
+    // Active subscribers may request an extension at any time.
+    if (normalizedExisting.status === "pending") {
       return NextResponse.json(
         { error: "Subscription already exists for this account. Current status: " + normalizedExisting.status },
         { status: 400 }

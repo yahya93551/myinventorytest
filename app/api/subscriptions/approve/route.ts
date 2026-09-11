@@ -91,7 +91,11 @@ export async function POST(req: Request) {
     : 1;
   const durationMonths = [1, 3, 6, 12].includes(requestedDurationMonths) ? requestedDurationMonths : 1;
 
-  const activeUntil = new Date(today);
+  const currentExpiry = subscription.active_until ? new Date(subscription.active_until) : null;
+  const extensionStart = currentExpiry && !Number.isNaN(currentExpiry.getTime()) && currentExpiry > today
+    ? currentExpiry
+    : today;
+  const activeUntil = new Date(extensionStart);
   activeUntil.setMonth(activeUntil.getMonth() + durationMonths);
 
   const nextBillingDate = new Date(activeUntil);
