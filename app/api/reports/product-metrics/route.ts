@@ -42,7 +42,7 @@ export async function GET(req: Request) {
   const [{ data: products, error: productsError }, { data: stockLogs, error: stockLogsError }] = await Promise.all([
     supabaseAdmin
       .from("products")
-      .select("id, name, stock, base_unit, converted_unit, conversion_rate")
+      .select("id, name, stock, stock_remainder, base_unit, converted_unit, conversion_rate")
       .eq("tenant_id", tenantContext.tenantId),
     supabaseAdmin
       .from("activity_logs")
@@ -137,6 +137,14 @@ export async function GET(req: Request) {
     return acc;
   }, {});
 
+  const soldUnitModesByProduct = (sales || []).reduce<Record<string, Set<string>>>((acc, record: any) => {
+    if (!record?.product_id || (record.type || "sale").toString().toLowerCase() === "return") return acc;
+    const mode = (record.unit || "base").toString().toLowerCase() === "converted" ? "converted" : "base";
+    acc[record.product_id] ||= new Set<string>();
+    acc[record.product_id].add(mode);
+    return acc;
+  }, {});
+
   const returnedByProduct = (sales || []).reduce<Record<string, number>>((acc, record: any) => {
     if (!record?.product_id) return acc;
     const saleType = (record.type || "sale").toString().toLowerCase();
@@ -154,10 +162,19 @@ export async function GET(req: Request) {
   }, {});
 
   const metrics = (products || []).map((product: any) => {
-    const remaining = typeof product.stock === "number" ? product.stock : 0;
+    const conversionRate = typeof product.conversion_rate === "number" && Number.isFinite(product.conversion_rate) && product.conversion_rate > 0
+      ? product.conversion_rate
+      : null;
+    const stock = typeof product.stock === "number" ? product.stock : 0;
+    const stockRemainder = typeof product.stock_remainder === "number" ? product.stock_remainder : 0;
+    const remaining = conversionRate ? stock + stockRemainder / conversionRate : stock;
     const sold = soldByProduct[product.id] || 0;
     const returned = returnedByProduct[product.id] || 0;
     const loaded = loadedByProduct[product.id] || 0;
+    const soldUnitModes = soldUnitModesByProduct[product.id];
+    const sold_unit_mode = soldUnitModes?.size === 1
+      ? Array.from(soldUnitModes)[0]
+      : soldUnitModes?.size ? "mixed" : "base";
 
     return {
       product_id: product.id,
@@ -169,7 +186,8 @@ export async function GET(req: Request) {
       remaining,
       base_unit: product.base_unit ?? null,
       converted_unit: product.converted_unit ?? null,
-      conversion_rate: typeof product.conversion_rate === "number" ? product.conversion_rate : null,
+      conversion_rate: conversionRate,
+      sold_unit_mode,
     };
   })
     .sort((a, b) => b.sold - a.sold || b.stock_loaded - a.stock_loaded || a.product_name.localeCompare(b.product_name));

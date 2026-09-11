@@ -12,6 +12,8 @@ export type ConvertedSaleQuantity = {
   originalUnit: string;
 };
 
+export type QuantityDisplayMode = "base" | "converted" | "mixed";
+
 export function convertSaleQuantityToBaseUnits(
   quantity: number,
   product: ProductUnitConversionInput,
@@ -51,7 +53,8 @@ export function convertSaleQuantityToBaseUnits(
 
 export function formatQuantityWithUnits(
   quantity: number,
-  product: ProductUnitConversionInput
+  product: ProductUnitConversionInput,
+  displayMode: QuantityDisplayMode = "mixed"
 ): string {
   const normalizedBaseUnit = product.base_unit?.trim();
   const normalizedConvertedUnit = product.converted_unit?.trim();
@@ -71,44 +74,31 @@ export function formatQuantityWithUnits(
     return `${Number(quantity)}`;
   }
 
+  if (displayMode === "converted") {
+    return `${Math.round(Math.max(0, quantity) * conversionRate)} ${normalizedConvertedUnit}`;
+  }
+
+  if (displayMode === "base") {
+    return `${Number(quantity)} ${normalizedBaseUnit}`;
+  }
+
   const sign = quantity < 0 ? -1 : 1;
   const absoluteQuantity = Math.abs(quantity);
   const wholeBaseUnits = Math.floor(absoluteQuantity);
   const remainderConverted = Math.round((absoluteQuantity - wholeBaseUnits) * conversionRate);
 
-  const baseText = `${wholeBaseUnits} ${normalizedBaseUnit}`;
+  const baseText = wholeBaseUnits > 0 ? `${wholeBaseUnits} ${normalizedBaseUnit}` : null;
   const convertedText = remainderConverted > 0 ? `${remainderConverted} ${normalizedConvertedUnit}` : null;
-  const formatted = convertedText ? `${baseText} ${convertedText}` : baseText;
+  const formatted = [baseText, convertedText].filter(Boolean).join(" ") || `0 ${normalizedBaseUnit}`;
 
   return sign < 0 ? `-${formatted}` : formatted;
 }
 
 export function formatNetSoldWithUnits(
   quantity: number,
-  product: ProductUnitConversionInput
+  product: ProductUnitConversionInput,
+  displayMode: QuantityDisplayMode = "mixed"
 ): string {
-  const normalizedBaseUnit = product.base_unit?.trim();
-  const normalizedConvertedUnit = product.converted_unit?.trim();
-  const conversionRate = typeof product.conversion_rate === "number" && Number.isFinite(product.conversion_rate) && product.conversion_rate > 0
-    ? product.conversion_rate
-    : null;
-
   const numericValue = Number.isFinite(Number(quantity)) ? Number(quantity) : 0;
-
-  if (!normalizedBaseUnit || !normalizedConvertedUnit || !conversionRate) {
-    if (normalizedBaseUnit) {
-      return `${Math.max(0, Math.round(numericValue))} ${normalizedBaseUnit}`;
-    }
-
-    return `${Math.max(0, Math.round(numericValue))}`;
-  }
-
-  const absoluteQuantity = Math.max(0, Math.abs(numericValue));
-  const wholeBaseUnits = Math.floor(absoluteQuantity);
-  const remainderConverted = Math.round((absoluteQuantity - wholeBaseUnits) * conversionRate);
-
-  const baseText = `${wholeBaseUnits} ${normalizedBaseUnit}`;
-  const convertedText = remainderConverted > 0 ? `${remainderConverted} ${normalizedConvertedUnit}` : null;
-
-  return convertedText ? `${baseText} ${convertedText}` : baseText;
+  return formatQuantityWithUnits(Math.max(0, numericValue), product, displayMode);
 }

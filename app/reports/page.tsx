@@ -10,7 +10,7 @@ import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { useTheme } from "@/lib/theme-context";
 import { jsPDF } from "jspdf";
 import { mapSaleRecord } from "@/lib/apiMappers";
-import { formatNetSoldWithUnits, formatQuantityWithUnits } from "@/lib/productUnitConversion";
+import { convertSaleQuantityToBaseUnits, formatNetSoldWithUnits, formatQuantityWithUnits, QuantityDisplayMode } from "@/lib/productUnitConversion";
 
 type ProductMetrics = {
   product_id: string;
@@ -23,6 +23,7 @@ type ProductMetrics = {
   base_unit?: string | null;
   converted_unit?: string | null;
   conversion_rate?: number | null;
+  sold_unit_mode?: QuantityDisplayMode;
 };
 
 import {
@@ -102,6 +103,9 @@ export default function ReportsPage() {
     const conversionRate = typeof metric.conversion_rate === "number" && Number.isFinite(metric.conversion_rate) && metric.conversion_rate > 0
       ? metric.conversion_rate
       : null;
+    const displayMode = field === "sold" || field === "returned"
+      ? metric.sold_unit_mode || "mixed"
+      : "mixed";
 
     if (value === null || value === undefined) {
       return "—";
@@ -112,7 +116,7 @@ export default function ReportsPage() {
         base_unit: baseUnit,
         converted_unit: convertedUnit,
         conversion_rate: conversionRate,
-      });
+      }, displayMode);
     }
 
     if (baseUnit && Number.isFinite(numericValue)) {
@@ -303,7 +307,15 @@ export default function ReportsPage() {
         conversion_rate: productMeta?.conversion_rate ?? null,
       };
 
-      current.quantity += Number(sale.quantity || 0);
+      const saleQuantity = Number(sale.quantity || 0);
+      const saleUnit = (sale.unit || "base").toString().toLowerCase();
+      current.quantity += saleUnit === "converted" && current.base_unit && current.converted_unit && current.conversion_rate
+        ? convertSaleQuantityToBaseUnits(saleQuantity, {
+            base_unit: current.base_unit,
+            converted_unit: current.converted_unit,
+            conversion_rate: current.conversion_rate,
+          }, "converted").quantity
+        : saleQuantity;
 
       if (productMeta) {
         current.base_unit = productMeta.base_unit ?? current.base_unit ?? null;
@@ -685,7 +697,8 @@ export default function ReportsPage() {
                             base_unit: metric.base_unit,
                             converted_unit: metric.converted_unit,
                             conversion_rate: metric.conversion_rate,
-                          }
+                          },
+                          metric.sold_unit_mode || "mixed"
                         )}</td>
                         <td className="px-3 py-3">{getMetricDisplayValue(metric, "remaining")}</td>
                       </tr>

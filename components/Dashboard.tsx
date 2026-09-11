@@ -303,6 +303,12 @@ export default function Dashboard() {
             <div className="space-y-2 max-h-64 overflow-y-auto">
               {sales.slice(0, 5).map((sale) => {
                 const saleDate = getSaleDate(sale);
+                const saleProduct = products.find((product) => product.id === sale.productId);
+                const saleUnitLabel = sale.quantityUnit || sale.quantity_unit || (
+                  sale.unit === "converted"
+                    ? saleProduct?.converted_unit || saleProduct?.convertedUnit
+                    : saleProduct?.base_unit || saleProduct?.baseUnit
+                ) || "unit";
                 return (
                   <div key={sale.id} className="card-compact bg-theme-surface hover:bg-theme-card transition-colors">
                     <div className="flex items-center justify-between gap-4">
@@ -311,7 +317,7 @@ export default function Dashboard() {
                           {getProductName(sale)}
                         </p>
                         <p className="text-xs text-theme-secondary mt-1">
-                          {sale.quantity} units
+                          {sale.quantity} {saleUnitLabel}
                         </p>
                       </div>
                       <div className="text-right min-w-24">
