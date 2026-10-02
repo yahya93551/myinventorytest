@@ -5,6 +5,7 @@ import { useState } from "react";
 import { apiPost } from "@/lib/apiClient";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import type { DataExportFormat } from "@/types";
+import { supabase } from "@/lib/supabase";
 
 export default function GDPRSettingsPage() {
   const { loading } = useRequireAuth();
@@ -26,11 +27,45 @@ export default function GDPRSettingsPage() {
       );
 
       setExportToken(result.data?.export_token || null);
-      setMessage(
-        "A data export request was created. Use the download link below once the export is ready."
-      );
+      setMessage("Your export request was created. The export will be generated when downloaded.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to request export.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const downloadExport = async () => {
+    if (!exportToken) return;
+    setError(null);
+    setBusy(true);
+
+    try {
+      const { data, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !data.session) throw new Error("Please sign in again to download this export.");
+
+      const response = await fetch(
+        `/api/account/export-data?token=${encodeURIComponent(exportToken)}`,
+        { headers: { Authorization: `Bearer ${data.session.access_token}` } }
+      );
+      if (!response.ok) {
+        const result = await response.json().catch(() => null);
+        throw new Error(result?.error || "Failed to download export.");
+      }
+
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = `data-export-${new Date().toISOString().split("T")[0]}.${format}`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+      setExportToken(null);
+      setMessage("Your data export was downloaded.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to download export.");
     } finally {
       setBusy(false);
     }
@@ -116,14 +151,14 @@ export default function GDPRSettingsPage() {
       {exportToken ? (
         <div className="rounded-3xl border border-cyan-200 bg-cyan-50 p-4">
           <p className="text-sm text-slate-800">Download link (temporary):</p>
-          <a
-            href={`/api/account/export-data?token=${encodeURIComponent(exportToken)}`}
+          <button
+            type="button"
+            onClick={downloadExport}
+            disabled={busy}
             className="mt-2 inline-block text-sm font-semibold text-cyan-700 underline"
-            target="_blank"
-            rel="noreferrer"
           >
             Download your exported data
-          </a>
+          </button>
           <p className="mt-2 text-xs text-slate-500">The export token expires in 7 days.</p>
         </div>
       ) : null}

@@ -56,12 +56,11 @@ export async function getDataExportRequest(token: string) {
     .maybeSingle();
 
   if (error) {
-    console.error('[GDPR] Failed to fetch export request:', error);
-    return null;
+    throw new Error('Failed to fetch export request');
   }
 
   // Check if expired
-  if (data && new Date(data.expires_at) < new Date()) {
+  if (data && new Date(data.expires_at) <= new Date()) {
     return null; // Expired
   }
 
@@ -69,16 +68,38 @@ export async function getDataExportRequest(token: string) {
 }
 
 /**
+ * Atomically consume a ready export request before returning its contents.
+ */
+export async function consumeDataExportRequest(
+  token: string,
+  userId: string,
+  tenantId: string
+): Promise<boolean> {
+  const consumedAt = new Date().toISOString();
+  const { data, error } = await supabaseAdmin
+    .from('data_export_requests')
+    .update({ status: 'downloaded', downloaded_at: consumedAt })
+    .eq('export_token', token)
+    .eq('user_id', userId)
+    .eq('tenant_id', tenantId)
+    .in('status', ['pending', 'ready'])
+    .gt('expires_at', consumedAt)
+    .select('id')
+    .maybeSingle();
+
+  if (error) {
+    throw new Error('Failed to consume export request');
+  }
+
+  return Boolean(data);
+}
+
+/**
  * Compile user data for export (all products, sales, categories, etc.)
  */
 export async function compileUserDataForExport(tenantId: string) {
   try {
-    const [
-      { data: products },
-      { data: sales },
-      { data: categories },
-      { data: activityLogs },
-    ] = await Promise.all([
+    const results = await Promise.all([
       supabaseAdmin
         .from('products')
         .select()
@@ -97,6 +118,12 @@ export async function compileUserDataForExport(tenantId: string) {
         .eq('tenant_id', tenantId),
     ]);
 
+    if (results.some(({ error }) => error)) {
+      throw new Error('Failed to query export data');
+    }
+
+    const [products, sales, categories, activityLogs] = results.map(({ data }) => data || []);
+
     return {
       export_date: new Date().toISOString(),
       products: products || [],
@@ -104,8 +131,7 @@ export async function compileUserDataForExport(tenantId: string) {
       categories: categories || [],
       activity_logs: activityLogs || [],
     };
-  } catch (err) {
-    console.error('[GDPR] Failed to compile export data:', err);
+  } catch {
     throw new Error('Failed to compile export data');
   }
 }

@@ -1,12 +1,12 @@
 // app/api/account/export-data/route.ts - GDPR data export
-import { getServerTenantContext, jsonSuccess, jsonError } from '@/lib/api';
+import { requireRole, jsonSuccess, jsonError } from '@/lib/api';
 import { logAudit } from '@/lib/api';
 import {
   createDataExportRequest,
   getDataExportRequest,
+  consumeDataExportRequest,
   compileUserDataForExport,
   convertToCSV,
-  calculateDataSize,
 } from '@/lib/gdpr';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
@@ -20,9 +20,9 @@ const RequestDataExportSchema = z.object({
  */
 export async function POST(req: NextRequest) {
   try {
-    const tenantContext = await getServerTenantContext(req as any);
+    const tenantContext = await requireRole(req, ['owner', 'accountant', 'admin']);
     if ('error' in tenantContext) {
-      return jsonError(tenantContext.error, tenantContext.status);
+      return jsonError('Not authorized to request a tenant export', tenantContext.status);
     }
 
     const payload = await req.json();
@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
       tenantContext.userId,
       'REQUEST_DATA_EXPORT',
       'account',
-      req as any,
+      req,
       exportRequest.id,
       { format }
     );
@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
       message: 'Data export request created',
       export_token: exportRequest.export_token,
       expires_at: exportRequest.expires_at,
-      note: 'Your data will be prepared shortly. You will receive an email with download link.',
+      note: 'Your export is ready to download.',
     });
   } catch (err) {
     console.error('[GDPR] Data export request failed:', err);
@@ -69,29 +69,27 @@ export async function POST(req: NextRequest) {
  */
 export async function GET(req: NextRequest) {
   try {
+    const tenantContext = await requireRole(req, ['owner', 'accountant', 'admin']);
+    if ('error' in tenantContext) {
+      return jsonError('Not authorized to access this export', tenantContext.status);
+    }
+
     const token = req.nextUrl.searchParams.get('token');
 
     if (!token) {
-      return jsonError('Export token required', 400);
+      return jsonError('Export not available', 404);
     }
 
-    // Get export request
     const exportRequest = await getDataExportRequest(token);
-
-    if (!exportRequest) {
-      return jsonError('Export request not found or expired', 404);
+    if (
+      !exportRequest ||
+      exportRequest.user_id !== tenantContext.userId ||
+      exportRequest.tenant_id !== tenantContext.tenantId ||
+      !['pending', 'ready'].includes(exportRequest.status)
+    ) {
+      return jsonError('Export not available', 404);
     }
 
-    // Check if already downloaded (for security)
-    if (exportRequest.status === 'downloaded') {
-      return jsonError('This export has already been downloaded. Request a new one.', 403);
-    }
-
-    if (exportRequest.status !== 'ready') {
-      return jsonError(`Export not ready yet. Status: ${exportRequest.status}`, 202);
-    }
-
-    // Compile the data
     const data = await compileUserDataForExport(exportRequest.tenant_id);
 
     // Format based on requested format
@@ -109,9 +107,12 @@ export async function GET(req: NextRequest) {
       filename = `data-export-${new Date().toISOString().split('T')[0]}.json`;
     }
 
-    // Mark as downloaded
-    // In production, update the export_request.status to 'downloaded'
-    // and set downloaded_at timestamp
+    const consumed = await consumeDataExportRequest(
+      token,
+      tenantContext.userId,
+      tenantContext.tenantId
+    );
+    if (!consumed) return jsonError('Export not available', 404);
 
     return new NextResponse(fileContent, {
       status: 200,
@@ -130,6 +131,6 @@ export async function GET(req: NextRequest) {
 /**
  * OPTIONS handler for CORS preflight
  */
-export async function OPTIONS(req: NextRequest) {
+export async function OPTIONS() {
   return new NextResponse(null, { status: 204 });
 }
