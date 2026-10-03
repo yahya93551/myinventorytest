@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { getServerTenantContext, requireRole, jsonError, jsonSuccess, logAudit } from "@/lib/api";
+import { requireRole, jsonError, jsonSuccess, logAudit } from "@/lib/api";
 
 const RestockSchema = z.object({
   id: z.string().uuid(),
@@ -31,7 +31,7 @@ export async function POST(req: Request) {
 
   const { data: product, error: productError } = await supabaseAdmin
     .from("products")
-    .select("tenant_id, stock")
+    .select("tenant_id")
     .eq("id", id)
     .single();
 
@@ -43,18 +43,26 @@ export async function POST(req: Request) {
     return jsonError("You do not have permission to restock this product", 403);
   }
 
-  const newStock = (typeof product.stock === "number" ? product.stock : 0) + amount;
+  const { data, error: restockError } = await supabaseAdmin.rpc("restock_inventory_stock_transaction", {
+    p_tenant_id: tenantContext.tenantId,
+    p_product_id: id,
+    p_amount: amount,
+  });
 
-  const { data: updatedProduct, error: updateError } = await supabaseAdmin
-    .from("products")
-    .update({ stock: newStock })
-    .eq("id", id)
-    .eq("tenant_id", tenantContext.tenantId)
-    .select("stock")
-    .single();
+  if (restockError) {
+    const message = restockError.message || "Failed to restock product";
+    const separator = message.indexOf(":");
+    const errorCode = separator > 0 ? message.slice(0, separator) : "";
+    const clientMessage = separator > 0 ? message.slice(separator + 1).trim() : message;
+    const status = errorCode === "RESTOCK_NOT_FOUND" ? 404
+      : errorCode === "RESTOCK_INVALID" ? 422
+      : 500;
+    return jsonError(clientMessage, status);
+  }
 
-  if (updateError || !updatedProduct) {
-    return jsonError(updateError?.message || "Failed to update stock", 500);
+  const result = data as { stock?: unknown; previous_stock?: unknown } | null;
+  if (!result || typeof result.stock !== "number") {
+    return jsonError("Failed to update stock", 500);
   }
 
   await logAudit(
@@ -66,10 +74,10 @@ export async function POST(req: Request) {
     id,
     {
       amount,
-      previousStock: product.stock,
-      newStock: updatedProduct.stock,
+      previousStock: result.previous_stock,
+      newStock: result.stock,
     }
   );
 
-  return jsonSuccess({ stock: updatedProduct.stock });
+  return jsonSuccess({ stock: result.stock });
 }

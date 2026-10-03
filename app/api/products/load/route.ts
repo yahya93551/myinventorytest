@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { getServerTenantContext, requireRole, jsonError, jsonSuccess, logAudit, requireActiveSubscription } from "@/lib/api";
+import { requireRole, jsonError, jsonSuccess, logAudit, requireActiveSubscription } from "@/lib/api";
 
 const LoadSchema = z.object({
   id: z.string().uuid(),
@@ -36,7 +36,7 @@ export async function POST(req: Request) {
 
   const { data: product, error: productError } = await supabaseAdmin
     .from("products")
-    .select("tenant_id, stock, name")
+    .select("tenant_id")
     .eq("id", id)
     .single();
 
@@ -48,39 +48,29 @@ export async function POST(req: Request) {
     return jsonError("You do not have permission to load this product", 403);
   }
 
-  const existingStock = typeof product.stock === "number" ? product.stock : 0;
-  if (quantity > existingStock) {
-    return jsonError("Cannot take more than available stock", 400);
-  }
-
-  const newStock = existingStock - quantity;
-
-  const { data: updatedProduct, error: updateError } = await supabaseAdmin
-    .from("products")
-    .update({ stock: newStock })
-    .eq("id", id)
-    .eq("tenant_id", tenantContext.tenantId)
-    .gte("stock", quantity)
-    .select("stock")
-    .single();
-
-  if (updateError || !updatedProduct) {
-    return jsonError(updateError?.message || "Failed to update stock", 500);
-  }
-
-  const { error: insertTakeError } = await supabaseAdmin.from("inventory_takes").insert({
-    tenant_id: tenantContext.tenantId,
-    user_id: tenantContext.userId,
-    product_id: id,
-    product_name: product.name,
-    quantity_taken: quantity,
-    remaining_quantity: quantity,
-    reason: reason || null,
-    created_by: tenantContext.userId,
+  const { data, error: loadError } = await supabaseAdmin.rpc("load_inventory_stock_transaction", {
+    p_tenant_id: tenantContext.tenantId,
+    p_user_id: tenantContext.userId,
+    p_product_id: id,
+    p_quantity: quantity,
+    p_reason: reason || null,
   });
 
-  if (insertTakeError) {
-    console.error("Inventory load route: failed to insert allocation record", insertTakeError);
+  if (loadError) {
+    const message = loadError.message || "Failed to take stock";
+    const separator = message.indexOf(":");
+    const errorCode = separator > 0 ? message.slice(0, separator) : "";
+    const clientMessage = separator > 0 ? message.slice(separator + 1).trim() : message;
+    const status = errorCode === "LOAD_NOT_FOUND" ? 404
+      : errorCode === "LOAD_STOCK" ? 400
+      : errorCode === "LOAD_INVALID" ? 422
+      : 500;
+    return jsonError(clientMessage, status);
+  }
+
+  const result = data as { stock?: unknown; previous_stock?: unknown } | null;
+  if (!result || typeof result.stock !== "number") {
+    return jsonError("Failed to update stock", 500);
   }
 
   await logAudit(
@@ -93,10 +83,10 @@ export async function POST(req: Request) {
     {
       quantity,
       reason,
-      previousStock: existingStock,
-      newStock: updatedProduct.stock,
+      previousStock: result.previous_stock,
+      newStock: result.stock,
     }
   );
 
-  return jsonSuccess({ stock: updatedProduct.stock });
+  return jsonSuccess({ stock: result.stock });
 }
