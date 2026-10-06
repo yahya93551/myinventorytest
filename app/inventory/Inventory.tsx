@@ -57,6 +57,7 @@ type InventoryProps = {
     paid?: boolean;
     refund_reason?: string;
   }) => Promise<boolean>;
+  discardSaleIdempotencyKey: (kind: "sale" | "bulk" | "return") => boolean;
   addProduct: (product: ProductForm) => Promise<boolean>;
   addProductWithResult?: (product: ProductForm) => Promise<Product | null>;
   loadProduct: (id: string, quantity: number, reason?: string) => Promise<boolean>;
@@ -92,6 +93,7 @@ export default function Inventory(props: InventoryProps) {
     confirmSell,
     sellProducts,
     returnProduct,
+    discardSaleIdempotencyKey,
     addProduct,
     addProductWithResult,
     currentPage,
@@ -480,6 +482,7 @@ export default function Inventory(props: InventoryProps) {
   };
 
   const openReturnModal = (product: Product) => {
+    discardSaleIdempotencyKey("return");
     const matchingSale = [...sales]
       .filter((sale) => {
         const saleProductId = sale?.product_id ?? sale?.productId;
@@ -635,7 +638,10 @@ export default function Inventory(props: InventoryProps) {
           )}
           <div className="flex gap-2">
             <button
-              onClick={() => setBulkSellOpen(true)}
+              onClick={() => {
+                discardSaleIdempotencyKey("bulk");
+                setBulkSellOpen(true);
+              }}
               className="rounded-2xl border border-theme bg-theme-card px-5 py-3 min-h-11 text-sm font-semibold text-theme-primary transition hover:bg-theme-surface"
             >
               Sell multiple items
@@ -795,7 +801,10 @@ export default function Inventory(props: InventoryProps) {
       <BulkSellModal
         isOpen={bulkSellOpen}
         products={products}
-        onClose={() => setBulkSellOpen(false)}
+        onClose={() => {
+          discardSaleIdempotencyKey("bulk");
+          setBulkSellOpen(false);
+        }}
         onConfirm={sellProducts}
         showMessage={showMessage}
       />
@@ -840,7 +849,10 @@ export default function Inventory(props: InventoryProps) {
         setReturnAmount={setReturnAmount}
         returnReason={returnReason}
         setReturnReason={setReturnReason}
-        setReturnItem={setReturnItem}
+        setReturnItem={(item) => {
+          if (!item) discardSaleIdempotencyKey("return");
+          setReturnItem(item);
+        }}
         saveReturn={saveReturn}
         returnContext={returnContext}
       />

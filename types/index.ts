@@ -12,9 +12,12 @@ export const BaseProductSchema = z.object({
   image_url: z.string().optional(),
   user_id: z.string().uuid().optional(),
   custom_data: z.record(z.string(), z.any()).optional(),
-  base_unit: z.string().trim().max(50).optional(),
-  converted_unit: z.string().trim().max(50).optional(),
-  conversion_rate: z.number().positive('Conversion rate must be positive').optional(),
+  base_unit: z.string().trim().max(50).nullable().optional(),
+  converted_unit: z.string().trim().max(50).nullable().optional(),
+  conversion_rate: z.union([
+    z.number().positive('Conversion rate must be positive'),
+    z.null(),
+  ]).optional(),
   stock_remainder: z.number().int().min(0, 'Remainder cannot be negative').optional(),
 });
 
@@ -97,6 +100,12 @@ export const CategorySchema = z.string().min(1, 'Category name required').max(50
 // Types inferred from schemas
 export type Product = z.infer<typeof ProductSchema> & {
   allocated_quantity?: number;
+  allocation_availability?: {
+    base_quantity: number;
+    converted_quantity: number;
+    converted_unit: string | null;
+    conversion_rate: number | null;
+  };
   baseUnit?: string;
   convertedUnit?: string;
   conversionRate?: number;

@@ -1,9 +1,10 @@
 //app/hooks/useInventory.ts
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/apiClient";
+import { createSaleIdempotencyKey } from "@/lib/saleIdempotency";
 import { useTenantRole } from "@/hooks/useTenantRole";
 import {
   BulkSaleItem,
@@ -23,12 +24,31 @@ const formatZodError = (issues: any[]) =>
     .map((issue) => `${issue.path?.join?.(".") || "input"}: ${issue.message}`)
     .join(", ");
 
+  type SaleAttemptKind = "sale" | "bulk" | "return";
+
 export function useInventory() {
   const itemsPerPage = 10;
   const [currentPage, setCurrentPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
-  const [sellItem, setSellItem] = useState<Product | null>(null);
+  const [sellItem, setSellItemState] = useState<Product | null>(null);
   const [sellQty, setSellQty] = useState<number | "">(1);
+  const pendingSaleKeys = useRef(new Map<SaleAttemptKind, { signature: string; key: string }>());
+  const discardSaleIdempotencyKey = (kind: SaleAttemptKind) => pendingSaleKeys.current.delete(kind);
+  const getSaleIdempotencyKey = (kind: SaleAttemptKind, signature: string) => {
+    const existing = pendingSaleKeys.current.get(kind);
+    if (existing?.signature === signature) return existing.key;
+    const key = createSaleIdempotencyKey();
+    pendingSaleKeys.current.set(kind, { signature, key });
+    return key;
+  };
+  const clearCompletedSaleAttempt = (kind: SaleAttemptKind, signature: string, key: string) => {
+    const pending = pendingSaleKeys.current.get(kind);
+    if (pending?.signature === signature && pending.key === key) discardSaleIdempotencyKey(kind);
+  };
+  const setSellItem = (item: Product | null) => {
+    if (!item) discardSaleIdempotencyKey("sale");
+    setSellItemState(item);
+  };
 
   const handleSearchQueryChange = (value: string) => {
     setSearchQuery(value);
@@ -200,7 +220,7 @@ export function useInventory() {
 
   // ================= RETURN PRODUCT MUTATION =================
   const returnProductMutation = useMutation({
-    mutationFn: async ({ productId, quantity, metadata }: { productId: string; quantity: number; metadata?: SaleMetadata }) => {
+    mutationFn: async ({ productId, quantity, metadata, idempotencyKey }: { productId: string; quantity: number; metadata?: SaleMetadata; idempotencyKey: string; requestSignature: string }) => {
       if (!productId) {
         throw new Error("Product not specified");
       }
@@ -211,10 +231,12 @@ export function useInventory() {
         product_id: productId,
         quantity,
         type: "return",
+        idempotency_key: idempotencyKey,
         ...metadata,
       });
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
+      clearCompletedSaleAttempt("return", variables.requestSignature, variables.idempotencyKey);
       queryClient.invalidateQueries({ queryKey: ["products"] });
       queryClient.invalidateQueries({ queryKey: ["sales"] });
     },
@@ -222,7 +244,7 @@ export function useInventory() {
 
   // ================= SELL PRODUCT MUTATION =================
   const sellProductMutation = useMutation({
-    mutationFn: async ({ productId, quantity, metadata }: { productId: string; quantity: number; metadata?: SaleMetadata }) => {
+    mutationFn: async ({ productId, quantity, metadata, idempotencyKey }: { productId: string; quantity: number; metadata?: SaleMetadata; idempotencyKey: string; requestSignature: string }) => {
       if (quantity <= 0) {
         throw new Error("Sale quantity must be at least 1");
       }
@@ -235,10 +257,12 @@ export function useInventory() {
       await apiPost<void>("/api/sales", {
         product_id: productId,
         quantity,
+        idempotency_key: idempotencyKey,
         ...metadata,
       });
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
+      clearCompletedSaleAttempt("sale", variables.requestSignature, variables.idempotencyKey);
       queryClient.invalidateQueries({ queryKey: ["products"] });
       queryClient.invalidateQueries({ queryKey: ["sales"] });
     },
@@ -246,7 +270,7 @@ export function useInventory() {
 
   // ================= BULK SELL MUTATION =================
   const sellProductsMutation = useMutation({
-    mutationFn: async (payload: { items: BulkSaleItem[]; metadata?: SaleMetadata }) => {
+    mutationFn: async (payload: { items: BulkSaleItem[]; metadata?: SaleMetadata; idempotencyKey: string; requestSignature: string }) => {
       const normalizedItems = payload.items.reduce((acc, item) => {
         const existing = acc.find((entry) => entry.productId === item.productId);
         if (existing) {
@@ -276,10 +300,12 @@ export function useInventory() {
           quantity: item.quantity,
           unit: item.unit || 'base',
         })),
+        idempotency_key: payload.idempotencyKey,
         ...payload.metadata,
       });
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
+      clearCompletedSaleAttempt("bulk", variables.requestSignature, variables.idempotencyKey);
       queryClient.invalidateQueries({ queryKey: ["products"] });
       queryClient.invalidateQueries({ queryKey: ["sales"] });
       setCurrentPage(1);
@@ -340,7 +366,8 @@ export function useInventory() {
 
   // ================= SELL FLOW =================
   const openSell = (product: Product) => {
-    setSellItem(product);
+    discardSaleIdempotencyKey("sale");
+    setSellItemState(product);
     setSellQty("");
   };
 
@@ -353,6 +380,8 @@ export function useInventory() {
       productId: sellItem.id,
       quantity,
       metadata,
+      idempotencyKey: getSaleIdempotencyKey("sale", JSON.stringify({ type: "sale", productId: sellItem.id, quantity, metadata })),
+      requestSignature: JSON.stringify({ type: "sale", productId: sellItem.id, quantity, metadata }),
     });
     setSellQty(1);
     return true;
@@ -431,7 +460,8 @@ export function useInventory() {
     metadata?: SaleMetadata
   ): Promise<boolean> => {
     try {
-      await sellProductMutation.mutateAsync({ productId, quantity, metadata });
+      const requestSignature = JSON.stringify({ type: "sale", productId, quantity, metadata });
+      await sellProductMutation.mutateAsync({ productId, quantity, metadata, idempotencyKey: getSaleIdempotencyKey("sale", requestSignature), requestSignature });
       return true;
     } catch {
       return false;
@@ -444,7 +474,8 @@ export function useInventory() {
     metadata?: SaleMetadata
   ): Promise<boolean> => {
     try {
-      await returnProductMutation.mutateAsync({ productId, quantity, metadata });
+      const requestSignature = JSON.stringify({ type: "return", productId, quantity, metadata });
+      await returnProductMutation.mutateAsync({ productId, quantity, metadata, idempotencyKey: getSaleIdempotencyKey("return", requestSignature), requestSignature });
       return true;
     } catch {
       return false;
@@ -456,7 +487,8 @@ export function useInventory() {
     metadata?: SaleMetadata
   ): Promise<boolean> => {
     try {
-      await sellProductsMutation.mutateAsync({ items, metadata });
+      const requestSignature = JSON.stringify({ type: "sale", items, metadata });
+      await sellProductsMutation.mutateAsync({ items, metadata, idempotencyKey: getSaleIdempotencyKey("bulk", requestSignature), requestSignature });
       return true;
     } catch {
       return false;
@@ -531,6 +563,7 @@ export function useInventory() {
     sellProduct,
     sellProducts,
     returnProduct,
+    discardSaleIdempotencyKey,
 
     addCategory,
     updateCategory,

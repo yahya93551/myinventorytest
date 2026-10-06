@@ -28,91 +28,29 @@ export async function POST(req: Request) {
 
   const { id, quantity } = parseResult.data;
 
-  const { data: allocations, error: allocationsError } = await supabaseAdmin
-    .from("inventory_takes")
-    .select("id, remaining_quantity")
-    .eq("tenant_id", tenantContext.tenantId)
-    .eq("user_id", tenantContext.userId)
-    .eq("product_id", id)
-    .gt("remaining_quantity", 0)
-    .order("created_at", { ascending: true });
+  const { data, error } = await supabaseAdmin.rpc("drop_inventory_take_transaction", {
+    p_tenant_id: tenantContext.tenantId,
+    p_user_id: tenantContext.userId,
+    p_product_id: id,
+    p_quantity: quantity,
+  });
 
-  if (allocationsError) {
-    return jsonError(allocationsError.message, 500);
+  if (error) {
+    const message = error.message || "Failed to drop taken stock";
+    const separator = message.indexOf(":");
+    const errorCode = separator > 0 ? message.slice(0, separator) : "";
+    const clientMessage = separator > 0 ? message.slice(separator + 1).trim() : message;
+    const status = errorCode === "DROP_NOT_FOUND" ? 404
+      : errorCode === "DROP_NO_STOCK" || errorCode === "DROP_EXCEEDS_TAKEN" ? 400
+      : errorCode === "DROP_CONFLICT" ? 409
+      : errorCode === "DROP_INVALID" ? 422
+      : 500;
+    return jsonError(clientMessage, status);
   }
 
-  const totalRemaining = (allocations || []).reduce((sum: number, allocation: any) => {
-    return sum + (allocation?.remaining_quantity || 0);
-  }, 0);
-
-  if (totalRemaining <= 0) {
-    return jsonError("No taken stock available to drop", 400);
-  }
-
-  if (quantity > totalRemaining) {
-    return jsonError("Cannot drop more than the taken quantity", 400);
-  }
-
-  let remainingToDrop = quantity;
-  const allocationRollbacks: Array<{ id: string; remaining_quantity: number }> = [];
-
-  for (const allocation of allocations || []) {
-    if (remainingToDrop <= 0) break;
-    const consume = Math.min(allocation.remaining_quantity, remainingToDrop);
-    const newRemaining = allocation.remaining_quantity - consume;
-
-    const { error: updateError } = await supabaseAdmin
-      .from("inventory_takes")
-      .update({ remaining_quantity: newRemaining })
-      .eq("id", allocation.id);
-
-    if (updateError) {
-      for (const rollback of allocationRollbacks) {
-        await supabaseAdmin
-          .from("inventory_takes")
-          .update({ remaining_quantity: rollback.remaining_quantity })
-          .eq("id", rollback.id);
-      }
-      return jsonError(updateError.message || "Failed to drop taken stock", 500);
-    }
-
-    allocationRollbacks.push({ id: allocation.id, remaining_quantity: allocation.remaining_quantity });
-    remainingToDrop -= consume;
-  }
-
-  const { data: product, error: productError } = await supabaseAdmin
-    .from("products")
-    .select("stock")
-    .eq("id", id)
-    .eq("tenant_id", tenantContext.tenantId)
-    .single();
-
-  if (productError || !product) {
-    for (const rollback of allocationRollbacks) {
-      await supabaseAdmin
-        .from("inventory_takes")
-        .update({ remaining_quantity: rollback.remaining_quantity })
-        .eq("id", rollback.id);
-    }
-    return jsonError(productError?.message || "Product not found", 404);
-  }
-
-  const { data: updatedProduct, error: updateProductError } = await supabaseAdmin
-    .from("products")
-    .update({ stock: (product.stock || 0) + quantity })
-    .eq("id", id)
-    .eq("tenant_id", tenantContext.tenantId)
-    .select("stock")
-    .single();
-
-  if (updateProductError || !updatedProduct) {
-    for (const rollback of allocationRollbacks) {
-      await supabaseAdmin
-        .from("inventory_takes")
-        .update({ remaining_quantity: rollback.remaining_quantity })
-        .eq("id", rollback.id);
-    }
-    return jsonError(updateProductError?.message || "Failed to restore product stock", 500);
+  const result = data as { stock?: unknown } | null;
+  if (!result || typeof result.stock !== "number") {
+    return jsonError("Failed to restore product stock", 500);
   }
 
   await logAudit(
@@ -124,9 +62,9 @@ export async function POST(req: Request) {
     id,
     {
       droppedQuantity: quantity,
-      newStock: updatedProduct.stock,
+      newStock: result.stock,
     }
   );
 
-  return jsonSuccess({ dropped: quantity, stock: updatedProduct.stock });
+  return jsonSuccess({ dropped: quantity, stock: result.stock });
 }

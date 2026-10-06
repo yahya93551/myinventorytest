@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getServerTenantContext, jsonError, jsonSuccess, logAudit, requireActiveSubscription } from "@/lib/api";
-import { parseMissingSalesColumns, stripMissingSalesColumns } from "@/lib/salesFallback";
 import { mapSaleRecord } from "../../../lib/apiMappers";
+import { canonicalizeSaleRequest } from "@/lib/saleIdempotency";
 
 const SaleItemSchema = z.object({
   product_id: z.string().uuid(),
@@ -12,6 +12,7 @@ const SaleItemSchema = z.object({
 });
 
 const SaleMetadataSchema = z.object({
+  idempotency_key: z.string().uuid(),
   order_id: z.string().optional(),
   customer_name: z.string().optional(),
   customer_address: z.string().optional(),
@@ -154,568 +155,87 @@ export async function POST(req: Request) {
   if ("error" in subCheck) {
     return jsonError(subCheck.error, subCheck.status);
   }
-
   if (!["owner", "sales"].includes(tenantContext.role)) {
     return jsonError("Only owners or sales users can record sales", 403);
   }
 
   let payload: unknown;
-  try {
-    payload = await req.json();
-  } catch {
-    return jsonError("Invalid JSON payload", 400);
-  }
+  try { payload = await req.json(); } catch { return jsonError("Invalid JSON payload", 400); }
 
   const salePayload = BulkSaleSchema.safeParse(payload);
   const singlePayload = SingleSaleSchema.safeParse(payload);
-
   if (!salePayload.success && !singlePayload.success) {
-    const errors = [salePayload, singlePayload]
-      .flatMap((result) =>
-        result.success ? [] : result.error.issues.map((issue) => issue.message)
-      )
-      .filter(Boolean);
+    const errors = [salePayload, singlePayload].flatMap((result) => result.success ? [] : result.error.issues.map((issue) => issue.message)).filter(Boolean);
     return jsonError(errors.join(", "), 422);
   }
 
   const payloadData = salePayload.success ? salePayload.data : singlePayload.data;
-  const items = salePayload.success
-    ? salePayload.data.items
-    : ([singlePayload.data] as Array<z.infer<typeof SaleItemSchema>>);
-
+  const items = salePayload.success ? salePayload.data.items : [singlePayload.data!];
   const metadata = payloadData as z.infer<typeof SaleMetadataSchema>;
-  const isReturn = metadata.type === "return";
+  const idempotencyKey = metadata.idempotency_key;
+  const orderIdIsGenerated = !metadata.order_id;
   const orderId = metadata.order_id || `INV-${Date.now()}`;
   const customerName = metadata.customer_name?.trim() || null;
   const customerAddress = metadata.customer_address?.trim() || null;
   const customerPhone = metadata.customer_phone?.trim() || null;
-  const isPaid = isReturn ? true : metadata.paid !== false;
+  const isPaid = metadata.type === "return" ? true : metadata.paid !== false;
+  const canonicalRequest = canonicalizeSaleRequest({
+    items,
+    order_id: metadata.order_id,
+    customer_name: metadata.customer_name,
+    customer_address: metadata.customer_address,
+    customer_phone: metadata.customer_phone,
+    paid: metadata.paid,
+    type: metadata.type,
+    refund_reason: metadata.refund_reason,
+  }, tenantContext.userId, tenantContext.role, orderIdIsGenerated);
 
-  if (!isReturn && !isPaid && (!customerName || !customerPhone)) {
+  if (metadata.type !== "return" && !isPaid && (!customerName || !customerPhone)) {
     return jsonError("Customer name and phone are required for unpaid sales", 422);
   }
 
-  // For safety, do not attempt to normalize items before we fetch product conversion metadata.
-  // We'll process each item sequentially so we can honor `unit` (base or converted).
-  const normalized = items as Array<{ product_id: string; quantity: number; unit?: string }>;
+  const { data, error } = await supabaseAdmin.rpc("commit_sale_transaction", {
+    p_tenant_id: tenantContext.tenantId,
+    p_user_id: tenantContext.userId,
+    p_role: tenantContext.role,
+    p_items: canonicalRequest.items,
+    p_order_id: orderId,
+    p_customer_name: customerName,
+    p_customer_address: customerAddress,
+    p_customer_phone: customerPhone,
+    p_paid: isPaid,
+    p_type: metadata.type || "sale",
+    p_refund_reason: metadata.refund_reason || null,
+    p_idempotency_key: idempotencyKey,
+    p_order_id_is_generated: orderIdIsGenerated,
+    p_request_payload: canonicalRequest,
+  });
 
-  const rollback: Array<{ id: string; stock: number; stock_remainder?: number }> = [];
-  const allocationRollback: Array<{ id: string; quantity: number }> = [];
-  const productRows: Array<{
-    id: string;
-    name: string;
-    price: number;
-    quantity: number;
-    unit: 'base' | 'converted';
-    quantity_unit: string;
-    lineTotal: number;
-  }> = [];
-  const isSalesUser = tenantContext.role === "sales";
-
-  const getSoldQuantityBalance = async (productId: string, orderId?: string | null, customerName?: string | null) => {
-    let query = supabaseAdmin
-      .from("sales")
-      .select("quantity, type, user_id, order_id, customer_name")
-      .eq("tenant_id", tenantContext.tenantId)
-      .eq("product_id", productId);
-
-    if (orderId) {
-      query = query.eq("order_id", orderId);
-    }
-
-    if (customerName) {
-      query = query.ilike("customer_name", customerName);
-    }
-
-    if (tenantContext.role === "sales") {
-      query = query.eq("user_id", tenantContext.userId);
-    }
-
-    let data: Array<{ quantity: number; type?: string; user_id?: string }> | null = null;
-    let error: { message?: string } | null = null;
-
-    ({ data, error } = await query);
-
-    if (error && /column .*type.* does not exist|Could not find the 'type' column/i.test(error.message || "")) {
-      let fallbackQuery = supabaseAdmin
-        .from("sales")
-        .select("quantity, user_id")
-        .eq("tenant_id", tenantContext.tenantId)
-        .eq("product_id", productId);
-
-      if (tenantContext.role === "sales") {
-        fallbackQuery = fallbackQuery.eq("user_id", tenantContext.userId);
-      }
-
-      const fallbackResult = await fallbackQuery;
-      data = (fallbackResult.data || []) as Array<{ quantity: number; type?: string; user_id?: string }>;
-      error = fallbackResult.error;
-    }
-
-    if (error) {
-      throw new Error(error.message || "Unable to validate return quantity");
-    }
-
-    const rows = (data || []) as Array<{ quantity: number; type?: string; user_id?: string }>;
-    const netSold = rows.reduce((total: number, row: any) => {
-      const quantity = Number(row?.quantity ?? 0);
-      if (!Number.isFinite(quantity) || quantity <= 0) return total;
-      if (typeof row?.type === "string") {
-        return row.type === "return" ? total - quantity : total + quantity;
-      }
-      return total + quantity;
-    }, 0);
-
-    return Math.max(0, netSold);
-  };
-
-  const rollbackStock = async () => {
-    for (const rollbackItem of rollback) {
-      const updatePayload: Record<string, any> = { stock: rollbackItem.stock };
-      if (typeof rollbackItem.stock_remainder === "number") {
-        updatePayload.stock_remainder = rollbackItem.stock_remainder;
-      }
-
-      const { error: rollbackError } = await supabaseAdmin
-        .from("products")
-        .update(updatePayload)
-        .eq("id", rollbackItem.id)
-        .eq("tenant_id", tenantContext.tenantId);
-
-      if (rollbackError) {
-        console.error("Sales route: rollback stock failed", {
-          rollbackItem,
-          rollbackError,
-        });
-      }
-    }
-  };
-
-  const rollbackAllocations = async () => {
-    for (const rollbackItem of allocationRollback) {
-      const { data: takeRecord, error: takeError } = await supabaseAdmin
-        .from("inventory_takes")
-        .select("remaining_quantity")
-        .eq("id", rollbackItem.id)
-        .single();
-
-      if (takeError || !takeRecord) {
-        console.error("Sales route: rollback allocation failed to load record", {
-          rollbackItem,
-          takeError,
-        });
-        continue;
-      }
-
-      const { error: updateError } = await supabaseAdmin
-        .from("inventory_takes")
-        .update({ remaining_quantity: takeRecord.remaining_quantity + rollbackItem.quantity })
-        .eq("id", rollbackItem.id);
-
-      if (updateError) {
-        console.error("Sales route: rollback allocation failed", {
-          rollbackItem,
-          updateError,
-        });
-      }
-    }
-  };
-
-  for (const item of normalized) {
-    const { data: product, error: productError } = await supabaseAdmin
-      .from("products")
-      .select("id, name, price, stock, base_unit, converted_unit, conversion_rate, stock_remainder")
-      .eq("id", item.product_id)
-      .eq("tenant_id", tenantContext.tenantId)
-      .single();
-
-    if (productError || !product) {
-      if (rollback.length > 0) {
-        await rollbackStock();
-      }
-      if (allocationRollback.length > 0) {
-        await rollbackAllocations();
-      }
-      return jsonError(productError?.message || "Product not found", 404);
-    }
-
-    if (isReturn) {
-      const unitMode = (item as any).unit === "converted" ? "converted" : "base";
-      const conversionRate = typeof product.conversion_rate === "number" && Number.isFinite(product.conversion_rate)
-        ? product.conversion_rate
-        : null;
-
-      let soldBalance = 0;
-      try {
-        soldBalance = await getSoldQuantityBalance(
-          item.product_id,
-          metadata.order_id || orderId || null,
-          customerName || null,
-        );
-      } catch (returnCheckError) {
-        return jsonError(
-          returnCheckError instanceof Error ? returnCheckError.message : "Unable to validate return quantity",
-          500
-        );
-      }
-
-      const maxReturnableQuantity = Math.max(0, soldBalance);
-      if (item.quantity > maxReturnableQuantity) {
-        return jsonError(`Return quantity for ${product.name} exceeds the remaining sold quantity (${maxReturnableQuantity})`, 422);
-      }
-
-      if (unitMode === "converted") {
-        if (!conversionRate) {
-          return jsonError(`Product ${product.name} does not support converted-unit returns`, 422);
-        }
-
-        const existingConverted = (product.stock || 0) * conversionRate + (product.stock_remainder || 0);
-        const newConverted = existingConverted + item.quantity;
-        const newStock = Math.floor(newConverted / conversionRate);
-        const newRemainder = newConverted % conversionRate;
-
-        const { data: updatedProducts, error: updateError } = await supabaseAdmin
-          .from("products")
-          .update({ stock: newStock, stock_remainder: newRemainder })
-          .eq("id", item.product_id)
-          .eq("tenant_id", tenantContext.tenantId)
-          .select();
-
-        if (updateError || !updatedProducts?.length) {
-          console.error("Sales route: failed to restore stock (converted return)", {
-            productId: item.product_id,
-            tenantId: tenantContext.tenantId,
-            quantity: item.quantity,
-            updateError,
-          });
-          return jsonError(updateError?.message || "Failed to restore stock", 500);
-        }
-
-        rollback.push({ id: product.id, stock: product.stock });
-      } else {
-        const newStock = (product.stock || 0) + item.quantity;
-
-        const { data: updatedProducts, error: updateError } = await supabaseAdmin
-          .from("products")
-          .update({ stock: newStock })
-          .eq("id", item.product_id)
-          .eq("tenant_id", tenantContext.tenantId)
-          .select();
-
-        if (updateError || !updatedProducts?.length) {
-          console.error("Sales route: failed to restore stock (return)", {
-            productId: item.product_id,
-            tenantId: tenantContext.tenantId,
-            quantity: item.quantity,
-            updateError,
-          });
-          return jsonError(updateError?.message || "Failed to restore stock", 500);
-        }
-
-        rollback.push({ id: product.id, stock: product.stock });
-      }
-    } else {
-      const unitMode = (item as any).unit === "converted" ? "converted" : "base";
-      const conversionRate = typeof product.conversion_rate === "number" && Number.isFinite(product.conversion_rate)
-        ? product.conversion_rate
-        : null;
-
-      if (isSalesUser && unitMode === "base") {
-        const { data: allocations, error: allocationsError } = await supabaseAdmin
-          .from("inventory_takes")
-          .select("id, remaining_quantity")
-          .eq("tenant_id", tenantContext.tenantId)
-          .eq("user_id", tenantContext.userId)
-          .eq("product_id", item.product_id)
-          .gt("remaining_quantity", 0)
-          .order("created_at", { ascending: true });
-
-        if (allocationsError) {
-          if (rollback.length > 0) {
-            await rollbackStock();
-          }
-          if (allocationRollback.length > 0) {
-            await rollbackAllocations();
-          }
-          return jsonError(allocationsError.message, 500);
-        }
-
-        const totalAvailable = (allocations || []).reduce((sum: number, allocation: any) => sum + (allocation.remaining_quantity || 0), 0);
-        if (totalAvailable < item.quantity) {
-          if (rollback.length > 0) {
-            await rollbackStock();
-          }
-          if (allocationRollback.length > 0) {
-            await rollbackAllocations();
-          }
-          return jsonError(`Insufficient taken stock for ${product.name}`, 400);
-        }
-
-        let remainingToConsume = item.quantity;
-        for (const allocation of allocations || []) {
-          if (remainingToConsume <= 0) break;
-          const consume = Math.min(allocation.remaining_quantity, remainingToConsume);
-          const { error: allocationUpdateError } = await supabaseAdmin
-            .from("inventory_takes")
-            .update({ remaining_quantity: allocation.remaining_quantity - consume })
-            .eq("id", allocation.id);
-
-          if (allocationUpdateError) {
-            if (rollback.length > 0) {
-              await rollbackStock();
-            }
-            if (allocationRollback.length > 0) {
-              await rollbackAllocations();
-            }
-            return jsonError(allocationUpdateError.message || "Failed to consume taken stock", 500);
-          }
-
-          allocationRollback.push({ id: allocation.id, quantity: consume });
-          remainingToConsume -= consume;
-        }
-      } else if (unitMode === "converted") {
-        if (!conversionRate) {
-          if (rollback.length > 0) {
-            await rollbackStock();
-          }
-          return jsonError(`Product ${product.name} does not support converted-unit sales`, 422);
-        }
-
-        const availableInConverted = (product.stock || 0) * conversionRate + (product.stock_remainder || 0);
-        if (item.quantity > availableInConverted) {
-          if (rollback.length > 0) {
-            await rollbackStock();
-          }
-          return jsonError(`Insufficient stock for ${product.name}`, 400);
-        }
-
-        const remainingConverted = availableInConverted - item.quantity;
-        const newStock = Math.floor(remainingConverted / conversionRate);
-        const newRemainder = remainingConverted % conversionRate;
-
-        const { data: updatedProducts, error: updateError } = await supabaseAdmin
-          .from("products")
-          .update({ stock: newStock, stock_remainder: newRemainder })
-          .eq("id", item.product_id)
-          .eq("tenant_id", tenantContext.tenantId)
-          .gte("stock", 0)
-          .select();
-
-        if (updateError || !updatedProducts?.length) {
-          console.error("Sales route: failed to reserve stock (converted)", {
-            productId: item.product_id,
-            tenantId: tenantContext.tenantId,
-            quantity: item.quantity,
-            updateError,
-          });
-          if (rollback.length > 0) {
-            await rollbackStock();
-          }
-          return jsonError(updateError?.message || "Failed to reserve stock", 500);
-        }
-
-        rollback.push({ id: product.id, stock: product.stock });
-      } else {
-        if (product.stock < item.quantity) {
-          if (rollback.length > 0) {
-            await rollbackStock();
-          }
-          return jsonError(`Insufficient stock for ${product.name}`, 400);
-        }
-
-        const { data: updatedProducts, error: updateError } = await supabaseAdmin
-          .from("products")
-          .update({ stock: product.stock - item.quantity })
-          .eq("id", item.product_id)
-          .eq("tenant_id", tenantContext.tenantId)
-          .gte("stock", item.quantity)
-          .select();
-
-        if (updateError || !updatedProducts?.length) {
-          console.error("Sales route: failed to reserve stock", {
-            productId: item.product_id,
-            tenantId: tenantContext.tenantId,
-            quantity: item.quantity,
-            updateError,
-          });
-          if (rollback.length > 0) {
-            await rollbackStock();
-          }
-          return jsonError(updateError?.message || "Failed to reserve stock", 500);
-        }
-
-        rollback.push({ id: product.id, stock: product.stock });
-      }
-    }
-
-    const unitMode = isReturn
-      ? (item.unit === "converted" ? "converted" : "base")
-      : (item as any).unit === "converted"
-        ? "converted"
-        : "base";
-    const unitLabel = unitMode === "converted"
-      ? product.converted_unit?.trim() || "converted unit"
-      : product.base_unit?.trim() || "base unit";
-    const conversionRate = typeof product.conversion_rate === "number" && Number.isFinite(product.conversion_rate)
-      ? product.conversion_rate
-      : null;
-
-    let lineTotal = item.quantity * Number(product.price);
-    if (unitMode === "converted" && conversionRate) {
-      const baseQuantity = item.quantity / conversionRate;
-      lineTotal = baseQuantity * Number(product.price);
-    }
-
-    if (isReturn) {
-      lineTotal = Math.abs(lineTotal);
-    }
-
-    productRows.push({
-      id: product.id,
-      name: product.name,
-      price: Number(product.price),
-      quantity: item.quantity,
-      unit: unitMode,
-      quantity_unit: unitLabel,
-      lineTotal,
-    });
+  if (error) {
+    const message = error.message || "Failed to complete sale.";
+    const separator = message.indexOf(":");
+    const errorCode = separator > 0 ? message.slice(0, separator) : "";
+    const clientMessage = separator > 0 ? message.slice(separator + 1).trim() : message;
+    const status = errorCode === "SALE_NOT_FOUND" ? 404
+      : errorCode === "SALE_STOCK" ? 400
+      : errorCode === "SALE_INVALID" ? 422
+      : errorCode === "SALE_CONFLICT" || errorCode === "SALE_IDEMPOTENCY_CONFLICT" ? 409
+      : 500;
+    return jsonError(clientMessage, status);
   }
 
-  const salesRows = productRows.map((product) => ({
-    product_id: product.id,
-    product_name: product.name,
-    quantity: product.quantity,
-    type: metadata.type || "sale",
-    ...(metadata.type === "return"
-      ? { refund_reason: metadata.refund_reason || null }
-      : {}),
-    unit: product.unit,
-    quantity_unit: product.quantity_unit,
-    total: product.lineTotal,
-    tenant_id: tenantContext.tenantId,
-    user_id: tenantContext.userId,
-    created_by: tenantContext.userId,
-    order_id: orderId,
-    customer_name: customerName,
-    customer_address: customerAddress,
-    customer_phone: customerPhone,
-    paid: isPaid,
-  }));
-
-  // Try first insert
-  let currentRows: Array<Record<string, any>> = salesRows as Array<Record<string, any>>;
-  let { data: inserted, error: insertError } = await supabaseAdmin
-    .from("sales")
-    .insert(currentRows as any)
-    .select("*");
-
-  if (insertError || !inserted) {
-    console.error("Sales route: failed to insert sale rows", {
-      salesRows: currentRows,
-      insertError,
-    });
-
-    let missingColumns = parseMissingSalesColumns(insertError);
-    while (missingColumns.length > 0 && !inserted) {
-      console.warn("Sales route: retrying sale insert without missing sales columns", missingColumns);
-      currentRows = currentRows.map((row) => stripMissingSalesColumns(row, missingColumns));
-
-      const fallbackResult = await supabaseAdmin
-        .from("sales")
-        .insert(currentRows as any)
-        .select("*");
-
-      inserted = fallbackResult.data;
-      insertError = fallbackResult.error;
-      missingColumns = parseMissingSalesColumns(insertError);
-    }
-
-    // Special-case: if the error mentions `created_by`, attempt to insert without it (some older schemas lack it).
-    if ((insertError && /created_by/i.test(insertError.message)) && !inserted) {
-      console.warn("Sales route: retrying sale insert without created_by column");
-      currentRows = currentRows.map(({ created_by, ...rest }) => rest);
-      const fallbackResult = await supabaseAdmin
-        .from("sales")
-        .insert(currentRows as any)
-        .select("*");
-
-      inserted = fallbackResult.data;
-      insertError = fallbackResult.error;
-    }
-  }
-
-  if (insertError || !inserted) {
-    await rollbackStock();
-    return jsonError(insertError?.message || "Failed to record sale", 500);
-  }
-
-  if (!isPaid) {
-    const totalAmount = productRows.reduce((sum, item) => sum + item.price * item.quantity, 0);
-    const { data: debtData, error: debtError } = await supabaseAdmin
-      .from("debts")
-      .insert({
-        tenant_id: tenantContext.tenantId,
-        user_id: tenantContext.userId,
-        created_by: tenantContext.userId,
-        customer_name: customerName!,
-        customer_phone: customerPhone!,
-        amount: totalAmount,
-        date: new Date().toISOString(),
-        note: `Unpaid sale ${orderId}`,
-        paid: false,
-      })
-      .select("id")
-      .single();
-
-    if (debtError || !debtData) {
-      console.error("Sales route: failed to create debt for unpaid sale", {
-        debtError,
-        orderId,
-        customerName,
-        customerPhone,
-      });
-
-      const insertedIds = inserted.map((row: any) => row.id).filter(Boolean);
-      if (insertedIds.length > 0) {
-        const { error: deleteError } = await supabaseAdmin
-          .from("sales")
-          .delete()
-          .in("id", insertedIds)
-          .eq("tenant_id", tenantContext.tenantId);
-
-        if (deleteError) {
-          console.error("Sales route: failed to rollback sale rows after debt failure", { deleteError, insertedIds });
-        }
-      }
-
-      if (rollback.length > 0) {
-        await rollbackStock();
-      }
-      if (allocationRollback.length > 0) {
-        await rollbackAllocations();
-      }
-      return jsonError(debtError?.message || "Failed to record unpaid sale debt", 500);
-    }
-  }
-
-  const totalQuantity = productRows.reduce((sum, item) => sum + item.quantity, 0);
-
-  // Log audit trail
-  await logAudit(
-    tenantContext.tenantId,
-    tenantContext.userId,
-    "SELL",
-    "sale",
-    req,
-    undefined,
-    {
+  const rpcResult = data as { result?: unknown; replayed?: boolean } | null;
+  const inserted = Array.isArray(rpcResult?.result) ? rpcResult.result as Array<Record<string, unknown>> : [];
+  const totalQuantity = inserted.reduce((sum, row) => sum + Number(row.quantity || 0), 0);
+  if (!rpcResult?.replayed) {
+    await logAudit(tenantContext.tenantId, tenantContext.userId, "SELL", "sale", req, undefined, {
       orderId,
-      itemCount: productRows.length,
+      itemCount: inserted.length,
       totalQuantity,
-      items: productRows,
+      items: inserted,
       customerName,
-    }
-  );
+    });
+  }
 
   return jsonSuccess(inserted);
 }

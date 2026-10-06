@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Product } from "../../types";
 import { X } from "lucide-react";
 import { useBusinessSettings } from "@/hooks/useCustomFields";
@@ -58,6 +58,12 @@ export default function BulkSellModal({
   const tenantRole = tenantRoleData?.role;
   const useAllocatedQuantity = tenantRole === "sales" && businessSettings?.business_type === "warehouse";
   const printWindowRef = useRef<Window | null>(null);
+  const getAvailableBase = useCallback((product: Product) => useAllocatedQuantity
+    ? Number(product.allocation_availability?.base_quantity || 0)
+    : Number(product.stock || 0), [useAllocatedQuantity]);
+  const getAvailableConverted = useCallback((product: Product, conversionRate: number) => useAllocatedQuantity
+    ? Number(product.allocation_availability?.converted_quantity || 0)
+    : Number(product.stock || 0) * conversionRate + Number(product.stock_remainder || 0), [useAllocatedQuantity]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -89,13 +95,15 @@ export default function BulkSellModal({
 
   const availableProducts = useMemo(() => {
     return products.filter((product) => {
-      const available = useAllocatedQuantity
-        ? Number(product.allocated_quantity || 0)
-        : Number(product.stock || 0);
-      const remainder = Number(product.stock_remainder || 0);
-      return available > 0 || remainder > 0;
+      const available = getAvailableBase(product);
+      const remainder = useAllocatedQuantity ? 0 : Number(product.stock_remainder || 0);
+      const conversionRate = Number(product.conversion_rate || 0);
+      const convertedAvailability = conversionRate > 0
+        ? getAvailableConverted(product, conversionRate)
+        : remainder;
+      return available > 0 || convertedAvailability > 0;
     });
-  }, [products, useAllocatedQuantity]);
+  }, [getAvailableBase, getAvailableConverted, products, useAllocatedQuantity]);
 
   const filteredProducts = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -109,20 +117,24 @@ export default function BulkSellModal({
         const quantity = Number(quantities[product.id] || 0);
         const unit = unitModes[product.id] || "base";
 
-        const conversionRate = typeof product.conversion_rate === "number" ? product.conversion_rate : 0;
+        const conversionRate = useAllocatedQuantity
+          ? Number(product.allocation_availability?.conversion_rate || 0)
+          : typeof product.conversion_rate === "number" ? product.conversion_rate : 0;
         const isConverted = unit === "converted" && conversionRate > 0;
         const price = Number(product.price || 0);
-        const lineTotal = isConverted ? (quantity / conversionRate) * price : quantity * price;
+        const unitPrice = isConverted ? price / conversionRate : price;
+        const lineTotal = quantity * unitPrice;
 
         return {
           product,
           quantity,
           unit,
+          unitPrice,
           lineTotal,
         };
       })
       .filter((line) => line.quantity > 0);
-  }, [availableProducts, quantities, unitModes]);
+  }, [availableProducts, quantities, unitModes, useAllocatedQuantity]);
 
   const total = useMemo(
     () => selectedLines.reduce((sum, line) => sum + line.lineTotal, 0),
@@ -194,13 +206,10 @@ export default function BulkSellModal({
     }
 
     const invalidLine = selectedLines.find((line) => {
-      const availableBase = useAllocatedQuantity
-        ? Number(line.product.allocated_quantity || 0)
-        : Number(line.product.stock || 0);
       const conversionRate = typeof line.product.conversion_rate === "number" ? line.product.conversion_rate : 0;
       const available = line.unit === "converted" && conversionRate > 0
-        ? availableBase * conversionRate + Number(line.product.stock_remainder || 0)
-        : availableBase;
+        ? getAvailableConverted(line.product, conversionRate)
+        : getAvailableBase(line.product);
       return line.quantity > available;
     });
     if (invalidLine) {
@@ -262,7 +271,7 @@ export default function BulkSellModal({
       const linesToPrint = selectedLines.map((line) => ({
         name: line.product.name,
         quantity: line.quantity,
-        price: line.product.price,
+        price: line.unitPrice,
         total: line.lineTotal,
       }));
       printReceipt(linesToPrint);
@@ -304,16 +313,16 @@ export default function BulkSellModal({
                 product.conversion_rate > 0;
               const unit = unitModes[product.id] || "base";
               const conversionRate = Number(product.conversion_rate || 0);
-              const availableBase = useAllocatedQuantity
-                ? Number(product.allocated_quantity || 0)
-                : Number(product.stock || 0);
-              const availableConverted = hasConversion
-                ? availableBase * conversionRate + Number(product.stock_remainder || 0)
+              const availableBaseQuantity = getAvailableBase(product);
+              const availableConvertedQuantity = hasConversion
+                ? getAvailableConverted(product, conversionRate)
                 : 0;
               const stockLabel = hasConversion
-                ? `${availableBase} ${product.base_unit || "base"} + ${product.stock_remainder || 0} ${product.converted_unit} (${availableConverted} ${product.converted_unit})`
-                : `${availableBase} ${product.base_unit || "units"}`;
-              const maxQty = unit === "converted" ? availableConverted : availableBase;
+                ? useAllocatedQuantity
+                  ? `${availableBaseQuantity} ${product.base_unit || "base"} + ${availableConvertedQuantity} ${product.converted_unit} allocated`
+                  : `${availableBaseQuantity} ${product.base_unit || "base"} + ${product.stock_remainder || 0} ${product.converted_unit} (${availableConvertedQuantity} ${product.converted_unit})`
+                : `${availableBaseQuantity} ${product.base_unit || "units"}`;
+              const maxQty = unit === "converted" ? availableConvertedQuantity : availableBaseQuantity;
 
               return (
                 <div key={product.id} className="rounded-2xl border border-theme/50 bg-theme-card/70 p-3 shadow-sm transition hover:border-cyan-400/40 hover:bg-white/3">
