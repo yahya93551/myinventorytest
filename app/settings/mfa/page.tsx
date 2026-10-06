@@ -5,13 +5,16 @@ import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
 import { apiPost } from '@/lib/apiClient';
+import { supabase } from '@/lib/supabase';
 
 export default function MFASettingsPage() {
   const router = useRouter();
   const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
   const [secret, setSecret] = useState<string | null>(null);
-  const [backupCodes, setBackupCodes] = useState<string[]>([]);
-  const [selectedMethod, setSelectedMethod] = useState<'totp' | 'sms' | 'email'>('totp');
+  const [factorId, setFactorId] = useState<string | null>(null);
+  const [challengeId, setChallengeId] = useState<string | null>(null);
+  const [challengeExpiresAt, setChallengeExpiresAt] = useState<number | null>(null);
+  const [selectedMethod, setSelectedMethod] = useState<'totp' | 'phone'>('totp');
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -31,15 +34,33 @@ export default function MFASettingsPage() {
     setIsLoading(true);
 
     try {
-      const result = await apiPost<{ enrollment_data: { qr_code_url?: string; secret?: string; backup_codes: string[] } }>(
-        '/api/auth/mfa/enroll',
-        { method: selectedMethod }
-      );
+      let enrolledFactorId: string;
+      if (selectedMethod === 'totp') {
+        const result = await supabase.auth.mfa.enroll({ factorType: 'totp', friendlyName: 'MyInventory' });
+        if (result.error) throw result.error;
+        enrolledFactorId = result.data.id;
+        setQrCodeUrl(result.data.totp.qr_code);
+        setSecret(result.data.totp.secret);
+      } else {
+        const { data: userData, error: userError } = await supabase.auth.getUser();
+        if (userError || !userData.user?.phone) throw new Error('Add and verify a phone number before enabling SMS MFA.');
+        const result = await supabase.auth.mfa.enroll({ factorType: 'phone', phone: userData.user.phone, friendlyName: 'MyInventory' });
+        if (result.error) throw result.error;
+        enrolledFactorId = result.data.id;
+        setQrCodeUrl(null);
+        setSecret(null);
+      }
 
-      setQrCodeUrl(result.data?.enrollment_data.qr_code_url || null);
-      setSecret(result.data?.enrollment_data.secret || null);
-      setBackupCodes(result.data?.enrollment_data.backup_codes || []);
-      setMessage('Enter the verification code from your authenticator app or your selected delivery method.');
+      const challenge = await supabase.auth.mfa.challenge(
+        selectedMethod === 'phone' ? { factorId: enrolledFactorId, channel: 'sms' } : { factorId: enrolledFactorId }
+      );
+      if (challenge.error) throw challenge.error;
+      setFactorId(enrolledFactorId);
+      setChallengeId(challenge.data.id);
+      setChallengeExpiresAt(challenge.data.expires_at);
+      setMessage(selectedMethod === 'phone'
+        ? 'Enter the code sent to your verified phone.'
+        : 'Scan the QR code, then enter the code from your authenticator app.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to enroll MFA');
       console.error(err);
@@ -58,18 +79,47 @@ export default function MFASettingsPage() {
       return;
     }
 
-    const method = selectedMethod;
+    if (!factorId || !challengeId) {
+      setError('Start MFA enrollment before verifying a code.');
+      return;
+    }
 
     try {
-      const result = await apiPost('/api/auth/mfa/verify', {
-        method,
-        code,
-        secret: secret ?? undefined,
-        backup_codes: backupCodes.length > 0 ? backupCodes : undefined,
-      });
+      let activeChallengeId = challengeId;
+      if (challengeExpiresAt && Date.now() >= challengeExpiresAt * 1000) {
+        const refreshed = await supabase.auth.mfa.challenge(
+          selectedMethod === 'phone' ? { factorId, channel: 'sms' } : { factorId }
+        );
+        if (refreshed.error) throw refreshed.error;
+        activeChallengeId = refreshed.data.id;
+        setChallengeId(activeChallengeId);
+        setChallengeExpiresAt(refreshed.data.expires_at);
+        setError('A new verification challenge was sent. Enter the new code.');
+        return;
+      }
 
-      setMessage('MFA successfully enabled. Reloading...');
-      setTimeout(() => router.refresh(), 500);
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !sessionData.session) throw new Error('Your sign-in session expired. Please sign in again.');
+
+      const result = await apiPost<{
+        access_token: string;
+        refresh_token: string;
+      }>('/api/auth/mfa/verify', {
+        factor_id: factorId,
+        challenge_id: activeChallengeId,
+        code,
+        refresh_token: sessionData.session.refresh_token,
+      });
+      if (!result.data?.access_token || !result.data.refresh_token) throw new Error('MFA verification failed.');
+      const { error: updateSessionError } = await supabase.auth.setSession({
+        access_token: result.data.access_token,
+        refresh_token: result.data.refresh_token,
+      });
+      if (updateSessionError) throw updateSessionError;
+      setMessage('MFA successfully enabled.');
+      setFactorId(null);
+      setChallengeId(null);
+      setTimeout(() => router.refresh(), 300);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to verify MFA');
     }
@@ -80,7 +130,7 @@ export default function MFASettingsPage() {
       <SalesRouteGuard />
       <h1 className="text-2xl font-semibold">Multi-factor Authentication</h1>
       <p className="text-sm text-slate-600">
-        Enable an additional layer of security for your account by using an authenticator app, SMS, or email codes.
+        Enable an additional layer of security for your account with an authenticator app or SMS to a verified phone.
       </p>
 
       <form onSubmit={(event) => { event.preventDefault(); enrollMFA(); }} className="space-y-4">
@@ -89,11 +139,10 @@ export default function MFASettingsPage() {
           <select
             className="mt-2 w-full rounded-lg border border-slate-300 p-3"
             value={selectedMethod}
-            onChange={(e) => setSelectedMethod(e.target.value as 'totp' | 'sms' | 'email')}
+            onChange={(e) => setSelectedMethod(e.target.value as 'totp' | 'phone')}
           >
             <option value="totp">Authenticator App (TOTP)</option>
-            <option value="sms">SMS Text Message</option>
-            <option value="email">Email Code</option>
+            <option value="phone">SMS Text Message</option>
           </select>
         </div>
 
@@ -117,17 +166,9 @@ export default function MFASettingsPage() {
         </div>
       ) : null}
 
-      {backupCodes.length > 0 ? (
-        <div className="rounded-lg border border-slate-200 p-4">
-          <h2 className="text-lg font-semibold">Backup codes</h2>
-          <pre className="mt-3 whitespace-pre-wrap rounded-lg bg-slate-100 p-3 text-sm text-slate-800">
-            {backupCodes.join('\n')}
-          </pre>
-          <p className="mt-3 text-sm text-slate-600">Store these codes somewhere safe. Each code can be used once.</p>
-        </div>
-      ) : null}
+      {secret ? <p className="text-sm text-slate-600">Authenticator setup key: <code>{secret}</code></p> : null}
 
-      {qrCodeUrl ? (
+      {factorId && challengeId ? (
         <form onSubmit={verifyMFA} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-slate-700">Verification Code</label>

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { requireActiveSubscription } from "@/lib/api";
+import { hasMFAAssurance, requireActiveSubscription } from "@/lib/api";
 import { createPhoneFallbackEmail, isPhoneNumber, normalizePhoneNumber } from "@/lib/auth";
 import {
   checkRateLimit,
@@ -63,6 +63,9 @@ async function authorizeOwner(authHeader: string | null | undefined): Promise<Ow
   const { data: userData, error: userError } = await supabaseAdmin.auth.getUser(authHeader);
   if (userError || !userData.user) {
     return { error: "Invalid or expired session" };
+  }
+  if (!(await hasMFAAssurance(authHeader))) {
+    return { error: "Additional MFA verification is required", status: 403 };
   }
 
   const user = userData.user;

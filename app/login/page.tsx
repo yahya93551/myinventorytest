@@ -33,6 +33,8 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [otp, setOtp] = useState("");
+  const [mfaCode, setMfaCode] = useState("");
+  const [mfaChallenge, setMfaChallenge] = useState<{ factorId: string; challengeId: string; method: "totp" | "phone"; expiresAt: number } | null>(null);
   const [message, setMessage] = useState<string>("");
   const [messageType, setMessageType] = useState<"error" | "success">("error");
   const [loading, setLoading] = useState(false);
@@ -44,10 +46,15 @@ export default function LoginPage() {
 
     const redirectIfSignedIn = async () => {
       try {
-        const { data } = await supabase.auth.getUser();
-        if (mounted && data.user) {
-          router.push("/");
+        const { data } = await supabase.auth.getSession();
+        if (!mounted || !data.session) return;
+        const { data: assurance } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel(data.session.access_token);
+        if (!mounted) return;
+        if (assurance?.nextLevel === "aal2" && assurance.currentLevel !== "aal2") {
+          await beginMFAChallenge();
+          return;
         }
+        router.push("/");
       } catch (err) {
         // Stay on login page on error
       }
@@ -58,6 +65,34 @@ export default function LoginPage() {
       mounted = false;
     };
   }, [router]);
+
+  async function beginMFAChallenge() {
+    const { data: factors, error: factorsError } = await supabase.auth.mfa.listFactors();
+    if (factorsError) throw factorsError;
+    const totpFactor = factors?.totp[0];
+    const phoneFactor = factors?.phone[0];
+    const method: "totp" | "phone" = !totpFactor && phoneFactor ? "phone" : "totp";
+    const factor = method === "phone" ? phoneFactor : totpFactor;
+    if (!factor) throw new Error("Your account requires MFA, but no verified factor is available. Contact support.");
+    const challengeResult = await supabase.auth.mfa.challenge(
+      method === "phone" ? { factorId: factor.id, channel: "sms" } : { factorId: factor.id }
+    );
+    if (challengeResult.error) throw challengeResult.error;
+    setMfaChallenge({
+      factorId: factor.id,
+      challengeId: challengeResult.data.id,
+      method,
+      expiresAt: challengeResult.data.expires_at,
+    });
+    setMessageType("success");
+    setMessage(method === "phone" ? "Enter the code sent to your verified phone." : "Enter the code from your authenticator app.");
+  }
+
+  const finishLogin = async () => {
+    await registerCurrentSession();
+    if (typeof window !== 'undefined') window.location.href = '/';
+    else router.push('/');
+  };
 
   useEffect(() => {
     if (mode !== "signup") {
@@ -163,15 +198,71 @@ export default function LoginPage() {
       setMessage(error.message);
     } else {
       try {
-        await registerCurrentSession();
-      } catch (sessionError) {
-        console.error('[SESSION] Failed to register session after login:', sessionError);
+        const { data: assurance, error: assuranceError } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel(data.session?.access_token);
+        if (assuranceError) throw assuranceError;
+        if (assurance?.nextLevel === "aal2" && assurance.currentLevel !== "aal2") {
+          await beginMFAChallenge();
+          return;
+        }
+        await finishLogin();
+      } catch (mfaError) {
+        setMessageType("error");
+        setMessage(mfaError instanceof Error ? mfaError.message : "Unable to verify MFA requirements.");
+      } finally {
+        setLoading(false);
       }
-      if (typeof window !== 'undefined') {
-        window.location.href = '/';
-      } else {
-        router.push('/');
+    }
+  };
+
+  const verifyMFA = async () => {
+    if (!mfaChallenge) return;
+    const sessionResult = await supabase.auth.getSession();
+    const session = sessionResult.data.session;
+    if (!session) {
+      setMessageType("error");
+      setMessage("Your sign-in session expired. Please sign in again.");
+      setMfaChallenge(null);
+      return;
+    }
+
+    setLoading(true);
+    setMessage("");
+    try {
+      if (Date.now() >= mfaChallenge.expiresAt * 1000) {
+        await beginMFAChallenge();
+        setMessage("A new verification challenge was sent. Enter the new code.");
+        return;
       }
+      const response = await fetch("/api/auth/mfa/verify", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          factor_id: mfaChallenge.factorId,
+          challenge_id: mfaChallenge.challengeId,
+          method: mfaChallenge.method,
+          code: mfaCode.trim(),
+          refresh_token: session.refresh_token,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result?.data?.access_token || !result?.data?.refresh_token) {
+        throw new Error(result?.error || "MFA verification failed.");
+      }
+      const { error: sessionError } = await supabase.auth.setSession({
+        access_token: result.data.access_token,
+        refresh_token: result.data.refresh_token,
+      });
+      if (sessionError) throw sessionError;
+      setMfaChallenge(null);
+      await finishLogin();
+    } catch (verificationError) {
+      setMessageType("error");
+      setMessage(verificationError instanceof Error ? verificationError.message : "MFA verification failed.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -614,6 +705,23 @@ export default function LoginPage() {
                   />
                 </div>
 
+                {mfaChallenge && (
+                  <div className="relative">
+                    <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-cyan-300/80">
+                      <ShieldCheck className="h-5 w-5" />
+                    </span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      className="w-full rounded-[28px] border border-white/10 bg-slate-950/80 py-4 pl-14 pr-4 text-sm text-white placeholder:text-slate-500 shadow-sm shadow-cyan-500/10 outline-none transition focus:border-cyan-300/60 focus:bg-slate-900 focus:ring-2 focus:ring-cyan-500/20"
+                      placeholder="MFA verification code"
+                      value={mfaCode}
+                      onChange={(event) => setMfaCode(event.target.value)}
+                    />
+                  </div>
+                )}
+
                 {mode === "login" && (
                   <button
                     type="button"
@@ -661,8 +769,8 @@ export default function LoginPage() {
 
                 <button
                   type="button"
-                  onClick={mode === "login" ? login : signup}
-                  disabled={loading}
+                  onClick={mode === "login" ? (mfaChallenge ? verifyMFA : login) : signup}
+                  disabled={loading || (!!mfaChallenge && !/^\d{6}$/.test(mfaCode.trim()))}
                   className="inline-flex w-full items-center justify-center rounded-[28px] bg-linear-to-r from-cyan-500 via-sky-500 to-blue-600 px-5 py-4 text-sm font-semibold text-slate-950 shadow-[0_20px_60px_-20px_rgba(14,165,233,0.65)] transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_25px_80px_-30px_rgba(14,165,233,0.75)] disabled:pointer-events-none disabled:opacity-60"
                 >
                   {loading
@@ -670,7 +778,7 @@ export default function LoginPage() {
                       ? "Signing in..."
                       : "Creating account..."
                     : mode === "login"
-                    ? "Login"
+                    ? mfaChallenge ? "Verify code" : "Login"
                     : "Sign Up"}
                 </button>
               </div>
