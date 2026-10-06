@@ -39,6 +39,30 @@ export function getBearerToken(req: Request) {
   return authHeader.replace("Bearer ", "").trim();
 }
 
+export async function hasMFAAssurance(token: string): Promise<boolean> {
+  try {
+    const { data: userData, error: userError } = await supabaseAdmin.auth.getUser(token);
+    if (userError || !userData.user) return false;
+
+    const [{ data: assurance, error: assuranceError }, { data: factorData, error: factorError }] =
+      await Promise.all([
+        supabaseAdmin.auth.mfa.getAuthenticatorAssuranceLevel(token),
+        supabaseAdmin.auth.admin.mfa.listFactors({ userId: userData.user.id }),
+      ]);
+
+    if (assuranceError || factorError || !assurance || !factorData) return false;
+    const hasVerifiedNativeFactor = factorData.factors.some(
+      (factor) =>
+        factor.status === "verified" &&
+        (factor.factor_type === "totp" || factor.factor_type === "phone")
+    );
+
+    return !hasVerifiedNativeFactor || assurance.currentLevel === "aal2";
+  } catch {
+    return false;
+  }
+}
+
 export async function getAuthenticatedUser(
   req: Request
 ): Promise<{ user: User } | { error: string; status: number }> {
@@ -50,6 +74,10 @@ export async function getAuthenticatedUser(
   const { data, error } = await supabaseAdmin.auth.getUser(token);
   if (error || !data.user) {
     return { error: "Invalid or expired session", status: 401 };
+  }
+
+  if (!(await hasMFAAssurance(token))) {
+    return { error: "Additional MFA verification is required", status: 403 };
   }
 
   return { user: data.user };

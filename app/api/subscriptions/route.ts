@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { hasMFAAssurance } from "@/lib/api";
 import { getSubscriptionPlan, getSubscriptionMonthlyFeeForPlan, isSubscriptionPlan } from "@/lib/subscriptionPlans";
 
 type AuthUserResponse = Awaited<ReturnType<typeof supabaseAdmin.auth.getUser>>;
@@ -36,6 +37,9 @@ async function authorizeUser(authHeader: string | null | undefined): Promise<Own
   const { data: userData, error: userError } = await supabaseAdmin.auth.getUser(authHeader);
   if (userError || !userData.user) {
     return { error: "Invalid or expired session" };
+  }
+  if (!(await hasMFAAssurance(authHeader))) {
+    return { error: "Additional MFA verification is required", status: 403 };
   }
 
   const user = userData.user;
