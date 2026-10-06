@@ -1,6 +1,8 @@
 // lib/search.ts - Full-text search and filtering
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
+const ANALYTICS_PAGE_SIZE = 500;
+
 export interface SearchFilters {
   category?: string;
   minPrice?: number;
@@ -72,22 +74,38 @@ export async function getTrendingProducts(tenantId: string, days: number = 7, li
   const startDate = new Date();
   startDate.setDate(startDate.getDate() - days);
 
-  const { data, error } = await supabaseAdmin
-    .from("sales")
-    .select("product_id, quantity")
-    .eq("tenant_id", tenantId)
-    .gte("created_at", startDate.toISOString())
-    .limit(1000);
-
-  if (error) {
-    throw new Error(`Failed to fetch trending products: ${error.message}`);
-  }
-
   const totals = new Map<string, number>();
-  for (const sale of data || []) {
-    const productId = (sale as any).product_id as string;
-    const quantity = Number((sale as any).quantity || 0);
-    totals.set(productId, (totals.get(productId) || 0) + quantity);
+  let cursor: { created_at: string; id: string } | null = null;
+
+  while (true) {
+    let query = supabaseAdmin
+      .from("sales")
+      .select("product_id, quantity, created_at, id")
+      .eq("tenant_id", tenantId)
+      .gte("created_at", startDate.toISOString())
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true })
+      .limit(ANALYTICS_PAGE_SIZE);
+
+    if (cursor) {
+      query = query.or(`created_at.gt.${cursor.created_at},and(created_at.eq.${cursor.created_at},id.gt.${cursor.id})`);
+    }
+
+    const { data, error } = await query;
+    if (error) {
+      throw new Error(`Failed to fetch trending products: ${error.message}`);
+    }
+
+    const rows = data || [];
+    for (const sale of rows) {
+      const productId = (sale as any).product_id as string;
+      const quantity = Number((sale as any).quantity || 0);
+      totals.set(productId, (totals.get(productId) || 0) + quantity);
+    }
+
+    if (rows.length < ANALYTICS_PAGE_SIZE) break;
+    const last = rows[rows.length - 1] as any;
+    cursor = { created_at: last.created_at, id: last.id };
   }
 
   return Array.from(totals.entries())
@@ -110,50 +128,12 @@ export interface ProductAnalytics {
 }
 
 export async function getProductAnalytics(tenantId: string): Promise<ProductAnalytics> {
-  const { data: products, error } = await supabaseAdmin
-    .from("products")
-    .select("name, price, stock")
-    .eq("tenant_id", tenantId);
+  const { data, error } = await supabaseAdmin.rpc("get_product_analytics", {
+    p_tenant_id: tenantId,
+  });
 
-  if (error) {
-    throw new Error(`Failed to fetch product analytics: ${error.message}`);
-  }
-
-  if (!products || products.length === 0) {
-    return {
-      totalProducts: 0,
-      totalValue: 0,
-      averagePrice: 0,
-      lowStockCount: 0,
-      outOfStockCount: 0,
-      mostStockedProduct: null,
-      leastStockedProduct: null,
-    };
-  }
-
-  const totalValue = products.reduce((sum, p) => sum + p.price * p.stock, 0);
-  const averagePrice = products.reduce((sum, p) => sum + p.price, 0) / products.length;
-  const lowStockCount = products.filter((p) => p.stock > 0 && p.stock < 10).length;
-  const outOfStockCount = products.filter((p) => p.stock === 0).length;
-
-  const sortedByStock = [...products].sort((a, b) => b.stock - a.stock);
-
-  return {
-    totalProducts: products.length,
-    totalValue,
-    averagePrice,
-    lowStockCount,
-    outOfStockCount,
-    mostStockedProduct: sortedByStock[0]
-      ? { name: sortedByStock[0].name, stock: sortedByStock[0].stock }
-      : null,
-    leastStockedProduct: sortedByStock[sortedByStock.length - 1]
-      ? {
-          name: sortedByStock[sortedByStock.length - 1].name,
-          stock: sortedByStock[sortedByStock.length - 1].stock,
-        }
-      : null,
-  };
+  if (error) throw new Error(`Failed to fetch product analytics: ${error.message}`);
+  return data as ProductAnalytics;
 }
 
 /**
@@ -167,56 +147,38 @@ export interface SalesAnalytics {
   topProducts: Array<{ name: string; quantity: number; total: number }>;
 }
 
+const MAX_SALES_ANALYTICS_RANGE_MS = 366 * 24 * 60 * 60 * 1000;
+
+export function resolveSalesAnalyticsDateRange(
+  startDate?: string,
+  endDate?: string,
+  now: Date = new Date()
+): { start: Date; end: Date } {
+  const start = startDate ? new Date(startDate) : new Date(now);
+  if (!startDate) start.setDate(start.getDate() - 30);
+  const end = endDate ? new Date(endDate) : new Date(now);
+
+  if (start.getTime() > end.getTime()) {
+    throw new RangeError("Start date must be before or equal to end date");
+  }
+  if (end.getTime() - start.getTime() > MAX_SALES_ANALYTICS_RANGE_MS) {
+    throw new RangeError("Sales analytics date range cannot exceed 366 days");
+  }
+
+  return { start, end };
+}
+
 export async function getSalesAnalytics(
   tenantId: string,
   startDate: Date,
   endDate: Date
 ): Promise<SalesAnalytics> {
-  const { data: sales, error } = await supabaseAdmin
-    .from("sales")
-    .select("product_name, quantity, total")
-    .eq("tenant_id", tenantId)
-    .gte("created_at", startDate.toISOString())
-    .lte("created_at", endDate.toISOString());
+  const { data, error } = await supabaseAdmin.rpc("get_sales_analytics", {
+    p_tenant_id: tenantId,
+    p_start_date: startDate.toISOString(),
+    p_end_date: endDate.toISOString(),
+  });
 
-  if (error) {
-    throw new Error(`Failed to fetch sales analytics: ${error.message}`);
-  }
-
-  if (!sales || sales.length === 0) {
-    return {
-      totalSales: 0,
-      totalQuantity: 0,
-      transactionCount: 0,
-      averageOrderValue: 0,
-      topProducts: [],
-    };
-  }
-
-  const totalSales = sales.reduce((sum, s) => sum + s.total, 0);
-  const totalQuantity = sales.reduce((sum, s) => sum + s.quantity, 0);
-  const averageOrderValue = totalSales / sales.length;
-
-  // Group by product name to get top products
-  const productMap = new Map<string, { quantity: number; total: number }>();
-  for (const sale of sales) {
-    const existing = productMap.get(sale.product_name) || { quantity: 0, total: 0 };
-    productMap.set(sale.product_name, {
-      quantity: existing.quantity + sale.quantity,
-      total: existing.total + sale.total,
-    });
-  }
-
-  const topProducts = Array.from(productMap.entries())
-    .map(([name, data]) => ({ name, ...data }))
-    .sort((a, b) => b.quantity - a.quantity)
-    .slice(0, 10);
-
-  return {
-    totalSales,
-    totalQuantity,
-    transactionCount: sales.length,
-    averageOrderValue,
-    topProducts,
-  };
+  if (error) throw new Error(`Failed to fetch sales analytics: ${error.message}`);
+  return data as SalesAnalytics;
 }

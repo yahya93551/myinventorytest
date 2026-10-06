@@ -1,6 +1,6 @@
 // app/api/analytics/route.ts - Product and sales analytics
 import { getServerTenantContext, jsonError, jsonSuccess } from "@/lib/api";
-import { getProductAnalytics, getSalesAnalytics } from "@/lib/search";
+import { getProductAnalytics, getSalesAnalytics, resolveSalesAnalyticsDateRange } from "@/lib/search";
 import { z } from "zod";
 
 const AnalyticsQuerySchema = z.object({
@@ -35,15 +35,14 @@ export async function GET(req: Request) {
     }
 
     if (type === "sales") {
-      const start = startDate ? new Date(startDate) : (() => {
-        const d = new Date();
-        d.setDate(d.getDate() - 30);
-        return d;
-      })();
+      let dateRange: { start: Date; end: Date };
+      try {
+        dateRange = resolveSalesAnalyticsDateRange(startDate, endDate);
+      } catch (err) {
+        return jsonError(err instanceof Error ? err.message : "Invalid analytics date range", 422);
+      }
 
-      const end = endDate ? new Date(endDate) : new Date();
-
-      const analytics = await getSalesAnalytics(tenantContext.tenantId, start, end);
+      const analytics = await getSalesAnalytics(tenantContext.tenantId, dateRange.start, dateRange.end);
       return jsonSuccess(analytics);
     }
 
