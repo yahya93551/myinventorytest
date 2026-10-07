@@ -23,6 +23,7 @@ export async function GET(req: Request) {
   return jsonSuccess(
     {
       role: tenantContext.role,
+      tenant_id: tenantContext.tenantId,
       is_admin: adminMembership?.role === "admin",
     },
     200
