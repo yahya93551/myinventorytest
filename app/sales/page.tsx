@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Sidebar from "@/components/Sidebar";
 import { Sale, Product } from "../../types";
@@ -12,6 +12,7 @@ import { useBusinessSettings } from "@/hooks/useCustomFields";
 import { useTheme } from "@/lib/theme-context";
 import { generateReceiptHtml, printReceiptHtml } from "@/lib/receipt";
 import { mapSaleRecord } from "@/lib/apiMappers";
+import { createSaleIdempotencyKey } from "@/lib/saleIdempotency";
 
 import {
   LineChart,
@@ -34,6 +35,7 @@ export default function SalesPage() {
   const [returnAmount, setReturnAmount] = useState<number | "">(1);
   const [returnReason, setReturnReason] = useState("");
   const [returnStatus, setReturnStatus] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const pendingReturnKey = useRef<{ signature: string; key: string } | null>(null);
   const { dark } = useTheme();
   const { data: tenantRoleData, isLoading: tenantRoleLoading } = useTenantRole();
   const { data: businessSettings } = useBusinessSettings();
@@ -228,6 +230,7 @@ export default function SalesPage() {
   };
 
   const handleReturnSale = (sale: Sale) => {
+    pendingReturnKey.current = null;
     const productId = getSaleProductId(sale) || "";
     const productName = getSaleProductName(sale) || "Product";
 
@@ -269,15 +272,25 @@ export default function SalesPage() {
     });
 
     try {
-      await apiPost<void>("/api/sales", {
+      const returnPayload = {
         product_id: returnItem.id,
         quantity,
-        type: "return",
+        type: "return" as const,
         order_id: saleForReturn ? getSaleInvoiceNumber(saleForReturn) : undefined,
         customer_name: saleForReturn ? getSaleCustomerName(saleForReturn) : undefined,
         customer_phone: saleForReturn ? (saleForReturn.customerPhone || saleForReturn.customer_phone) : undefined,
         refund_reason: returnReason || undefined,
+      };
+      const signature = JSON.stringify(returnPayload);
+      const key = pendingReturnKey.current?.signature === signature
+        ? pendingReturnKey.current.key
+        : createSaleIdempotencyKey();
+      pendingReturnKey.current = { signature, key };
+      await apiPost<void>("/api/sales", {
+        ...returnPayload,
+        idempotency_key: key,
       });
+      pendingReturnKey.current = null;
 
       const returnRowBase = saleForReturn || returnSale || {
         id: returnItem.id,
@@ -452,6 +465,7 @@ export default function SalesPage() {
             returnReason={returnReason}
             setReturnReason={setReturnReason}
             setReturnItem={(value) => {
+              if (!value) pendingReturnKey.current = null;
               setReturnItem(value);
               if (!value) setReturnSale(null);
             }}

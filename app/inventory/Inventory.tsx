@@ -383,15 +383,22 @@ export default function Inventory(props: InventoryProps) {
       return false;
     }
 
-    const success = await updateProduct(id, updates);
-
-    if (success) {
-      showMessage("success", "Product updated successfully");
-      setEditItem(null);
-    } else {
-      showMessage("error", "Failed to update product");
+    try {
+      const success = await updateProduct(id, updates);
+      if (success) {
+        showMessage("success", "Product updated successfully");
+        setEditItem(null);
+      } else {
+        showMessage("error", "Failed to update product");
+      }
+      return success;
+    } catch (error) {
+      showMessage(
+        "error",
+        error instanceof Error ? error.message : "Failed to update product"
+      );
+      return false;
     }
-    return success;
   };
 
   // =====================================================

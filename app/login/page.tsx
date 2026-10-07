@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { registerCurrentSession } from "@/lib/apiClient";
 import { CheckCircle2, Lock, Mail, Phone, ShieldCheck, Sparkles, Zap } from "lucide-react";
-import { createPhoneFallbackEmail, getAppUrl, isPhoneNumber, normalizePhoneNumber } from "@/lib/auth";
+import { createPhoneFallbackEmail, isPhoneNumber, normalizePhoneNumber } from "@/lib/auth";
 
 const countryOptions = [
   { code: "+252", country: "Somalia", flag: "🇸🇴" },
@@ -387,28 +387,21 @@ export default function LoginPage() {
     setMessage("");
 
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(trimmedIdentifier, {
-        redirectTo: getAppUrl("/auth/callback"),
+      const response = await fetch("/api/auth/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: trimmedIdentifier }),
       });
+      if (!response.ok) throw new Error("Unable to request a reset link. Please try again later.");
 
       setLoading(false);
-
-      if (error) {
-        setMessageType("error");
-        if (error.message?.includes("rate limit")) {
-          setMessage("Too many reset attempts. Please try again in a few minutes.");
-        } else {
-          setMessage(error.message || "Failed to send reset email.");
-        }
-      } else {
-        setMessageType("success");
-        setMessage("Password reset link sent! Check your email.");
-        setIdentifier("");
-      }
+      setMessageType("success");
+      setMessage("If an account exists for this email, a password reset link has been sent.");
+      setIdentifier("");
     } catch (error) {
       setLoading(false);
       setMessageType("error");
-      setMessage("Failed to send reset email. Please try again.");
+      setMessage(error instanceof Error ? error.message : "Unable to request a reset link. Please try again later.");
       console.error(error);
     }
   };

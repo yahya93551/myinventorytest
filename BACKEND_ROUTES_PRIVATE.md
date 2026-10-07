@@ -16,7 +16,6 @@ All routes in `/app/api/` are private and run only on your backend server.
 /api/auth/refresh-token      - Refresh JWT token
 /api/auth/verify-email       - Email verification
 /api/auth/forgot-password    - Password reset request
-/api/auth/reset-password     - Password reset execution
 /api/account/verify-mfa      - Multi-factor authentication
 ```
 

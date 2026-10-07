@@ -1,12 +1,15 @@
 // app/api/auth/forgot-password/route.ts - Request password reset
+import crypto from 'node:crypto';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { jsonSuccess, jsonError } from '@/lib/api';
-import { generatePasswordResetToken, hashResetToken } from '@/lib/password';
+import { getAppUrl } from '@/lib/auth';
+import { checkRateLimit, getRateLimitIdentifier, rateLimitResponse } from '@/lib/rateLimit';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 
 const ForgotPasswordSchema = z.object({
   email: z.string().email(),
+  platform: z.enum(['web', 'mobile']).optional().default('web'),
 });
 
 export async function POST(req: NextRequest) {
@@ -18,39 +21,40 @@ export async function POST(req: NextRequest) {
       return jsonError('Invalid email address', 400);
     }
 
-    const { email } = parsed.data;
-    const token = generatePasswordResetToken();
-    const hashedToken = hashResetToken(token);
-    const expiresAt = new Date();
-    expiresAt.setHours(expiresAt.getHours() + 2);
+    const email = parsed.data.email.trim().toLowerCase();
+    const sourceLimit = await checkRateLimit(getRateLimitIdentifier(req), {
+      interval: 15 * 60_000,
+      maxRequests: 5,
+    });
+    const destinationKey = crypto.createHash('sha256').update(email).digest('hex');
+    const destinationLimit = await checkRateLimit(`password-reset:${destinationKey}`, {
+      interval: 60 * 60_000,
+      maxRequests: 3,
+    });
 
-    // Store hashed token in profiles table
-    const { error: updateError } = await supabaseAdmin
-      .from('profiles')
-      .update({
-        password_reset_token: hashedToken,
-        password_reset_expires_at: expiresAt.toISOString(),
-      })
-      .eq('email', email);
+    if (!sourceLimit.success) return rateLimitResponse(sourceLimit);
+    if (!destinationLimit.success) return rateLimitResponse(destinationLimit);
 
-    if (updateError) {
-      console.error('[AUTH] Forgot password update failed:', updateError);
-      return jsonError('Failed to request password reset', 500);
+    const { error: resetError } = await supabaseAdmin.auth.resetPasswordForEmail(email, {
+      redirectTo: parsed.data.platform === 'mobile'
+        ? 'inventorymobile://auth/reset-password'
+        : getAppUrl('/auth/callback'),
+    });
+
+    if (resetError) {
+      console.error('[AUTH] Password reset email service returned an error');
+      return jsonError('Unable to process password reset request', 503);
     }
 
-    // TODO: Send email with reset link
-    // In production, use email service to deliver reset token link.
-
     return jsonSuccess({
-      message: 'Password reset requested. Check your email for instructions.',
-      reset_token: token,
+      message: 'If an account exists for this email, a password reset link has been sent.',
     });
-  } catch (err) {
-    console.error('[AUTH] Forgot password failed:', err);
-    return jsonError('Failed to request password reset', 500);
+  } catch {
+    console.error('[AUTH] Forgot password request failed');
+    return jsonError('Unable to process password reset request', 500);
   }
 }
 
-export async function OPTIONS(req: NextRequest) {
+export async function OPTIONS() {
   return new NextResponse(null, { status: 204 });
 }

@@ -410,12 +410,8 @@ export function useInventory() {
   };
 
   const updateProduct = async (id: string, updates: Partial<ProductForm>): Promise<boolean> => {
-    try {
-      await updateProductMutation.mutateAsync({ id, updates });
-      return true;
-    } catch {
-      return false;
-    }
+    await updateProductMutation.mutateAsync({ id, updates });
+    return true;
   };
 
   const deleteProduct = async (id: string): Promise<boolean> => {
