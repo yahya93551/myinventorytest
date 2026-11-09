@@ -115,8 +115,8 @@ export async function apiGet<T>(path: string) {
   return fetchApi<T>(path, { method: "GET" });
 }
 
-export async function apiPost<T>(path: string, body?: unknown) {
-  return fetchApi<T>(path, { method: "POST", body: JSON.stringify(body) });
+export async function apiPost<T>(path: string, body?: unknown, headers?: HeadersInit) {
+  return fetchApi<T>(path, { method: "POST", body: JSON.stringify(body), headers });
 }
 
 export async function apiPatch<T>(path: string, body?: unknown) {

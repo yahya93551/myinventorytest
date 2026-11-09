@@ -1,17 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Sidebar from "@/components/Sidebar";
 import BulkSellModal from "@/app/inventory/BulkSellModal";
 import { apiGet, apiPost } from "@/lib/apiClient";
 import { Product, Sale } from "../../types";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
+import { createSaleIdempotencyKey } from "@/lib/saleIdempotency";
 
 export default function SellMultiplePage() {
   const { loading } = useRequireAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const pendingSaleKey = useRef<{ signature: string; key: string } | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -54,8 +56,14 @@ export default function SellMultiplePage() {
         paid: metadata?.paid,
       };
 
-      const res = await apiPost('/api/sales', payload);
+      const signature = JSON.stringify(payload);
+      const key = pendingSaleKey.current?.signature === signature
+        ? pendingSaleKey.current.key
+        : createSaleIdempotencyKey();
+      pendingSaleKey.current = { signature, key };
+      const res = await apiPost('/api/sales', { ...payload, idempotency_key: key });
       if (res.success) {
+        pendingSaleKey.current = null;
         setMessage({ type: 'success', text: 'Bulk sale completed successfully.' });
         return true;
       }
@@ -87,7 +95,10 @@ export default function SellMultiplePage() {
             isOpen={true}
             pageMode={true}
             products={products}
-            onClose={() => window.history.back()}
+            onClose={() => {
+              pendingSaleKey.current = null;
+              window.history.back();
+            }}
             onConfirm={handleConfirm}
             showMessage={showMessage}
           />

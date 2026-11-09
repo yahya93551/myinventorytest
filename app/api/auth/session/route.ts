@@ -91,7 +91,7 @@ export async function POST(req: NextRequest) {
           last_activity: nowIso,
           expires_at: expiresAt,
         },
-        { onConflict: 'session_id' }
+        { onConflict: 'user_id,session_id' }
       )
       .select()
       .single();

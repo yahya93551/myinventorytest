@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useSubscription } from '@/hooks/useSubscription';
-import { apiPost } from '@/lib/apiClient';
+import { apiGet, apiPost } from '@/lib/apiClient';
 import {
   getSubscriptionDiscountForDuration,
   getSubscriptionDurationPrice,
@@ -15,6 +15,22 @@ import Card from '@/components/Card';
 
 interface SubscriptionStatusProps {
   onRequestClick?: () => void;
+}
+
+type PaymentMethod = 'manual' | 'waafi_production';
+
+interface WaafiPaymentStatus {
+  checkoutEnabled: boolean;
+  serviceStatus?: string;
+  environment?: 'production';
+}
+
+interface WaafiCheckoutResult {
+  referenceId: string;
+  outcome: 'pending' | 'succeeded' | 'failed';
+  message: string;
+  plan: SubscriptionPlan;
+  durationMonths: number;
 }
 
 const PLAN_DETAILS: Record<SubscriptionPlan, { label: string; products: string; users: string; description: string }> = {
@@ -51,6 +67,15 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
   const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan>(() => getSubscriptionPlan(subscription ?? null));
   const [selectedDurationMonths, setSelectedDurationMonths] = useState<number>(1);
   const [showUpgradeForm, setShowUpgradeForm] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('manual');
+  const [checkingWaafi, setCheckingWaafi] = useState(false);
+  const [waafiAvailabilityChecked, setWaafiAvailabilityChecked] = useState(false);
+  const [waafiCheckoutReady, setWaafiCheckoutReady] = useState(false);
+  const [waafiPhone, setWaafiPhone] = useState('');
+  const [waafiMessage, setWaafiMessage] = useState('');
+  const [waafiOutcome, setWaafiOutcome] = useState<'idle' | 'pending' | 'succeeded' | 'failed'>('idle');
+  const [waafiRequesting, setWaafiRequesting] = useState(false);
+  const [waafiIdempotencyKey, setWaafiIdempotencyKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (subscription?.plan && isSubscriptionPlan(subscription.plan)) {
@@ -99,6 +124,112 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
       setRequestMessage(err instanceof Error ? err.message : 'Error requesting subscription');
     } finally {
       setRequesting(false);
+    }
+  };
+
+  const handlePaymentMethodChange = async (method: PaymentMethod) => {
+    if (method === 'manual') {
+      setPaymentMethod('manual');
+      setWaafiMessage('');
+      setWaafiOutcome('idle');
+      return;
+    }
+    if (checkingWaafi || waafiAvailabilityChecked) {
+      return;
+    }
+
+    setCheckingWaafi(true);
+    try {
+      const result = await apiGet<WaafiPaymentStatus>('/api/subscription-payments/status');
+      const available = result.data?.checkoutEnabled === true;
+      setWaafiCheckoutReady(available);
+      setWaafiAvailabilityChecked(true);
+      setPaymentMethod('waafi_production');
+      if (!available) {
+        setWaafiMessage(result.data?.serviceStatus === 'unavailable'
+          ? 'WaafiPay payment service is currently unreachable. No payment was sent. Check the service deployment and connection.'
+          : result.data?.environment === 'production'
+            ? 'Production checkout is not configured. No payment was sent. Configure the production credentials, verification credentials, webhook secret, database access, and service connection.'
+            : 'Production checkout is not configured on this server yet. No payment was sent. Configure the production credentials and service connection.');
+        setWaafiOutcome('failed');
+      }
+    } catch {
+      setWaafiCheckoutReady(false);
+      setWaafiAvailabilityChecked(true);
+      setPaymentMethod('waafi_production');
+      setWaafiMessage('Could not check WaafiPay payment service readiness. No payment was sent. Check the service configuration and try again.');
+      setWaafiOutcome('failed');
+    } finally {
+      setCheckingWaafi(false);
+    }
+  };
+
+  const handleWaafiCheckout = async () => {
+    setWaafiMessage('Checking WaafiPay service configuration…');
+    setWaafiOutcome('pending');
+    setWaafiRequesting(true);
+    let checkoutSubmitted = false;
+    try {
+      const readiness = await apiGet<WaafiPaymentStatus>('/api/subscription-payments/status');
+      setWaafiCheckoutReady(readiness.data?.checkoutEnabled === true);
+      if (readiness.data?.checkoutEnabled !== true) {
+        setWaafiAvailabilityChecked(true);
+        setWaafiMessage(readiness.data?.environment === 'production'
+          ? 'Payment not sent. Production checkout is not configured. Add the production API credentials, HPP verification credentials, webhook secret, database connection, and service settings.'
+          : 'Payment not sent. Production checkout is not configured. Add the WaafiPay production credentials and service connection.');
+        setWaafiOutcome('failed');
+        return;
+      }
+
+      setWaafiAvailabilityChecked(true);
+      const reconciliationAttempt = waafiIdempotencyKey !== null;
+      const idempotencyKey = waafiIdempotencyKey || crypto.randomUUID();
+      setWaafiIdempotencyKey(idempotencyKey);
+      checkoutSubmitted = true;
+      setWaafiMessage(reconciliationAttempt
+        ? 'Checking the existing payment with WaafiPay. No new charge will be started.'
+        : 'Production service is ready. Submitting your wallet payment to WaafiPay; please wait for server verification.');
+      const response = await apiPost<WaafiCheckoutResult>(
+        '/api/subscription-payments/checkout',
+        {
+          plan: selectedPlan,
+          durationMonths: selectedDurationMonths,
+          accountNo: waafiPhone.trim(),
+        },
+        { 'Idempotency-Key': idempotencyKey },
+      );
+      const result = response.data;
+      if (!result) {
+        throw new Error('WaafiPay payment service returned an empty result.');
+      }
+      const resultKey = /^sub-([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i
+        .exec(result.referenceId)?.[1];
+      if (!resultKey) {
+        throw new Error('WaafiPay returned an invalid payment reference. Do not retry; contact support.');
+      }
+      const restoredAttempt = result.referenceId !== `sub-${idempotencyKey}`;
+      setWaafiIdempotencyKey(resultKey);
+      setSelectedPlan(result.plan);
+      setSelectedDurationMonths(result.durationMonths);
+      setWaafiMessage(restoredAttempt && result.outcome === 'pending'
+        ? 'Found your previous pending payment. No new charge was started; use Check payment status to reconcile it.'
+        : result.message);
+      setWaafiOutcome(result.outcome);
+      if (result.outcome === 'succeeded') {
+        await refetch();
+      }
+      if (result.outcome === 'failed') {
+        setWaafiIdempotencyKey(null);
+      }
+    } catch (err) {
+      setWaafiMessage(checkoutSubmitted
+        ? 'Payment result could not be confirmed. Do not retry or create a new payment reference; contact support to reconcile this attempt.'
+        : err instanceof Error
+          ? err.message
+          : 'WaafiPay service readiness could not be checked.');
+      setWaafiOutcome(checkoutSubmitted ? 'pending' : 'failed');
+    } finally {
+      setWaafiRequesting(false);
     }
   };
 
@@ -192,6 +323,162 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
         {(!isActive || showUpgradeForm) && subscription?.status !== 'pending' && (
           <>
             <div className="mt-6 space-y-4 border-t border-theme-input pt-4">
+              <div className="space-y-3">
+                <p className="font-medium text-theme-primary">Choose a payment method</p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    aria-pressed={paymentMethod === 'manual'}
+                    onClick={() => handlePaymentMethodChange('manual')}
+                    className={`rounded-2xl border p-4 text-left transition-colors ${
+                      paymentMethod === 'manual'
+                        ? 'border-cyan-500 bg-cyan-50 text-cyan-950'
+                        : 'border-theme bg-theme-input text-theme-primary hover:border-cyan-300'
+                    }`}
+                  >
+                    <span className="block font-semibold">Manual payment</span>
+                    <span className="mt-1 block text-sm">Current payment process with admin verification</span>
+                    <span className="mt-2 inline-block rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-800">
+                      Available
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={checkingWaafi}
+                    aria-pressed={paymentMethod === 'waafi_production'}
+                    onClick={() => handlePaymentMethodChange('waafi_production')}
+                    className={`rounded-2xl border p-4 text-left transition-colors ${
+                      paymentMethod === 'waafi_production'
+                        ? 'border-amber-500 bg-amber-50 text-amber-950'
+                        : 'border-theme bg-theme-input text-theme-primary hover:border-amber-300'
+                    }`}
+                  >
+                    <span className="block font-semibold">WaafiPay API</span>
+                    <span className="mt-1 block text-sm">
+                      Direct wallet payment; environment checked when selected
+                    </span>
+                    <span className="mt-2 inline-block rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-900">
+                      {checkingWaafi
+                        ? 'Checking availability'
+                        : waafiAvailabilityChecked
+                          ? waafiCheckoutReady
+                            ? 'Production ready'
+                            : 'Production setup needed'
+                          : 'Check availability'}
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              {paymentMethod === 'waafi_production' ? (
+                <div className="space-y-4">
+                  <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+                    <p className="font-semibold">
+                      {waafiCheckoutReady
+                        ? 'Production payment — this will charge a real wallet.'
+                        : 'Production payment selected — checkout is not ready and cannot charge yet.'}
+                    </p>
+                    <p className="mt-1">Your subscription changes only after WaafiPay confirms the payment on the server.</p>
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <label className="text-sm font-medium text-theme-primary">Plan</label>
+                      <PlanSelect
+                        value={selectedPlan}
+                        onChange={(plan) => setSelectedPlan(plan)}
+                        disabled={waafiIdempotencyKey !== null}
+                        className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="waafi-subscription-duration" className="text-sm font-medium text-theme-primary">
+                        Subscription duration
+                      </label>
+                      <select
+                        id="waafi-subscription-duration"
+                        value={selectedDurationMonths}
+                        onChange={(event) => setSelectedDurationMonths(Number(event.target.value))}
+                        disabled={waafiIdempotencyKey !== null}
+                        className="mt-1 w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
+                      >
+                        <option value={1}>1 month</option>
+                        <option value={3}>3 months</option>
+                        <option value={6}>6 months</option>
+                        <option value={12}>1 year</option>
+                      </select>
+                    </div>
+                    <div className="rounded-2xl border border-cyan-200 bg-cyan-50 p-4 text-sm text-cyan-900">
+                      <p className="font-semibold">
+                        Payment amount
+                      </p>
+                      <p className="mt-1">${selectedDurationTotal} USD</p>
+                      {selectedDurationDiscount > 0 && (
+                        <p className="mt-1">Includes {selectedDurationDiscount}% duration discount.</p>
+                      )}
+                    </div>
+                    <div>
+                      <label htmlFor="waafi-payment-phone" className="text-sm font-medium text-theme-primary">
+                        Wallet number
+                      </label>
+                      <input
+                        id="waafi-payment-phone"
+                        inputMode="numeric"
+                        autoComplete="off"
+                        value={waafiPhone}
+                        onChange={(event) => setWaafiPhone(event.target.value)}
+                        disabled={waafiIdempotencyKey !== null}
+                        placeholder="252611111111"
+                        className="mt-1 w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
+                      />
+                      <p className="mt-1 text-xs text-theme-secondary">Country code included; digits only, no + or leading zero.</p>
+                    </div>
+                  </div>
+
+                  {waafiMessage && (
+                    <div
+                      role={waafiOutcome === 'pending' ? 'status' : 'alert'}
+                      aria-live="polite"
+                      className={`rounded-xl border p-4 text-sm ${
+                        waafiOutcome === 'pending'
+                          ? 'border-amber-300 bg-amber-50 text-amber-950'
+                          : waafiOutcome === 'succeeded'
+                            ? 'border-green-300 bg-green-50 text-green-900'
+                            : 'border-red-300 bg-red-50 text-red-900'
+                      }`}
+                    >
+                      <p className="font-semibold">
+                        {waafiOutcome === 'pending'
+                          ? 'Checking WaafiPay payment'
+                          : waafiOutcome === 'succeeded'
+                            ? 'Payment confirmed'
+                            : 'WaafiPay payment update'}
+                      </p>
+                      <p className="mt-1">{waafiMessage}</p>
+                    </div>
+                  )}
+
+                  <Button
+                    onClick={handleWaafiCheckout}
+                    disabled={
+                      waafiRequesting
+                      || !/^[0-9]{10,20}$/.test(waafiPhone.trim())
+                      || (waafiIdempotencyKey !== null && waafiOutcome !== 'pending')
+                    }
+                    className="w-full"
+                  >
+                    {waafiRequesting
+                      ? 'Checking and processing...'
+                      : waafiIdempotencyKey && waafiOutcome === 'pending'
+                        ? 'Check payment status'
+                        : waafiIdempotencyKey
+                          ? 'Payment confirmed'
+                          : 'Pay with WaafiPay'}
+                  </Button>
+
+                </div>
+              ) : (
+              <>
               <div className="rounded-2xl border border-cyan-300 bg-cyan-50 p-4 text-sm text-cyan-900">
                 <p className="font-semibold">💰 Payment Instructions</p>
 
@@ -304,7 +591,6 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
                   className="w-full min-h-30 rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
                 />
               </div>
-            </div>
 
             <Button
               onClick={handleRequest}
@@ -317,6 +603,9 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
             {requestMessage && (
               <p className="mt-3 text-sm text-theme-secondary">{requestMessage}</p>
             )}
+              </>
+              )}
+            </div>
           </>
         )}
 

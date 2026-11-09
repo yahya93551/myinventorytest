@@ -4,7 +4,6 @@
 import { Suspense, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   Lock,
   ShieldCheck,
@@ -17,8 +16,6 @@ import {
 export const dynamic = "force-dynamic";
 
 function ResetPasswordContent() {
-  const router = useRouter();
-
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [message, setMessage] = useState("");
@@ -26,6 +23,7 @@ function ResetPasswordContent() {
   const [loading, setLoading] = useState(false);
   const [validating, setValidating] = useState(true);
   const [isValidSession, setIsValidSession] = useState(false);
+  const [passwordUpdated, setPasswordUpdated] = useState(false);
 
   useEffect(() => {
     const checkRecoverySession = async (attempt = 0) => {
@@ -138,13 +136,20 @@ function ResetPasswordContent() {
         return;
       }
 
-      setLoading(false);
-      setMessageType("success");
-      setMessage("Password reset successful! Redirecting to login...");
+      const { error: signOutError } = await supabase.auth.signOut();
+      if (signOutError) {
+        console.error("Password changed, but the recovery session could not be closed:", signOutError.message);
+      }
 
-      setTimeout(() => {
-        router.push("/login");
-      }, 2000);
+      setLoading(false);
+      setIsValidSession(false);
+      setPasswordUpdated(true);
+      setMessageType("success");
+      setMessage(
+        signOutError
+          ? "Your password was changed successfully. Please sign out before signing in with your new password."
+          : "Your password was changed successfully. Sign in with your new password."
+      );
     } catch (error) {
       console.error("Password reset error:", error);
 
@@ -356,7 +361,7 @@ function ResetPasswordContent() {
                   className="inline-flex w-full items-center justify-center gap-2 rounded-[28px] bg-linear-to-r from-cyan-500 via-sky-500 to-blue-600 px-5 py-4 text-sm font-semibold text-slate-950 shadow-[0_20px_60px_-20px_rgba(14,165,233,0.65)] transition duration-300 hover:-translate-y-0.5"
                 >
                   <ArrowLeft className="h-4 w-4" />
-                  Return to Login
+                  {passwordUpdated ? "Sign in with your new password" : "Return to Login"}
                 </Link>
               )}
 

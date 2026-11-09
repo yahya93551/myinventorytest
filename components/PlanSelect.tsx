@@ -5,6 +5,7 @@ interface PlanSelectProps {
   value: SubscriptionPlan;
   onChange: (plan: SubscriptionPlan) => void;
   className?: string;
+  disabled?: boolean;
 }
 
 const LABELS: Record<SubscriptionPlan, string> = {
@@ -13,7 +14,7 @@ const LABELS: Record<SubscriptionPlan, string> = {
   unlimited: 'Unlimited',
 };
 
-export default function PlanSelect({ value, onChange, className }: PlanSelectProps) {
+export default function PlanSelect({ value, onChange, className, disabled = false }: PlanSelectProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
 
@@ -33,10 +34,11 @@ export default function PlanSelect({ value, onChange, className }: PlanSelectPro
     <div ref={ref} className="relative">
       <button
         type="button"
+        disabled={disabled}
         aria-haspopup="listbox"
         aria-expanded={open}
         onClick={() => setOpen((s) => !s)}
-        className={`${className ?? ''} text-left flex items-center justify-between`}
+        className={`${className ?? ''} text-left flex items-center justify-between ${disabled ? 'cursor-not-allowed opacity-60' : ''}`}
       >
         <span>
           {LABELS[value]} — ${getSubscriptionMonthlyFeeForPlan(value)} / month

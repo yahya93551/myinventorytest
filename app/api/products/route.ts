@@ -42,10 +42,13 @@ const ProductCreateSchema = z.object({
     .default(0),
   image_url: z.string().url("Image URL must be valid").optional(),
   custom_data: z.record(z.string(), z.unknown()).optional(),
-  base_unit: z.string().trim().max(50).optional(),
-  converted_unit: z.string().trim().max(50).optional(),
-  conversion_rate: z.coerce.number().positive("Conversion rate must be positive").optional(),
-  stock_remainder: z.coerce.number().int().min(0, 'Remainder cannot be negative').optional(),
+  base_unit: z.string().trim().max(50).nullable().optional(),
+  converted_unit: z.string().trim().max(50).nullable().optional(),
+  conversion_rate: z.union([
+    z.coerce.number().positive("Conversion rate must be positive"),
+    z.null(),
+  ]).optional(),
+  stock_remainder: z.coerce.number().int().min(0, 'Remainder cannot be negative').default(0),
 });
 
 const ProductUpdateSchema = z.object({
@@ -60,9 +63,12 @@ const ProductUpdateSchema = z.object({
     .optional(),
   image_url: z.string().url("Image URL must be valid").optional(),
   custom_data: z.record(z.string(), z.unknown()).optional(),
-  base_unit: z.string().trim().max(50).optional(),
-  converted_unit: z.string().trim().max(50).optional(),
-  conversion_rate: z.coerce.number().positive("Conversion rate must be positive").optional(),
+  base_unit: z.string().trim().max(50).nullable().optional(),
+  converted_unit: z.string().trim().max(50).nullable().optional(),
+  conversion_rate: z.union([
+    z.coerce.number().positive("Conversion rate must be positive"),
+    z.null(),
+  ]).optional(),
   stock_remainder: z.coerce.number().int().min(0, 'Remainder cannot be negative').optional(),
 }).refine(
   (data) => Object.keys(data).length > 0,
@@ -123,23 +129,63 @@ export async function GET(req: Request) {
     return jsonError(error.message, 500);
   }
 
-  const { data: allocations, error: allocationError } = await supabaseAdmin
-    .from("inventory_takes")
-    .select("product_id, remaining_quantity")
-    .eq("tenant_id", tenantContext.tenantId)
-    .eq("user_id", tenantContext.userId)
-    .gt("remaining_quantity", 0);
+  const { data: settings, error: settingsError } = tenantContext.role === "sales"
+    ? await supabaseAdmin
+      .from("business_settings")
+      .select("business_type")
+      .eq("tenant_id", tenantContext.tenantId)
+      .maybeSingle()
+    : { data: null, error: null };
 
-  const allocationMap = (allocations || []).reduce<Record<string, number>>((acc, allocation: any) => {
-    if (!allocation?.product_id) return acc;
-    acc[allocation.product_id] = (acc[allocation.product_id] || 0) + (allocation.remaining_quantity || 0);
-    return acc;
-  }, {});
+  if (settingsError) {
+    return jsonError(settingsError.message, 500);
+  }
+
+  const isWarehouseSalesperson =
+    tenantContext.role === "sales" && settings?.business_type === "warehouse";
+
+  const { data: allocations, error: allocationError } = await supabaseAdmin.rpc(
+    "get_salesperson_allocation_availability",
+    {
+      p_tenant_id: tenantContext.tenantId,
+      p_user_id: tenantContext.userId,
+    }
+  );
+
+  if (allocationError) {
+    return jsonError(allocationError.message, 500);
+  }
+  if (!Array.isArray(allocations)) {
+    return jsonError("Failed to calculate salesperson allocation availability.", 500);
+  }
+
+  const allocationMap = new Map<string, {
+    baseQuantity: number;
+    convertedQuantity: number;
+    conversionRate: number | null;
+  }>();
+  for (const allocation of allocations || []) {
+    allocationMap.set(allocation.product_id, {
+      baseQuantity: Number(allocation.base_quantity),
+      convertedQuantity: Number(allocation.converted_quantity),
+      conversionRate: allocation.conversion_rate == null ? null : Number(allocation.conversion_rate),
+    });
+  }
 
   const productsWithAllocation = (data || []).map((product: any) =>
     mapProductRecord({
       ...product,
-      allocated_quantity: allocationMap[product.id] ?? 0,
+      allocated_quantity: allocationMap.get(product.id)?.baseQuantity ?? 0,
+      ...(isWarehouseSalesperson
+        ? {
+          allocation_availability: {
+            base_quantity: allocationMap.get(product.id)?.baseQuantity ?? 0,
+            converted_quantity: allocationMap.get(product.id)?.convertedQuantity ?? 0,
+            converted_unit: product.converted_unit || null,
+            conversion_rate: allocationMap.get(product.id)?.conversionRate ?? null,
+          },
+        }
+        : {}),
     })
   );
 
@@ -182,7 +228,7 @@ export async function POST(req: Request) {
     const normalizedBaseUnit = normalizeUnitMetadata(base_unit);
     const normalizedConvertedUnit = normalizeUnitMetadata(converted_unit);
     const normalizedConversionRate = typeof conversion_rate === "number" ? conversion_rate : null;
-    const normalizedStockRemainder = typeof stock_remainder === "number" ? Math.max(0, Math.floor(stock_remainder)) : null;
+    const normalizedStockRemainder = Math.max(0, Math.floor(stock_remainder));
 
     // Sanitize custom_data: only allow keys that correspond to visible custom fields for this tenant.
     let sanitizedCustomData = custom_data || {};
@@ -260,7 +306,7 @@ export async function POST(req: Request) {
       base_unit: normalizedBaseUnit,
       converted_unit: normalizedConvertedUnit,
       conversion_rate: normalizedConversionRate,
-      ...(normalizedStockRemainder !== null ? { stock_remainder: normalizedStockRemainder } : {}),
+      stock_remainder: normalizedStockRemainder,
       tenant_id: tenantContext.tenantId,
       user_id: tenantContext.userId,
       created_by: tenantContext.userId,
@@ -341,7 +387,7 @@ export async function POST(req: Request) {
         base_unit: normalizedBaseUnit,
         converted_unit: normalizedConvertedUnit,
         conversion_rate: normalizedConversionRate,
-        ...(normalizedStockRemainder !== null ? { stock_remainder: normalizedStockRemainder } : {})
+        stock_remainder: normalizedStockRemainder
       }
     );
     
@@ -395,7 +441,7 @@ export async function PATCH(req: Request) {
 
   const { data: product, error: productError } = await supabaseAdmin
     .from("products")
-    .select("tenant_id, stock")
+    .select("tenant_id, stock, base_unit, converted_unit, conversion_rate")
     .eq("id", id)
     .single();
 
@@ -405,6 +451,34 @@ export async function PATCH(req: Request) {
 
   if (product.tenant_id !== tenantContext.tenantId) {
     return jsonError("You do not have permission to edit this product", 403);
+  }
+
+  const conversionFields = ["base_unit", "converted_unit", "conversion_rate"] as const;
+  const conversionMetadataChanged = conversionFields.some((field) =>
+    Object.prototype.hasOwnProperty.call(normalizedUpdates, field)
+      && normalizedUpdates[field] !== product[field]
+  );
+
+  if (conversionMetadataChanged) {
+    const { data: activeAllocation, error: allocationError } = await supabaseAdmin
+      .from("inventory_takes")
+      .select("id")
+      .eq("tenant_id", tenantContext.tenantId)
+      .eq("product_id", id)
+      .eq("allocation_mode", "converted")
+      .gt("remaining_converted_quantity", 0)
+      .limit(1)
+      .maybeSingle();
+
+    if (allocationError) {
+      return jsonError(allocationError.message, 500);
+    }
+    if (activeAllocation) {
+      return jsonError(
+        "Conversion metadata cannot change while converted salesperson stock is allocated.",
+        409
+      );
+    }
   }
 
   const { error } = await supabaseAdmin
@@ -420,6 +494,13 @@ export async function PATCH(req: Request) {
     : "UPDATE";
 
   if (error) {
+    if (error.message.includes("PRODUCT_CONVERSION_LOCKED")) {
+      return jsonError(
+        "Conversion metadata cannot change while converted salesperson stock is allocated.",
+        409
+      );
+    }
+
     const missingColumns = parseMissingColumns(error);
     if (missingColumns.length > 0) {
       const fallbackUpdates = stripMissingColumns(updates, missingColumns);

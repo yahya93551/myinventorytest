@@ -52,15 +52,24 @@ export default function SellModal({
       setCountryCode("+252");
       setPrintAfterSale(false);
       setIsPaidSale(true);
+      const usesWarehouseAllocation =
+        tenantRole === "sales" && businessSettings?.business_type === "warehouse";
+      const baseAvailability = usesWarehouseAllocation
+        ? Number(sellItem.allocation_availability?.base_quantity || 0)
+        : Number(sellItem.stock || 0);
+      const convertedAvailability = usesWarehouseAllocation
+        ? Number(sellItem.allocation_availability?.converted_quantity || 0)
+        : Number(sellItem.stock || 0) * Number(sellItem.conversion_rate || 0)
+          + Number(sellItem.stock_remainder || 0);
       const hasConversionStock =
         typeof sellItem.conversion_rate === "number" &&
         sellItem.conversion_rate > 0 &&
-        ((sellItem.stock ?? 0) * sellItem.conversion_rate + (sellItem.stock_remainder ?? 0) > 0);
-      setSaleUnitMode((sellItem.stock ?? 0) > 0 || !hasConversionStock ? "base" : "converted");
+        convertedAvailability > 0;
+      setSaleUnitMode(baseAvailability > 0 || !hasConversionStock ? "base" : "converted");
       setError(null);
       setSaleStatus(null);
     }
-  }, [sellItem]);
+  }, [sellItem, tenantRole, businessSettings?.business_type]);
 
   useEffect(() => {
     if (!saleStatus) return;
@@ -89,10 +98,20 @@ export default function SellModal({
       typeof sellItem.conversion_rate === "number" &&
       sellItem.conversion_rate > 0
   );
-  const conversionRate = hasConversion ? sellItem.conversion_rate! : null;
-  const availableBaseToSell = useAllocatedQuantity ? sellItem.allocated_quantity ?? 0 : sellItem.stock;
-  const availableConvertedToSell = hasConversion && conversionRate
-    ? (sellItem.stock ?? 0) * conversionRate + (sellItem.stock_remainder ?? 0)
+  const conversionRate = hasConversion
+    ? useAllocatedQuantity
+      ? sellItem.allocation_availability?.conversion_rate ?? null
+      : sellItem.conversion_rate!
+    : null;
+  const availableBaseToSell = useAllocatedQuantity
+    ? sellItem.allocation_availability?.base_quantity ?? 0
+    : sellItem.stock;
+  const availableConvertedToSell = hasConversion
+    ? useAllocatedQuantity
+      ? sellItem.allocation_availability?.converted_quantity ?? 0
+      : conversionRate
+        ? (sellItem.stock ?? 0) * conversionRate + (sellItem.stock_remainder ?? 0)
+        : 0
     : availableBaseToSell;
   const availableToSell = saleUnitMode === "converted" ? availableConvertedToSell : availableBaseToSell;
   const canConfirm = quantity >= 1 && quantity <= availableToSell;

@@ -13,13 +13,21 @@ function CallbackContent() {
     let mounted = true;
 
     const handleCallback = async () => {
-      console.log("🔐 Supabase auth callback");
-
+      const callbackUrl = new URL(window.location.href);
+      const authorizationCode = callbackUrl.searchParams.get("code");
       const hasRecoveryPayload =
-        typeof window !== "undefined" &&
-        (window.location.hash.includes("type=recovery") ||
-          window.location.hash.includes("access_token=") ||
-          new URLSearchParams(window.location.search).get("code"));
+        window.location.hash.includes("type=recovery") ||
+        window.location.hash.includes("access_token=") ||
+        Boolean(authorizationCode);
+
+      if (authorizationCode) {
+        const { error } = await supabase.auth.exchangeCodeForSession(authorizationCode);
+        if (error) {
+          console.error("Unable to establish the password recovery session:", error.message);
+          if (mounted) router.replace("/login?error=invalid_reset_link");
+          return;
+        }
+      }
 
       const waitForRecoverySession = async (attempt = 0): Promise<boolean> => {
         const {
@@ -45,14 +53,8 @@ function CallbackContent() {
 
       if (!mounted) return;
 
-      if (foundSession) {
+      if (hasRecoveryPayload && foundSession) {
         console.log("✅ Recovery session found");
-        router.replace("/auth/reset-password");
-        return;
-      }
-
-      if (hasRecoveryPayload) {
-        console.warn("Recovery link arrived but the session is still not ready. Showing reset form.");
         router.replace("/auth/reset-password");
         return;
       }

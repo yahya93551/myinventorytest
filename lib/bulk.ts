@@ -47,6 +47,7 @@ export async function bulkInsertProducts(
     const batch = validProducts.slice(i, i + BATCH_SIZE);
     const formattedBatch = batch.map((p) => ({
       ...p,
+      stock_remainder: p.stock_remainder ?? 0,
       tenant_id: tenantId,
       user_id: userId,
       created_by: userId,

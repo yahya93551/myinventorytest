@@ -9,6 +9,7 @@ const BulkProductSchema = z.object({
   cost_price: z.coerce.number().nonnegative("Cost price cannot be negative").optional().default(0),
   price: z.coerce.number().nonnegative("Price must be 0 or greater").optional().default(0),
   stock: z.coerce.number().int("Stock must be an integer").nonnegative("Stock cannot be negative").optional().default(0),
+  stock_remainder: z.coerce.number().int("Remainder must be an integer").nonnegative("Remainder cannot be negative").optional().default(0),
   custom_data: z.record(z.string(), z.unknown()).optional(),
 });
 
@@ -65,6 +66,7 @@ export async function POST(req: Request) {
       cost_price: product.cost_price || 0,
       price: product.price || 0,
       stock: product.stock || 0,
+      stock_remainder: product.stock_remainder,
       custom_data: product.custom_data || {},
       tenant_id: tenantContext.tenantId,
       user_id: tenantContext.userId,

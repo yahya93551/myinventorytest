@@ -2,6 +2,45 @@
 import crypto from 'crypto';
 import type { MFAMethod, MFAEnrollmentData } from '@/types';
 
+const BASE32_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+
+function encodeBase32(buffer: Buffer) {
+  let bits = 0;
+  let value = 0;
+  let output = '';
+
+  for (const byte of buffer) {
+    value = (value << 8) | byte;
+    bits += 8;
+    while (bits >= 5) {
+      output += BASE32_ALPHABET[(value >>> (bits - 5)) & 31];
+      bits -= 5;
+    }
+  }
+
+  if (bits > 0) output += BASE32_ALPHABET[(value << (5 - bits)) & 31];
+  return output;
+}
+
+function decodeBase32(secret: string) {
+  let bits = 0;
+  let value = 0;
+  const output: number[] = [];
+
+  for (const character of secret.toUpperCase().replace(/=+$/g, '').replace(/\s/g, '')) {
+    const index = BASE32_ALPHABET.indexOf(character);
+    if (index < 0) throw new Error('Invalid Base32 secret');
+    value = (value << 5) | index;
+    bits += 5;
+    if (bits >= 8) {
+      output.push((value >>> (bits - 8)) & 255);
+      bits -= 8;
+    }
+  }
+
+  return Buffer.from(output);
+}
+
 /**
  * Generate a TOTP secret for Google Authenticator
  * Returns the secret and QR code data URL
@@ -10,8 +49,7 @@ export function generateTOTPSecret(email: string, appName: string = 'Inventory A
   secret: string;
   qr_code_url: string;
 } {
-  // Generate 32-byte secret (base32 encoded becomes ~52 characters)
-  const secret = crypto.randomBytes(32).toString('base64');
+  const secret = encodeBase32(crypto.randomBytes(20));
   
   // Format: otpauth://totp/[email]?secret=[secret]&issuer=[appName]
   const otpauth = `otpauth://totp/${encodeURIComponent(email)}?secret=${secret}&issuer=${encodeURIComponent(appName)}`;
@@ -29,33 +67,26 @@ export function generateTOTPSecret(email: string, appName: string = 'Inventory A
  * Verify a TOTP code
  * Allows for time drift (±30 seconds = ±1 time step)
  */
-export function verifyTOTPCode(secret: string, code: string, timeWindow: number = 1): boolean {
-  // Remove any whitespace
-  code = code.replace(/\s/g, '');
-  
-  if (!/^\d{6}$/.test(code)) {
-    return false;
-  }
+export function generateTOTPCode(secret: string, timestamp = Date.now()) {
+  const counter = BigInt(Math.floor(timestamp / 30_000));
+  const message = Buffer.alloc(8);
+  message.writeBigUInt64BE(counter);
+  const digest = crypto.createHmac('sha1', decodeBase32(secret)).update(message).digest();
+  const offset = digest[digest.length - 1] & 0x0f;
+  const binary = digest.readUInt32BE(offset) & 0x7fffffff;
+  return (binary % 1_000_000).toString().padStart(6, '0');
+}
+
+export function verifyTOTPCode(secret: string, code: string, timeWindow = 1, timestamp = Date.now()): boolean {
+  const normalizedCode = code.replace(/\s/g, '');
+  if (!/^\d{6}$/.test(normalizedCode)) return false;
 
   try {
-    // Generate HMAC based one-time passwords for current time and adjacent time windows
-    const time = Math.floor(Date.now() / 30000);
-    
-    for (let i = -timeWindow; i <= timeWindow; i++) {
-      const hmac = crypto.createHmac('sha1', Buffer.from(secret, 'base64'));
-      hmac.update(Buffer.alloc(8));
-      const offset = hmac.digest()[19] & 0x0f;
-      const otp = hmac.digest().readUInt32BE(offset) & 0x7fffffff;
-      const otpStr = (otp % 1000000).toString().padStart(6, '0');
-      
-      if (otpStr === code) {
-        return true;
-      }
+    for (let drift = -timeWindow; drift <= timeWindow; drift += 1) {
+      if (generateTOTPCode(secret, timestamp + drift * 30_000) === normalizedCode) return true;
     }
-    
     return false;
-  } catch (err) {
-    console.error('[MFA] TOTP verification failed:', err);
+  } catch {
     return false;
   }
 }
