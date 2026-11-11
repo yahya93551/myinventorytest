@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { createServer } from "./service.mjs";
+import { signWaafiWebhookForTest } from "./production-waafipay.mjs";
 
 const serviceSecret = "service-token-012345678901234567";
 
@@ -12,6 +13,7 @@ const env = {
   WAAFIPAY_MERCHANT_UID: "M400394",
   WAAFIPAY_API_USER_ID: "APIUSER1",
   WAAFIPAY_API_KEY: "012345678901234567890123",
+  WAAFIPAY_WEBHOOK_SECRET: "waafi-webhook-secret-012345678901",
   SUPABASE_URL: "https://example.supabase.co",
   SUPABASE_SERVICE_ROLE_KEY: "supabase-service-role-test-key",
 };
@@ -19,6 +21,7 @@ const env = {
 let server;
 let baseUrl;
 const applied = [];
+const processedWebhooks = [];
 
 before(async () => {
   server = createServer({
@@ -35,8 +38,12 @@ before(async () => {
         applied.push(result);
         return { status: result.outcome };
       },
-      processWebhook: async () => {
-        throw new Error("Automatic webhook processing must remain disabled");
+      processWebhook: async (event) => {
+        processedWebhooks.push(event);
+        return {
+          referenceId: event.referenceId,
+          status: event.status === "APPROVED" ? "succeeded" : "failed",
+        };
       },
     },
     productionPurchase: async () => ({
@@ -141,7 +148,7 @@ test("production checkout requires service authentication", async () => {
   assert.equal(denied.status, 401);
 });
 
-test("successful-looking provider response remains pending until manual verification", async () => {
+test("confirmed provider success is persisted as succeeded", async () => {
   const payload = {
     tenantId: "tenant-1",
     amountMinor: 1234,
@@ -167,10 +174,79 @@ test("successful-looking provider response remains pending until manual verifica
   const result = await response.json();
 
   assert.equal(result.referenceId, payload.referenceId);
-  assert.equal(result.outcome, "pending");
-  assert.equal(result.verified, false);
-  assert.equal(result.paymentStatus, "pending");
-  assert.equal(applied.at(-1).outcome, "pending");
+  assert.equal(result.outcome, "succeeded");
+  assert.equal(result.verified, true);
+  assert.equal(result.paymentStatus, "succeeded");
+  assert.equal(result.responseCode, "2001");
+  assert.equal(applied.at(-1).outcome, "succeeded");
+});
+
+test("provider rejection is persisted as failed without activating a subscription", async () => {
+  let localServer;
+  const appliedResults = [];
+
+  try {
+    localServer = createServer({
+      env,
+      productionStore: {
+        begin: async (payment) => ({
+          created: true,
+          record: {
+            reference_id: payment.referenceId,
+            status: "pending",
+          },
+        }),
+        applyResult: async (result) => {
+          appliedResults.push(result);
+          return { status: result.outcome };
+        },
+      },
+      productionPurchase: async () => ({
+        responseCode: "5306",
+        state: "declined",
+        outcome: "failed",
+        transactionId: null,
+      }),
+    });
+
+    await new Promise((resolve, reject) => {
+      localServer.once("error", reject);
+      localServer.listen(0, "127.0.0.1", resolve);
+    });
+
+    const checkoutUrl = `http://127.0.0.1:${localServer.address().port}/checkout`;
+    const response = await fetch(checkoutUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${serviceSecret}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        tenantId: "tenant-1",
+        amountMinor: 1234,
+        currency: "USD",
+        referenceId: "sub-declined-001",
+        accountNo: "252611111111",
+        description: "Test subscription",
+        plan: "basic",
+        durationMonths: 3,
+      }),
+    });
+    const result = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(result.paymentStatus, "failed");
+    assert.equal(result.outcome, "failed");
+    assert.equal(result.responseCode, "5306");
+    assert.match(result.message, /no subscription was activated/i);
+    assert.equal(appliedResults.at(-1).outcome, "failed");
+  } finally {
+    if (localServer) {
+      await new Promise((resolve, reject) => {
+        localServer.close((error) => error ? reject(error) : resolve());
+      });
+    }
+  }
 });
 
 test("duplicate pending payment does not start another charge or automatic verification", async () => {
@@ -252,15 +328,60 @@ test("duplicate pending payment does not start another charge or automatic verif
   }
 });
 
-test("automatic WaafiPay webhook activation is disabled", async () => {
-  const appliedBefore = applied.length;
+test("WaafiPay webhook requires a valid signature and records a confirmed approval", async () => {
+  const rawBody = Buffer.from(JSON.stringify({
+    event: "authorization",
+    merchant_uid: env.WAAFIPAY_MERCHANT_UID,
+    payment: {
+      reference_id: "sub-webhook-approved",
+      status: "APPROVED",
+      transaction_id: "1303631",
+      amount: 12.34,
+      currency: "USD",
+    },
+  }));
+  const timestamp = String(Math.floor(Date.now() / 1000));
+  const eventId = "event-approved-001";
+  const signature = signWaafiWebhookForTest({
+    secret: env.WAAFIPAY_WEBHOOK_SECRET,
+    timestamp,
+    eventId,
+    rawBody,
+  });
+  const headers = {
+    "Content-Type": "application/json",
+    "x-webhook-timestamp": timestamp,
+    "x-webhook-event-id": eventId,
+    "x-webhook-signature-alg": "HMAC-SHA256",
+    "x-webhook-signature": signature,
+  };
+
+  const denied = await fetch(`${baseUrl}/webhooks/waafipay`, {
+    method: "POST",
+    headers: { ...headers, "x-webhook-signature": "0".repeat(64) },
+    body: rawBody,
+  });
+
+  assert.equal(denied.status, 401);
+  assert.equal(processedWebhooks.length, 0);
 
   const response = await fetch(`${baseUrl}/webhooks/waafipay`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ event: "webhook.test" }),
+    headers,
+    body: rawBody,
   });
+  const result = await response.json();
 
-  assert.equal(response.status, 404);
-  assert.equal(applied.length, appliedBefore);
+  assert.equal(response.status, 200);
+  assert.equal(result.data.status, "succeeded");
+  assert.deepEqual(processedWebhooks.at(-1), {
+    event: "authorization",
+    referenceId: "sub-webhook-approved",
+    status: "APPROVED",
+    transactionId: "1303631",
+    amountMinor: 1234,
+    currency: "USD",
+    merchantUid: env.WAAFIPAY_MERCHANT_UID,
+    eventId,
+  });
 });

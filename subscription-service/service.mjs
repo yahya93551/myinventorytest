@@ -6,12 +6,15 @@ import { timingSafeEqual } from "node:crypto";
 import {
   isProductionConfigured,
   isProductionCredentialsConfigured,
+  getVerifiedWebhookPayment,
   makeProductionPurchase,
+  verifyWaafiWebhook,
 } from "./production-waafipay.mjs";
 
 import {
   applyProductionResult,
   beginProductionPayment,
+  processProductionWebhook,
 } from "./production-payment-store.mjs";
 
 const MAX_BODY_BYTES = 16 * 1024;
@@ -54,7 +57,7 @@ function isAuthorized(request, env) {
   );
 }
 
-async function readJsonBody(request) {
+async function readRawBody(request) {
   const chunks = [];
   let totalBytes = 0;
 
@@ -72,8 +75,14 @@ async function readJsonBody(request) {
     chunks.push(bytes);
   }
 
+  return Buffer.concat(chunks);
+}
+
+async function readJsonBody(request) {
+  const body = await readRawBody(request);
+
   try {
-    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    return JSON.parse(body.toString("utf8"));
   } catch {
     throw Object.assign(new Error("Request body must be valid JSON"), {
       status: 400,
@@ -88,6 +97,7 @@ export function createServer({
   productionStore = {
     begin: (payment) => beginProductionPayment({ env, payment }),
     applyResult: (result) => applyProductionResult({ env, ...result }),
+    processWebhook: (event) => processProductionWebhook({ env, ...event }),
   },
 } = {}) {
   return createHttpServer(async (request, response) => {
@@ -123,12 +133,75 @@ export function createServer({
       return;
     }
 
-    // Automatic webhook processing is intentionally disabled.
-    // Payments must be verified and activated manually.
     if (url.pathname === "/webhooks/waafipay") {
-      sendJson(response, 404, {
-        error: "Automatic payment activation is disabled",
-      });
+      if (request.method !== "POST") {
+        sendJson(response, 405, { error: "Method not allowed" }, { Allow: "POST" });
+        return;
+      }
+
+      let rawBody;
+      try {
+        rawBody = await readRawBody(request);
+      } catch (error) {
+        sendJson(
+          response,
+          Number.isInteger(error?.status) ? error.status : 400,
+          { error: error instanceof Error ? error.message : "Invalid webhook body" },
+        );
+        return;
+      }
+
+      if (!verifyWaafiWebhook({
+        env,
+        headers: request.headers,
+        rawBody,
+      })) {
+        sendJson(response, 401, { error: "Invalid WaafiPay webhook signature" });
+        return;
+      }
+
+      let payload;
+      try {
+        payload = JSON.parse(rawBody.toString("utf8"));
+      } catch {
+        sendJson(response, 400, { error: "Webhook body must be valid JSON" });
+        return;
+      }
+
+      const event = getVerifiedWebhookPayment(
+        payload,
+        env.WAAFIPAY_MERCHANT_UID,
+      );
+      if (!event) {
+        sendJson(response, 422, { error: "Invalid WaafiPay webhook payment" });
+        return;
+      }
+
+      if (event.ignored) {
+        sendJson(response, 200, { received: true, ignored: true });
+        return;
+      }
+
+      const eventId = request.headers["x-webhook-event-id"];
+      if (typeof eventId !== "string") {
+        sendJson(response, 401, { error: "Invalid WaafiPay webhook event ID" });
+        return;
+      }
+
+      try {
+        const result = await productionStore.processWebhook({
+          ...event,
+          eventId,
+        });
+        sendJson(response, 200, { received: true, data: result });
+      } catch (error) {
+        console.error(
+          "WaafiPay webhook could not update the payment record:",
+          error instanceof Error ? error.message : "unknown error",
+        );
+        sendJson(response, 500, { error: "Payment webhook could not be recorded" });
+      }
+
       return;
     }
 
@@ -197,18 +270,20 @@ export function createServer({
         try {
           const result = await productionPurchase({ env, payment });
 
-          // Never activate a subscription from the purchase response.
-          // Even approval-like responses remain pending until
-          // authoritative manual verification.
           const updated = await productionStore.applyResult({
             referenceId: record.reference_id,
-            outcome: "pending",
+            outcome: result?.outcome || "pending",
             providerState:
               result?.state || "awaiting_manual_verification",
             transactionId: result?.transactionId,
           });
 
-          const paymentStatus = updated?.status || "pending";
+          const paymentStatus = updated?.status || result?.outcome || "pending";
+          const message = paymentStatus === "succeeded"
+            ? "WaafiPay confirmed payment; subscription activated."
+            : paymentStatus === "failed"
+              ? "WaafiPay declined or failed the payment; no subscription was activated."
+              : "Payment request submitted. Check your EVC wallet for an approval prompt. Do not retry while this payment is pending.";
 
           sendJson(response, 200, {
             referenceId: record.reference_id,
@@ -217,11 +292,12 @@ export function createServer({
               || result?.state
               || "awaiting_manual_verification",
             duplicate: false,
-            verified: false,
+            verified: paymentStatus === "succeeded" || paymentStatus === "failed",
             paymentStatus,
+            responseCode: result?.responseCode || null,
             plan: record.plan,
             durationMonths: record.duration_months,
-            message: "Payment submitted. Awaiting manual verification.",
+            message,
           });
         } catch (error) {
           console.error(

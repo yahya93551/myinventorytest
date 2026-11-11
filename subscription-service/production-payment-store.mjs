@@ -210,10 +210,8 @@ export async function applyProductionResult({
   transactionId,
   fetcher = fetch,
 }) {
-  if (outcome !== "pending") {
-    throw new Error(
-      "Only pending payment updates are permitted. Manual approval is required.",
-    );
+  if (!["pending", "succeeded", "failed"].includes(outcome)) {
+    throw new TypeError("Payment outcome must be pending, succeeded, or failed");
   }
 
   return databaseRequest({
@@ -222,9 +220,39 @@ export async function applyProductionResult({
     method: "POST",
     body: {
       p_reference_id: referenceId,
-      p_outcome: "pending",
+      p_outcome: outcome,
       p_provider_state: providerState,
       p_provider_transaction_id: transactionId,
+    },
+    fetcher,
+  });
+}
+
+export async function processProductionWebhook({
+  env = process.env,
+  eventId,
+  event,
+  referenceId,
+  status,
+  transactionId,
+  amountMinor,
+  currency,
+  merchantUid,
+  fetcher = fetch,
+}) {
+  return databaseRequest({
+    env,
+    path: "rpc/process_waafipay_subscription_webhook",
+    method: "POST",
+    body: {
+      p_event_id: eventId,
+      p_event: event,
+      p_reference_id: referenceId,
+      p_status: status,
+      p_provider_transaction_id: transactionId,
+      p_amount_minor: amountMinor,
+      p_currency: currency,
+      p_merchant_uid: merchantUid,
     },
     fetcher,
   });

@@ -4,6 +4,7 @@ import { test } from "node:test";
 import {
   applyProductionResult,
   beginProductionPayment,
+  processProductionWebhook,
 } from "./production-payment-store.mjs";
 
 const env = {
@@ -169,37 +170,58 @@ test("recovers a different unresolved tenant attempt instead of creating a secon
   assert.equal(calls, 3);
 });
 
-test("rejects automatic successful payment approval", async () => {
-  let calls = 0;
+test("persists pending and terminal provider outcomes through the restricted Supabase RPC", async () => {
+  for (const outcome of ["pending", "succeeded", "failed"]) {
+    let request;
 
-  await assert.rejects(
-    () =>
-      applyProductionResult({
-        env,
-        referenceId: payment.referenceId,
-        outcome: "succeeded",
-        providerState: "approved",
-        transactionId: "1303630",
-        fetcher: async () => {
-          calls += 1;
-          return new Response("{}", { status: 200 });
-        },
-      }),
-    /Only pending payment updates are permitted/,
-  );
+    const result = await applyProductionResult({
+      env,
+      referenceId: payment.referenceId,
+      outcome,
+      providerState: outcome === "pending" ? "processing" : outcome,
+      transactionId: outcome === "succeeded" ? "1303630" : null,
+      fetcher: async (url, options) => {
+        request = {
+          url: String(url),
+          body: JSON.parse(options.body),
+        };
 
-  assert.equal(calls, 0);
+        return new Response(
+          JSON.stringify({ status: outcome }),
+          { status: 200 },
+        );
+      },
+    });
+
+    assert.equal(
+      request.url,
+      "https://example.supabase.co/rest/v1/rpc/apply_waafipay_verified_result",
+    );
+
+    assert.deepEqual(request.body, {
+      p_reference_id: payment.referenceId,
+      p_outcome: outcome,
+      p_provider_state: outcome === "pending" ? "processing" : outcome,
+      p_provider_transaction_id: outcome === "succeeded" ? "1303630" : null,
+    });
+
+    assert.deepEqual(result, { status: outcome });
+  }
 });
 
-test("allows pending payment updates through the restricted Supabase RPC", async () => {
+test("records signed provider webhook outcomes through the webhook RPC", async () => {
   let request;
 
-  const result = await applyProductionResult({
+  const result = await processProductionWebhook({
     env,
+    eventId: "event-approved-001",
+    event: "authorization",
     referenceId: payment.referenceId,
-    outcome: "pending",
-    providerState: "processing",
-    transactionId: null,
+    status: "APPROVED",
+    transactionId: "1303630",
+    amountMinor: payment.amountMinor,
+    currency: payment.currency,
+    merchantUid: "M400394",
     fetcher: async (url, options) => {
       request = {
         url: String(url),
@@ -207,7 +229,7 @@ test("allows pending payment updates through the restricted Supabase RPC", async
       };
 
       return new Response(
-        JSON.stringify({ status: "pending" }),
+        JSON.stringify({ status: "succeeded", duplicate: false }),
         { status: 200 },
       );
     },
@@ -215,15 +237,17 @@ test("allows pending payment updates through the restricted Supabase RPC", async
 
   assert.equal(
     request.url,
-    "https://example.supabase.co/rest/v1/rpc/apply_waafipay_verified_result",
+    "https://example.supabase.co/rest/v1/rpc/process_waafipay_subscription_webhook",
   );
-
   assert.deepEqual(request.body, {
+    p_event_id: "event-approved-001",
+    p_event: "authorization",
     p_reference_id: payment.referenceId,
-    p_outcome: "pending",
-    p_provider_state: "processing",
-    p_provider_transaction_id: null,
+    p_status: "APPROVED",
+    p_provider_transaction_id: "1303630",
+    p_amount_minor: payment.amountMinor,
+    p_currency: payment.currency,
+    p_merchant_uid: "M400394",
   });
-
-  assert.deepEqual(result, { status: "pending" });
+  assert.deepEqual(result, { status: "succeeded", duplicate: false });
 });

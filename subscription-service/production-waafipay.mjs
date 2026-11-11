@@ -16,14 +16,15 @@ function isConfiguredValue(value) {
  * Checks whether all required production credentials are configured.
  * This does NOT enable payments.
  *
- * HPP credentials are not required.
- * Webhook secret is optional for manual payment review.
+ * HPP credentials are not required. The webhook secret is required to record
+ * the wallet holder's later approval or rejection.
  */
 export function isProductionCredentialsConfigured(env = process.env) {
   const required = [
     "WAAFIPAY_MERCHANT_UID",
     "WAAFIPAY_API_USER_ID",
     "WAAFIPAY_API_KEY",
+    "WAAFIPAY_WEBHOOK_SECRET",
     "SUBSCRIPTION_SERVICE_SHARED_SECRET",
     "SUPABASE_URL",
     "SUPABASE_SERVICE_ROLE_KEY",
@@ -212,14 +213,8 @@ function normalizeState(params) {
 }
 
 /**
- * Sends one direct API_PURCHASE request.
- *
- * All valid provider responses remain pending.
- * No response automatically approves or rejects a subscription.
- * Manual verification and activation are required.
- *
- * Never automatically retry a purchase after an uncertain
- * network response. Reuse the same payment reference.
+ * Sends one direct API_PURCHASE request and trusts only a definitive provider
+ * state. An uncertain response stays pending and must never trigger a retry.
  */
 export async function makeProductionPurchase({
   env = process.env,
@@ -244,11 +239,23 @@ export async function makeProductionPurchase({
     typeof purchaseParams.transactionId === "string"
       ? purchaseParams.transactionId
       : null;
+  const failedStates = new Set([
+    "cancelled",
+    "canceled",
+    "declined",
+    "failed",
+    "rejected",
+  ]);
+  const outcome = purchaseCode === "2001" && purchaseState === "approved"
+    ? "succeeded"
+    : failedStates.has(purchaseState) || purchaseCode === "5306"
+      ? "failed"
+      : "pending";
 
   return {
     responseCode: purchaseCode || "unknown",
     state: purchaseState || "unknown",
-    outcome: "pending",
+    outcome,
     transactionId,
   };
 }
@@ -268,8 +275,7 @@ export async function verifyProductionTransaction() {
 }
 
 /**
- * Optional webhook signature verification.
- * Not used for automatic subscription activation.
+ * Verifies webhook authenticity before payment status reconciliation.
  */
 export function verifyWaafiWebhook({
   env = process.env,
@@ -292,12 +298,13 @@ export function verifyWaafiWebhook({
   const signature = getHeader("x-webhook-signature");
 
   if (
-    !timestamp
+    typeof timestamp !== "string"
     || !/^[0-9]{1,12}$/.test(timestamp)
-    || !eventId
+    || typeof eventId !== "string"
     || eventId.length > 200
+    || typeof algorithm !== "string"
     || algorithm !== "HMAC-SHA256"
-    || !signature
+    || typeof signature !== "string"
     || !/^[a-f0-9]{64}$/.test(signature)
   ) {
     return false;

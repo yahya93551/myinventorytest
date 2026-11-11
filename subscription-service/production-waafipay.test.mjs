@@ -18,6 +18,7 @@ const env = {
   WAAFIPAY_MERCHANT_UID: "M400394",
   WAAFIPAY_API_USER_ID: "APIUSER1",
   WAAFIPAY_API_KEY: "012345678901234567890123",
+  WAAFIPAY_WEBHOOK_SECRET: "waafi-webhook-secret-012345678901",
   SUBSCRIPTION_SERVICE_SHARED_SECRET: "service-token-012345678901234567",
   SUPABASE_URL: "https://example.supabase.co",
   SUPABASE_SERVICE_ROLE_KEY: "supabase-service-role-test-key",
@@ -78,18 +79,25 @@ test("production readiness requires production mode and the three WaafiPay API c
   );
 });
 
-test("production readiness does not require HPP or webhook credentials", () => {
+test("production readiness requires webhook secret but does not require HPP credentials", () => {
   const withoutOptionalCredentials = {
     ...env,
   };
 
   delete withoutOptionalCredentials.WAAFIPAY_HPP_STORE_ID;
   delete withoutOptionalCredentials.WAAFIPAY_HPP_KEY;
-  delete withoutOptionalCredentials.WAAFIPAY_WEBHOOK_SECRET;
 
   assert.equal(
     isProductionConfigured(withoutOptionalCredentials),
     true,
+  );
+
+  assert.equal(
+    isProductionConfigured({
+      ...withoutOptionalCredentials,
+      WAAFIPAY_WEBHOOK_SECRET: "",
+    }),
+    false,
   );
 });
 
@@ -134,7 +142,7 @@ test("builds a direct API_PURCHASE request with server-only production credentia
   assert.equal(request.timestamp.length, 20);
 });
 
-test("approved-looking WaafiPay response remains pending for manual verification", async () => {
+test("only an approved provider state with success response code is successful", async () => {
   const calls = [];
 
   const result = await makeProductionPurchase({
@@ -166,7 +174,7 @@ test("approved-looking WaafiPay response remains pending for manual verification
 
   assert.equal(result.responseCode, "2001");
   assert.equal(result.state, "approved");
-  assert.equal(result.outcome, "pending");
+  assert.equal(result.outcome, "succeeded");
   assert.equal(result.transactionId, "1303630");
 });
 
@@ -195,12 +203,12 @@ test("does not perform HPP verification or make a second provider request", asyn
   assert.equal(calls, 1);
 });
 
-test("unmatched or incomplete provider responses remain pending", async () => {
+test("declined provider states fail while incomplete or unconfirmed responses remain pending", async () => {
   const responses = [
     {
       responseCode: "2001",
       serviceParams: {
-        state: "approved",
+        state: "unknown",
       },
     },
     {
@@ -212,12 +220,12 @@ test("unmatched or incomplete provider responses remain pending", async () => {
     {
       responseCode: "5306",
       serviceParams: {
-        state: "declined",
+        state: "unknown",
       },
     },
   ];
 
-  for (const providerResponse of responses) {
+  for (const [index, providerResponse] of responses.entries()) {
     const result = await makeProductionPurchase({
       env,
       payment,
@@ -229,8 +237,24 @@ test("unmatched or incomplete provider responses remain pending", async () => {
         ),
     });
 
-    assert.equal(result.outcome, "pending");
+    assert.equal(
+      result.outcome,
+      index === 2 ? "failed" : "pending",
+    );
   }
+});
+
+test("records WaafiPay's documented user-cancelled response as failed", async () => {
+  const result = await makeProductionPurchase({
+    env,
+    payment,
+    fetcher: async () => new Response(
+      JSON.stringify({ responseCode: "5306", serviceParams: { state: "unknown" } }),
+      { status: 200 },
+    ),
+  });
+
+  assert.equal(result.outcome, "failed");
 });
 
 test("verifies webhook HMAC utility over raw bytes and rejects stale or altered deliveries", () => {

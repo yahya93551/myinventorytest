@@ -36,24 +36,28 @@ Before enabling checkout:
 2. Use the same random 32+ character service token in the web app and
    `SUBSCRIPTION_SERVICE_SHARED_SECRET` in the service.
 3. Apply the additive Supabase migration.
-4. Register the default WaafiPay webhook at
-   `https://<your-public-service-host>/webhooks/waafipay`, and store the returned
-   webhook secret as `WAAFIPAY_WEBHOOK_SECRET`. The endpoint accepts WaafiPay's
-   unsigned `webhook.test` ping, then requires HMAC-SHA256 signatures and a
-   timestamp within five minutes for transaction events.
+4. Register the webhook at
+   `https://<your-public-service-host>/webhooks/waafipay` and configure the
+   returned signing secret as `WAAFIPAY_WEBHOOK_SECRET`. Checkout readiness
+   requires this secret so pending EVC approvals and rejections can be recorded.
 5. Complete WaafiPay's approved production validation process before allowing
    real customer use.
 
-The service records an attempt before contacting WaafiPay. A timeout or
-unconfirmed result remains pending. Use **Check payment status** to query
-`HPP_GETTRANINFO`; this reconciliation path never starts another charge, and an
-unresolved payment for the tenant is recovered even if the browser lost its
-original reference. Do not retry with a new reference. A successful direct
-purchase is verified with `HPP_GETTRANINFO`, checking the final approved status,
-amount, and currency.
-The signed webhook is also verified server-side and deduplicated by event ID.
-Only a verified `APPROVED` authorization updates the subscription, atomically
-with its payment record. The browser never grants access.
+The service records an attempt before contacting WaafiPay. The provider may
+send an EVC approval prompt to the payer's wallet; the browser itself does not
+display that prompt. A response is recorded as successful only when WaafiPay
+returns response code `2001` and state `approved`. The database RPC records
+that result and activates the subscription atomically. Explicit declined,
+failed, or cancelled states are recorded as failed without activating the
+subscription. Uncertain responses remain pending; do not retry them with a new
+reference until they have been reconciled with WaafiPay.
+
+Webhook events are authenticated with the registered HMAC-SHA256 webhook
+secret, timestamp, and event ID. The database validates the webhook against
+the stored merchant, amount, currency, and payment reference, and deduplicates
+events. The customer UI polls the payment record while it is pending. The
+browser never grants access based on its own state; activation is performed by
+the database RPC after a confirmed provider approval.
 
 The payment ledger is stored in Supabase. Database credentials are service-side
 only; the checkout path is production-only.

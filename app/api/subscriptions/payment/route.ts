@@ -40,7 +40,9 @@ export async function GET(req: Request) {
       payment: payment
         ? {
             referenceId: payment.reference_id,
-            status: payment.status === "pending" ? "pending" : "review_required",
+            status: ["pending", "succeeded", "failed"].includes(payment.status)
+              ? payment.status
+              : "review_required",
             providerState: payment.provider_state,
             plan: payment.plan,
             durationMonths: payment.duration_months,

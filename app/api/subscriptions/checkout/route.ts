@@ -155,6 +155,10 @@ export async function POST(req: Request) {
     : typeof serviceData.outcome === "string"
       ? serviceData.outcome
       : null;
+  const serviceResponseCode = typeof serviceData.responseCode === "string"
+    && /^[A-Za-z0-9._-]{1,40}$/.test(serviceData.responseCode)
+    ? serviceData.responseCode
+    : null;
 
   // A 502 with a reference means the payment may have been submitted, but its
   // result is uncertain. Preserve the reference and never encourage a new charge.
@@ -164,6 +168,7 @@ export async function POST(req: Request) {
       data: {
         referenceId: responseReference,
         status: "pending",
+        responseCode: serviceResponseCode,
         providerState: typeof serviceData.providerState === "string"
           ? serviceData.providerState
           : "verification_pending",
@@ -189,12 +194,17 @@ export async function POST(req: Request) {
     );
   }
 
-  const status = servicePaymentStatus === "pending" ? "pending" : "review_required";
+  const status = servicePaymentStatus === "pending"
+    || servicePaymentStatus === "succeeded"
+    || servicePaymentStatus === "failed"
+    ? servicePaymentStatus
+    : "review_required";
   return NextResponse.json({
     success: true,
     data: {
       referenceId: responseReference,
       status,
+      responseCode: serviceResponseCode,
       providerState: typeof serviceData.providerState === "string"
         ? serviceData.providerState
         : null,
