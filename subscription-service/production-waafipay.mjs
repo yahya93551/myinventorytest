@@ -16,8 +16,8 @@ function isConfiguredValue(value) {
  * Checks whether all required production credentials are configured.
  * This does NOT enable payments.
  *
- * HPP credentials are not required. The webhook secret is required to record
- * the wallet holder's later approval or rejection.
+ * HPP credentials and the webhook secret are not required for direct checkout.
+ * The webhook secret is only required to authenticate webhook deliveries.
  */
 export function isProductionCredentialsConfigured(env = process.env) {
   return (
@@ -51,7 +51,6 @@ export function getProductionConfigurationIssues(env = process.env) {
   ) issues.push("WAAFIPAY_API_KEY");
 
   for (const name of [
-    "WAAFIPAY_WEBHOOK_SECRET",
     "SUBSCRIPTION_SERVICE_SHARED_SECRET",
     "SUPABASE_URL",
     "SUPABASE_SERVICE_ROLE_KEY",

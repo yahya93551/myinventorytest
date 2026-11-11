@@ -160,7 +160,7 @@ test("production checkout requires service authentication", async () => {
   assert.equal(denied.status, 401);
 });
 
-test("unconfigured checkout reports missing variable names and confirms no provider request was sent", async () => {
+test("unconfigured checkout reports required variable names and confirms no provider request was sent", async () => {
   let localServer;
 
   try {
@@ -205,8 +205,78 @@ test("unconfigured checkout reports missing variable names and confirms no provi
     assert.equal(result.requestSent, false);
     assert.deepEqual(result.missingConfiguration, [
       "WAAFIPAY_API_KEY",
-      "WAAFIPAY_WEBHOOK_SECRET",
     ]);
+  } finally {
+    if (localServer) {
+      await new Promise((resolve, reject) => {
+        localServer.close((error) => error ? reject(error) : resolve());
+      });
+    }
+  }
+});
+
+test("checkout sends the provider request when webhook signing is not configured", async () => {
+  let localServer;
+  let purchaseCalled = false;
+
+  try {
+    localServer = createServer({
+      env: {
+        ...env,
+        WAAFIPAY_WEBHOOK_SECRET: "",
+      },
+      productionStore: {
+        begin: async (payment) => ({
+          created: true,
+          record: {
+            reference_id: payment.referenceId,
+            status: "pending",
+          },
+        }),
+        applyResult: async ({ outcome }) => ({ status: outcome }),
+      },
+      productionPurchase: async () => {
+        purchaseCalled = true;
+        return {
+          responseCode: "2001",
+          state: "approved",
+          outcome: "succeeded",
+          transactionId: "test-transaction",
+          requestPreview: { payload: { apiKey: "[REDACTED]" } },
+        };
+      },
+    });
+
+    await new Promise((resolve, reject) => {
+      localServer.once("error", reject);
+      localServer.listen(0, "127.0.0.1", resolve);
+    });
+
+    const response = await fetch(
+      `http://127.0.0.1:${localServer.address().port}/checkout`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${serviceSecret}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          tenantId: "tenant-1",
+          amountMinor: 1234,
+          currency: "USD",
+          referenceId: "sub-without-webhook-secret",
+          accountNo: "252611111111",
+          plan: "basic",
+          durationMonths: 1,
+        }),
+      },
+    );
+    const result = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(purchaseCalled, true);
+    assert.equal(result.requestSent, true);
+    assert.equal(result.paymentStatus, "succeeded");
   } finally {
     if (localServer) {
       await new Promise((resolve, reject) => {

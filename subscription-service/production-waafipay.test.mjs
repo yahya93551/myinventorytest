@@ -79,7 +79,7 @@ test("production readiness requires production mode and the three WaafiPay API c
   );
 });
 
-test("production readiness requires webhook secret but does not require HPP credentials", () => {
+test("production readiness does not require webhook or HPP credentials", () => {
   const withoutOptionalCredentials = {
     ...env,
   };
@@ -97,7 +97,7 @@ test("production readiness requires webhook secret but does not require HPP cred
       ...withoutOptionalCredentials,
       WAAFIPAY_WEBHOOK_SECRET: "",
     }),
-    false,
+    true,
   );
 });
 

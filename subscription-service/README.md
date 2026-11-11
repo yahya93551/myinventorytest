@@ -15,7 +15,7 @@ payment; WaafiPay checkout must be enabled explicitly.
 
 Production checkout is disabled unless `NODE_ENV=production` and
 `SUBSCRIPTION_WAAFIPAY_PRODUCTION_ENABLED=true`. The service also requires all
-production values in `.env.example`, a deployed Supabase database with migration
+required production values in `.env.example`, a deployed Supabase database with migration
 `20261109000000_add_waafipay_production_payments.sql` applied, and a reachable
 public HTTPS service URL. The service uses the fixed endpoint
 `https://api.waafipay.net/asm`; clients cannot override it.
@@ -36,10 +36,10 @@ Before enabling checkout:
 2. Use the same random 32+ character service token in the web app and
    `SUBSCRIPTION_SERVICE_SHARED_SECRET` in the service.
 3. Apply the additive Supabase migration.
-4. Register the webhook at
-   `https://<your-public-service-host>/webhooks/waafipay` and configure the
-   returned signing secret as `WAAFIPAY_WEBHOOK_SECRET`. Checkout readiness
-   requires this secret so pending EVC approvals and rejections can be recorded.
+4. (Optional) Register the webhook at
+   `https://<your-public-service-host>/webhooks/waafipay` and configure its
+   signing secret as `WAAFIPAY_WEBHOOK_SECRET` if you want authenticated
+   asynchronous payment updates. The secret is not required for checkout.
 5. Complete WaafiPay's approved production validation process before allowing
    real customer use.
 
@@ -55,9 +55,12 @@ reference until they have been reconciled with WaafiPay.
 Webhook events are authenticated with the registered HMAC-SHA256 webhook
 secret, timestamp, and event ID. The database validates the webhook against
 the stored merchant, amount, currency, and payment reference, and deduplicates
-events. The customer UI polls the payment record while it is pending. The
-browser never grants access based on its own state; activation is performed by
-the database RPC after a confirmed provider approval.
+events. If the webhook secret is not configured, checkout still works but
+webhook deliveries are rejected; payments not confirmed by the immediate
+provider response remain pending for manual reconciliation. The customer UI
+polls the payment record while it is pending. The browser never grants access
+based on its own state; activation is performed by the database RPC after a
+confirmed provider approval.
 
 The `/ready` response and configuration-related checkout errors list missing
 environment-variable names only. After a provider request is attempted, the
@@ -75,14 +78,14 @@ only; the checkout path is production-only.
 2. Set `NODE_ENV=production`. Leave `HOST` unset; the service binds to
    `0.0.0.0` in production and listens on Railway's injected `PORT`.
 3. Configure the service variables listed below, initially keeping
-   `SUBSCRIPTION_WAAFIPAY_PRODUCTION_ENABLED=false`. Add a Railway public domain
-   so WaafiPay can reach `/webhooks/waafipay` over HTTPS.
+   `SUBSCRIPTION_WAAFIPAY_PRODUCTION_ENABLED=false`. A Railway public domain is
+   needed only if you choose to receive webhook updates.
 4. Confirm Railway's `/health` check succeeds. `/ready` should remain
    `not_configured` until all service credentials, database setup, and the
    explicit enable flag are complete.
-5. Apply the Supabase migration, register the WaafiPay webhook, then store its
-   returned signing secret in Railway. Do not enable checkout until production
-   verification is complete.
+5. Apply the Supabase migration. Register a WaafiPay webhook and configure its
+   signing secret in Railway only if you choose to receive webhook updates.
+   Do not enable checkout until production verification is complete.
 
 Subscription service variables (set only on the private service):
 
@@ -94,7 +97,7 @@ Subscription service variables (set only on the private service):
 - `WAAFIPAY_API_KEY`
 - `WAAFIPAY_HPP_STORE_ID`
 - `WAAFIPAY_HPP_KEY`
-- `WAAFIPAY_WEBHOOK_SECRET` (from webhook registration)
+- `WAAFIPAY_WEBHOOK_SECRET` (optional; required only for webhook updates)
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
 
