@@ -43,6 +43,7 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
   const [accountNo, setAccountNo] = useState('');
   const [paymentLoading, setPaymentLoading] = useState(true);
   const [checkoutEnabled, setCheckoutEnabled] = useState(false);
+  const [sandboxMode, setSandboxMode] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [checkoutResult, setCheckoutResult] = useState<string | null>(null);
   const [providerRequestPreview, setProviderRequestPreview] = useState<unknown>(null);
@@ -60,6 +61,9 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
     amountMinor: number;
     currency: string;
     createdAt: string;
+    sandbox?: boolean;
+    sandboxOutcome?: string;
+    providerDiagnostics?: unknown;
   } | null>(null);
   const [requestMessage, setRequestMessage] = useState('');
   const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan>(() => getSubscriptionPlan(subscription ?? null));
@@ -74,14 +78,22 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
 
   useEffect(() => {
     let active = true;
+    if (sandboxMode) {
+      return () => {
+        active = false;
+      };
+    }
+
     const loadPaymentStatus = () => apiGet<{
       payment: typeof payment;
       checkoutEnabled: boolean;
+      checkoutMode?: string;
     }>('/api/subscriptions/payment')
       .then((result) => {
         if (!active) return;
         setPayment(result.data?.payment ?? null);
         setCheckoutEnabled(result.data?.checkoutEnabled === true);
+        setSandboxMode(result.data?.checkoutMode === 'sandbox');
         setPaymentError(null);
         if (result.data?.payment?.status === 'succeeded') {
           setCheckoutResult('WaafiPay confirmed payment; subscription is active.');
@@ -106,7 +118,7 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
       active = false;
       if (interval !== null) window.clearInterval(interval);
     };
-  }, [payment?.status]);
+  }, [payment?.status, payment?.sandbox, sandboxMode]);
 
   const selectedDurationDiscount = getSubscriptionDiscountForDuration(selectedDurationMonths);
   const selectedDurationTotal = getSubscriptionDurationPrice(selectedPlan, selectedDurationMonths);
@@ -154,6 +166,9 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
         responseCode?: string | null;
         requestSent?: boolean;
         requestPreview?: unknown;
+        sandbox?: boolean;
+        sandboxOutcome?: string;
+        providerDiagnostics?: unknown;
         providerState: string | null;
         plan: SubscriptionPlan;
         durationMonths: number;
@@ -165,6 +180,8 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
         requestSent: result.data?.requestSent === true,
         requestPreview: result.data?.requestPreview ?? null,
         paymentStatus: result.data?.status ?? 'not returned',
+        sandboxOutcome: result.data?.sandboxOutcome ?? null,
+        providerDiagnostics: result.data?.providerDiagnostics ?? null,
         referenceId: result.data?.referenceId ?? null,
         responseCode: result.data?.responseCode ?? null,
         providerState: result.data?.providerState ?? null,
@@ -176,9 +193,14 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
         ...result.data,
         providerState: result.data.providerState ?? null,
         createdAt: result.data.createdAt ?? new Date().toISOString(),
+        sandbox: result.data.sandbox === true,
+        sandboxOutcome: result.data.sandboxOutcome,
+        providerDiagnostics: result.data.providerDiagnostics,
       });
       setProviderRequestPreview(result.data.requestPreview ?? null);
-      if (result.data.status === 'succeeded') {
+      if (result.data.sandbox) {
+        setRequestMessage('Sandbox request completed. No production payment record or subscription was changed.');
+      } else if (result.data.status === 'succeeded') {
         setAccountNo('');
         setRequestMessage('WaafiPay confirmed your payment. Your subscription is activated.');
         await refetch();
@@ -188,9 +210,9 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
       } else {
         setRequestMessage('Checkout was submitted. Check your phone for the EVC wallet prompt and approve or reject it there. Do not retry while this payment is pending.');
       }
-      setCheckoutResult(
-        `Request sent: ${result.data.requestSent === true ? 'yes' : 'no'}; payment status: ${result.data.status}; WaafiPay response code: ${result.data.responseCode || 'not returned'}; reference: ${result.data.referenceId}; provider state: ${result.data.providerState || 'not returned'}.`,
-      );
+      setCheckoutResult(result.data.sandbox
+        ? `Sandbox request sent: ${result.data.requestSent === true ? 'yes' : 'no'}; provider outcome: ${result.data.sandboxOutcome || 'unknown'}; WaafiPay response code: ${result.data.responseCode || 'not returned'}; reference: ${result.data.referenceId}; provider state: ${result.data.providerState || 'not returned'}. No production payment was recorded.`
+        : `Request sent: ${result.data.requestSent === true ? 'yes' : 'no'}; payment status: ${result.data.status}; WaafiPay response code: ${result.data.responseCode || 'not returned'}; reference: ${result.data.referenceId}; provider state: ${result.data.providerState || 'not returned'}.`);
       if (onRequestClick) onRequestClick();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Error requesting subscription';
@@ -291,7 +313,9 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
           {payment && (
             <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
               <p className="font-semibold">
-                {payment.status === 'succeeded'
+                {payment.sandbox
+                  ? 'Sandbox test result — no production payment or subscription changes'
+                  : payment.status === 'succeeded'
                   ? 'Payment successful — subscription activated'
                   : payment.status === 'failed'
                     ? 'Payment declined or failed — no subscription was activated'
@@ -307,7 +331,9 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
                 {payment.currency} {(payment.amountMinor / 100).toFixed(2)}
               </p>
               <p className="mt-2">
-                {payment.status === 'pending'
+                {payment.sandbox
+                  ? `Sandbox outcome: ${payment.sandboxOutcome || 'unknown'}. This result was not saved as a payment and cannot activate a subscription.`
+                  : payment.status === 'pending'
                   ? 'Approve or reject the request on your phone. Do not submit another checkout while this payment is pending. Keep the reference if you need support.'
                   : payment.status === 'succeeded'
                     ? 'WaafiPay confirmed the payment and the subscription is active.'
@@ -315,6 +341,11 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
                       ? 'The failed payment is recorded. You can submit a new checkout if you still want this plan.'
                       : 'Keep this reference and contact support before trying another payment.'}
               </p>
+              {payment.sandbox && payment.providerDiagnostics !== undefined && (
+                <pre className="mt-2 overflow-x-auto rounded bg-slate-900 p-3 text-xs text-slate-100">
+                  {JSON.stringify(payment.providerDiagnostics, null, 2)}
+                </pre>
+              )}
             </div>
           )}
 
@@ -408,6 +439,9 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
                 Endpoint: <code>POST /api/subscriptions/checkout</code>
               </p>
               <p className="mt-1">
+                Checkout mode: {sandboxMode ? 'Sandbox (no production payment record)' : 'Production'}
+              </p>
+              <p className="mt-1">
                 WaafiPay checkout: {paymentLoading
                   ? 'Checking configuration...'
                   : paymentError
@@ -425,7 +459,9 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
                 }, null, 2)}
               </pre>
               <p className="mt-2">
-                This preview does not send a payment. Click Checkout with WaafiPay to send a purchase request using this number as the payer wallet. The server sends it to WaafiPay; the number is masked here.
+                {sandboxMode
+                  ? 'Sandbox requests use the WaafiPay sandbox endpoint and separate sandbox credentials. They are not written to the production payment database and cannot activate a subscription.'
+                  : 'This preview does not send a payment. Click Checkout with WaafiPay to send a purchase request using this number as the payer wallet. The server sends it to WaafiPay; the number is masked here.'}
               </p>
               {checkoutResult && (
                 <p role="status" aria-live="polite" className="mt-2 break-words">
@@ -444,10 +480,12 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
 
             <Button
               onClick={handleRequest}
-              disabled={requesting || paymentLoading || payment?.status === 'pending' || !/^[1-9][0-9]{9,19}$/.test(accountNo)}
+              disabled={requesting || paymentLoading || (!sandboxMode && payment?.status === 'pending') || !/^[1-9][0-9]{9,19}$/.test(accountNo)}
               className="w-full mt-4"
             >
-              {requesting ? 'Connecting to WaafiPay...' : 'Checkout with WaafiPay'}
+              {requesting
+                ? sandboxMode ? 'Connecting to WaafiPay Sandbox...' : 'Connecting to WaafiPay...'
+                : sandboxMode ? 'Test WaafiPay Sandbox Checkout' : 'Checkout with WaafiPay'}
             </Button>
 
             {!checkoutEnabled && (

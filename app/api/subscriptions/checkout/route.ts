@@ -71,9 +71,19 @@ export async function POST(req: Request) {
     );
   }
 
-  if (process.env.SUBSCRIPTION_WAAFIPAY_PRODUCTION_ENABLED !== "true") {
+  const sandboxMode = process.env.SUBSCRIPTION_WAAFIPAY_ENV === "sandbox";
+  if (
+    sandboxMode
+    ? process.env.SUBSCRIPTION_WAAFIPAY_SANDBOX_ENABLED !== "true"
+    : process.env.SUBSCRIPTION_WAAFIPAY_PRODUCTION_ENABLED !== "true"
+  ) {
     return NextResponse.json(
-      { success: false, error: "WaafiPay checkout is currently disabled. No payment was sent." },
+      {
+        success: false,
+        error: sandboxMode
+          ? "WaafiPay sandbox checkout is disabled. No request was sent."
+          : "WaafiPay checkout is currently disabled. No payment was sent.",
+      },
       { status: 503 },
     );
   }
@@ -98,7 +108,10 @@ export async function POST(req: Request) {
   const referenceId = `myinv-${randomUUID()}`;
   let serviceResponse: Response;
   try {
-    serviceResponse = await fetch(new URL("/checkout", serviceConfig.url), {
+    serviceResponse = await fetch(new URL(
+      sandboxMode ? "/sandbox-checkout" : "/checkout",
+      serviceConfig.url,
+    ), {
       method: "POST",
       headers: {
         Authorization: `Bearer ${serviceConfig.serviceToken}`,
@@ -150,6 +163,39 @@ export async function POST(req: Request) {
     && /^[A-Za-z0-9._-]{1,50}$/.test(serviceData.referenceId)
     ? serviceData.referenceId
     : null;
+  if (sandboxMode && serviceResponse.ok && responseReference) {
+    return NextResponse.json({
+      success: true,
+      data: {
+        referenceId: responseReference,
+        status: "sandbox",
+        sandbox: true,
+        sandboxOutcome: typeof serviceData.outcome === "string"
+          ? serviceData.outcome
+          : "unknown",
+        responseCode: typeof serviceData.responseCode === "string"
+          ? serviceData.responseCode
+          : null,
+        requestSent: serviceData.requestSent === true,
+        requestPreview: isRecord(serviceData.requestPreview)
+          ? serviceData.requestPreview
+          : null,
+        providerDiagnostics: isRecord(serviceData.diagnostics)
+          ? serviceData.diagnostics
+          : null,
+        providerState: typeof serviceData.providerState === "string"
+          ? serviceData.providerState
+          : "unknown",
+        plan: parsed.data.plan,
+        durationMonths: parsed.data.durationMonths,
+        amountMinor,
+        currency: "USD",
+        createdAt: new Date().toISOString(),
+      },
+      message: "Sandbox response received. No production payment record or subscription was changed.",
+    });
+  }
+
   const servicePaymentStatus = typeof serviceData.paymentStatus === "string"
     ? serviceData.paymentStatus
     : typeof serviceData.outcome === "string"

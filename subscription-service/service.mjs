@@ -7,8 +7,10 @@ import {
   isProductionConfigured,
   isProductionCredentialsConfigured,
   getProductionConfigurationIssues,
+  getSandboxConfigurationIssues,
   getVerifiedWebhookPayment,
   makeProductionPurchase,
+  makeSandboxPurchase,
   verifyWaafiWebhook,
 } from "./production-waafipay.mjs";
 
@@ -94,6 +96,7 @@ async function readJsonBody(request) {
 export function createServer({
   env = process.env,
   productionPurchase = makeProductionPurchase,
+  sandboxPurchase = makeSandboxPurchase,
 
   productionStore = {
     begin: (payment) => beginProductionPayment({ env, payment }),
@@ -202,6 +205,74 @@ export function createServer({
           error instanceof Error ? error.message : "unknown error",
         );
         sendJson(response, 500, { error: "Payment webhook could not be recorded" });
+      }
+
+      return;
+    }
+
+    if (url.pathname === "/sandbox-checkout" && request.method === "POST") {
+      if (!isAuthorized(request, env)) {
+        sendJson(response, 401, { error: "Unauthorized" });
+        return;
+      }
+
+      const missingConfiguration = getSandboxConfigurationIssues(env);
+      if (missingConfiguration.length > 0) {
+        sendJson(response, 503, {
+          error: "WaafiPay sandbox checkout is not configured",
+          requestSent: false,
+          missingConfiguration,
+        });
+        return;
+      }
+
+      try {
+        const body = await readJsonBody(request);
+        const payment = {
+          amountMinor: body?.amountMinor,
+          currency: body?.currency,
+          referenceId: body?.referenceId,
+          accountNo: body?.accountNo,
+          description: body?.description,
+          plan: body?.plan,
+          durationMonths: body?.durationMonths,
+        };
+        const result = await sandboxPurchase({ env, payment });
+
+        sendJson(response, 200, {
+          referenceId: payment.referenceId,
+          outcome: result.outcome,
+          paymentStatus: result.outcome,
+          providerState: result.state,
+          responseCode: result.responseCode,
+          requestSent: true,
+          requestPreview: result.requestPreview,
+          sandbox: true,
+          diagnostics: {
+            httpStatus: result.httpStatus,
+            responseMessage: result.responseMessage,
+            errorCode: result.errorCode,
+            transactionId: result.transactionId,
+            providerReference: result.providerReference,
+            requestId: result.requestId,
+          },
+          plan: payment.plan,
+          durationMonths: payment.durationMonths,
+        });
+      } catch (error) {
+        const status = Number.isInteger(error?.status)
+          ? error.status
+          : error instanceof TypeError
+            ? 422
+            : 502;
+        sendJson(response, status, {
+          error: error instanceof Error
+            ? error.message
+            : "Sandbox checkout request failed",
+          sandbox: true,
+          requestSent: Boolean(error?.requestPreview),
+          requestPreview: error?.requestPreview || null,
+        });
       }
 
       return;

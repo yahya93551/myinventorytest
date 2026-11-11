@@ -3,6 +3,8 @@ import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 
 export const WAAFIPAY_PRODUCTION_ENDPOINT =
   "https://api.waafipay.net/asm";
+export const WAAFIPAY_SANDBOX_ENDPOINT =
+  "https://sandbox.waafipay.com/asm";
 
 function isConfiguredValue(value) {
   return (
@@ -74,6 +76,36 @@ export function getProductionConfigurationIssues(env = process.env) {
  */
 export function isProductionConfigured(env = process.env) {
   return getProductionConfigurationIssues(env).length === 0;
+}
+
+export function getSandboxConfigurationIssues(env = process.env) {
+  const issues = [];
+
+  if (env.SUBSCRIPTION_WAAFIPAY_SANDBOX_ENABLED !== "true") {
+    issues.push("SUBSCRIPTION_WAAFIPAY_SANDBOX_ENABLED");
+  }
+  if (
+    !isConfiguredValue(env.WAAFIPAY_SANDBOX_MERCHANT_UID)
+    || env.WAAFIPAY_SANDBOX_MERCHANT_UID.trim().length < 7
+    || env.WAAFIPAY_SANDBOX_MERCHANT_UID.trim().length > 15
+  ) issues.push("WAAFIPAY_SANDBOX_MERCHANT_UID");
+  if (
+    !isConfiguredValue(env.WAAFIPAY_SANDBOX_API_USER_ID)
+    || env.WAAFIPAY_SANDBOX_API_USER_ID.trim().length < 7
+    || env.WAAFIPAY_SANDBOX_API_USER_ID.trim().length > 15
+  ) issues.push("WAAFIPAY_SANDBOX_API_USER_ID");
+  if (
+    !isConfiguredValue(env.WAAFIPAY_SANDBOX_API_KEY)
+    || env.WAAFIPAY_SANDBOX_API_KEY.trim().length < 20
+    || env.WAAFIPAY_SANDBOX_API_KEY.trim().length > 40
+  ) issues.push("WAAFIPAY_SANDBOX_API_KEY");
+
+  if (
+    !isConfiguredValue(env.SUBSCRIPTION_SERVICE_SHARED_SECRET)
+    || env.SUBSCRIPTION_SERVICE_SHARED_SECRET.length < 32
+  ) issues.push("SUBSCRIPTION_SERVICE_SHARED_SECRET");
+
+  return [...new Set(issues)];
 }
 
 function validatePayment(payment, { requireAccountNo = true } = {}) {
@@ -168,9 +200,48 @@ export function buildProductionPurchaseRequest({
   };
 }
 
-function makeSafeRequestPreview(payload) {
+export function buildSandboxPurchaseRequest({
+  env = process.env,
+  payment,
+}) {
+  validatePayment(payment);
+
+  const credentials = [
+    "WAAFIPAY_SANDBOX_MERCHANT_UID",
+    "WAAFIPAY_SANDBOX_API_USER_ID",
+    "WAAFIPAY_SANDBOX_API_KEY",
+  ];
+
+  if (credentials.some((name) => !isConfiguredValue(env[name]))) {
+    throw new Error("Sandbox WaafiPay API credentials are not configured");
+  }
+
   return {
-    endpoint: WAAFIPAY_PRODUCTION_ENDPOINT,
+    ...createRequestBase("API_PURCHASE"),
+    serviceParams: {
+      merchantUid: env.WAAFIPAY_SANDBOX_MERCHANT_UID.trim(),
+      apiUserId: env.WAAFIPAY_SANDBOX_API_USER_ID.trim(),
+      apiKey: env.WAAFIPAY_SANDBOX_API_KEY.trim(),
+      paymentMethod: "MWALLET_ACCOUNT",
+      payerInfo: {
+        accountNo: payment.accountNo,
+      },
+      transactionInfo: {
+        referenceId: payment.referenceId,
+        invoiceId: payment.referenceId,
+        amount: Number((payment.amountMinor / 100).toFixed(2)),
+        currency: payment.currency,
+        description: String(
+          payment.description || "Subscription sandbox test",
+        ).slice(0, 255),
+      },
+    },
+  };
+}
+
+function makeSafeRequestPreview(payload, endpoint = WAAFIPAY_PRODUCTION_ENDPOINT) {
+  return {
+    endpoint,
     payload: {
       ...payload,
       serviceParams: {
@@ -187,6 +258,14 @@ function makeSafeRequestPreview(payload) {
   };
 }
 
+function redactAccountNo(value, accountNo) {
+  if (typeof value !== "string") return null;
+
+  const mask = `****${accountNo.slice(-4)}`;
+  const accountPattern = new RegExp(accountNo.split("").join("\\D*"), "g");
+  return value.replace(accountPattern, mask);
+}
+
 function findResponseParams(result) {
   return [
     result?.serviceParams,
@@ -201,8 +280,11 @@ function findResponseParams(result) {
   ) || {};
 }
 
-async function postWaafi(payload, fetcher) {
-  const response = await fetcher(WAAFIPAY_PRODUCTION_ENDPOINT, {
+async function postWaafi(payload, fetcher, {
+  endpoint = WAAFIPAY_PRODUCTION_ENDPOINT,
+  allowHttpErrorResponse = false,
+} = {}) {
+  const response = await fetcher(endpoint, {
     method: "POST",
     headers: {
       Accept: "application/json",
@@ -221,16 +303,14 @@ async function postWaafi(payload, fetcher) {
     throw new Error("WaafiPay returned an invalid response");
   }
 
-  if (
-    !response.ok
-    || !result
-    || typeof result !== "object"
-    || Array.isArray(result)
-  ) {
+  if (!result || typeof result !== "object" || Array.isArray(result)) {
+    throw new Error("WaafiPay returned an invalid response");
+  }
+  if (!response.ok && !allowHttpErrorResponse) {
     throw new Error("WaafiPay request could not be confirmed");
   }
 
-  return result;
+  return { result, httpStatus: response.status };
 }
 
 function normalizeState(params) {
@@ -257,7 +337,7 @@ export async function makeProductionPurchase({
   const requestPreview = makeSafeRequestPreview(requestPayload);
   let purchaseResponse;
   try {
-    purchaseResponse = await postWaafi(requestPayload, fetcher);
+    ({ result: purchaseResponse } = await postWaafi(requestPayload, fetcher));
   } catch (error) {
     if (error instanceof Error) {
       error.requestPreview = requestPreview;
@@ -296,6 +376,98 @@ export async function makeProductionPurchase({
     state: purchaseState || "unknown",
     outcome,
     transactionId,
+    requestPreview,
+  };
+}
+
+/**
+ * Sends a sandbox purchase without persisting or applying its outcome.
+ */
+export async function makeSandboxPurchase({
+  env = process.env,
+  payment,
+  fetcher = fetch,
+}) {
+  const requestPayload = buildSandboxPurchaseRequest({ env, payment });
+  const requestPreview = makeSafeRequestPreview(
+    requestPayload,
+    WAAFIPAY_SANDBOX_ENDPOINT,
+  );
+  let purchaseResponse;
+  let httpStatus;
+
+  try {
+    ({ result: purchaseResponse, httpStatus } = await postWaafi(
+      requestPayload,
+      fetcher,
+      {
+        endpoint: WAAFIPAY_SANDBOX_ENDPOINT,
+        allowHttpErrorResponse: true,
+      },
+    ));
+  } catch (error) {
+    if (error instanceof Error) {
+      error.requestPreview = requestPreview;
+    }
+    throw error;
+  }
+
+  const responseParams = findResponseParams(purchaseResponse);
+  const responseCode = typeof purchaseResponse.responseCode === "string"
+    ? purchaseResponse.responseCode
+    : null;
+  const state = redactAccountNo(
+    normalizeState(responseParams) || "unknown",
+    payment.accountNo,
+  );
+  const transactionId = redactAccountNo(
+    responseParams.transactionId,
+    payment.accountNo,
+  );
+  const failedStates = new Set([
+    "cancelled",
+    "canceled",
+    "declined",
+    "failed",
+    "rejected",
+  ]);
+  const outcome = responseCode === "2001" && state === "approved"
+    ? "succeeded"
+    : failedStates.has(state) || responseCode === "5306"
+      ? "failed"
+      : "pending";
+  const responseMessage = redactAccountNo(
+    typeof purchaseResponse.responseMsg === "string"
+      ? purchaseResponse.responseMsg.slice(0, 300)
+      : null,
+    payment.accountNo,
+  );
+  const errorCode = redactAccountNo(
+    typeof purchaseResponse.errorCode === "string"
+      ? purchaseResponse.errorCode.slice(0, 80)
+      : null,
+    payment.accountNo,
+  );
+  const rawProviderReference = [
+    responseParams.providerReference,
+    responseParams.referenceId,
+    purchaseResponse.providerReference,
+  ].find((value) => typeof value === "string" && value.length <= 100) || null;
+  const providerReference = redactAccountNo(
+    rawProviderReference,
+    payment.accountNo,
+  );
+
+  return {
+    httpStatus,
+    responseCode,
+    responseMessage,
+    errorCode,
+    state,
+    transactionId,
+    providerReference,
+    requestId: requestPayload.requestId,
+    outcome,
     requestPreview,
   };
 }

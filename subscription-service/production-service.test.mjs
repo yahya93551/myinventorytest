@@ -215,6 +215,142 @@ test("unconfigured checkout reports required variable names and confirms no prov
   }
 });
 
+test("sandbox checkout stays gated until enabled and never writes to the payment store", async () => {
+  let localServer;
+  let sandboxCalls = 0;
+  let paymentStoreCalls = 0;
+
+  try {
+    localServer = createServer({
+      env: {
+        ...env,
+        SUBSCRIPTION_WAAFIPAY_SANDBOX_ENABLED: "false",
+      },
+      productionStore: {
+        begin: async () => {
+          paymentStoreCalls += 1;
+          throw new Error("Sandbox checkout must not access the payment store");
+        },
+        applyResult: async () => {
+          paymentStoreCalls += 1;
+          throw new Error("Sandbox checkout must not apply payment results");
+        },
+      },
+      sandboxPurchase: async () => {
+        sandboxCalls += 1;
+        throw new Error("Disabled sandbox checkout must not call WaafiPay");
+      },
+    });
+
+    await new Promise((resolve, reject) => {
+      localServer.once("error", reject);
+      localServer.listen(0, "127.0.0.1", resolve);
+    });
+
+    const url = `http://127.0.0.1:${localServer.address().port}/sandbox-checkout`;
+    const headers = {
+      Authorization: `Bearer ${serviceSecret}`,
+      "Content-Type": "application/json",
+    };
+    const body = JSON.stringify({
+      tenantId: "tenant-1",
+      amountMinor: 1234,
+      currency: "USD",
+      referenceId: "sub-sandbox-disabled",
+      accountNo: "252611111111",
+      plan: "basic",
+      durationMonths: 1,
+    });
+
+    const disabledResponse = await fetch(url, {
+      method: "POST",
+      headers,
+      body,
+    });
+    const disabledResult = await disabledResponse.json();
+    assert.equal(disabledResponse.status, 503);
+    assert.equal(disabledResult.requestSent, false);
+    assert.deepEqual(disabledResult.missingConfiguration, [
+      "SUBSCRIPTION_WAAFIPAY_SANDBOX_ENABLED",
+      "WAAFIPAY_SANDBOX_MERCHANT_UID",
+      "WAAFIPAY_SANDBOX_API_USER_ID",
+      "WAAFIPAY_SANDBOX_API_KEY",
+    ]);
+    assert.equal(sandboxCalls, 0);
+
+    localServer.close();
+    await new Promise((resolve, reject) => {
+      localServer.once("close", resolve);
+      localServer.once("error", reject);
+    });
+    localServer = null;
+
+    localServer = createServer({
+      env: {
+        ...env,
+        SUBSCRIPTION_WAAFIPAY_SANDBOX_ENABLED: "true",
+        WAAFIPAY_SANDBOX_MERCHANT_UID: "M400395",
+        WAAFIPAY_SANDBOX_API_USER_ID: "SANDBOX1",
+        WAAFIPAY_SANDBOX_API_KEY: "sandbox-api-key-012345678901",
+      },
+      productionStore: {
+        begin: async () => {
+          paymentStoreCalls += 1;
+          throw new Error("Sandbox checkout must not access the payment store");
+        },
+        applyResult: async () => {
+          paymentStoreCalls += 1;
+          throw new Error("Sandbox checkout must not apply payment results");
+        },
+      },
+      sandboxPurchase: async () => {
+        sandboxCalls += 1;
+        return {
+          responseCode: "5206",
+          responseMessage: "Sandbox response",
+          errorCode: null,
+          state: "unknown",
+          transactionId: null,
+          providerReference: null,
+          requestId: "sandbox-request-id",
+          httpStatus: 200,
+          outcome: "pending",
+          requestPreview: {
+            endpoint: "https://sandbox.waafipay.com/asm",
+            payload: { serviceName: "API_PURCHASE" },
+          },
+        };
+      },
+    });
+
+    await new Promise((resolve, reject) => {
+      localServer.once("error", reject);
+      localServer.listen(0, "127.0.0.1", resolve);
+    });
+
+    const response = await fetch(
+      `http://127.0.0.1:${localServer.address().port}/sandbox-checkout`,
+      { method: "POST", headers, body },
+    );
+    const result = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(result.sandbox, true);
+    assert.equal(result.requestSent, true);
+    assert.equal(result.responseCode, "5206");
+    assert.equal(result.diagnostics.httpStatus, 200);
+    assert.equal(result.diagnostics.requestId, "sandbox-request-id");
+    assert.equal(sandboxCalls, 1);
+    assert.equal(paymentStoreCalls, 0);
+  } finally {
+    if (localServer) {
+      await new Promise((resolve, reject) => {
+        localServer.close((error) => error ? reject(error) : resolve());
+      });
+    }
+  }
+});
+
 test("checkout sends the provider request when webhook signing is not configured", async () => {
   let localServer;
   let purchaseCalled = false;

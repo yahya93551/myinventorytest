@@ -18,6 +18,17 @@ export async function GET(req: Request) {
     );
   }
 
+  if (process.env.SUBSCRIPTION_WAAFIPAY_ENV === "sandbox") {
+    return NextResponse.json({
+      success: true,
+      data: {
+        checkoutEnabled: process.env.SUBSCRIPTION_WAAFIPAY_SANDBOX_ENABLED === "true",
+        checkoutMode: "sandbox",
+        payment: null,
+      },
+    });
+  }
+
   const { data: payment, error } = await supabaseAdmin
     .from("waafipay_subscription_payments")
     .select("reference_id, status, provider_state, plan, duration_months, amount_minor, currency, created_at")
@@ -37,6 +48,7 @@ export async function GET(req: Request) {
     success: true,
     data: {
       checkoutEnabled: process.env.SUBSCRIPTION_WAAFIPAY_PRODUCTION_ENABLED === "true",
+      checkoutMode: "production",
       payment: payment
         ? {
             referenceId: payment.reference_id,

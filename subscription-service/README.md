@@ -67,8 +67,31 @@ environment-variable names only. After a provider request is attempted, the
 checkout response includes a sanitized payload preview with credentials and
 the payer's full account number redacted.
 
-The payment ledger is stored in Supabase. Database credentials are service-side
-only; the checkout path is production-only.
+## Isolated sandbox checkout
+
+Sandbox checkout is selected only when the web app sets
+`SUBSCRIPTION_WAAFIPAY_ENV=sandbox` and explicitly enables
+`SUBSCRIPTION_WAAFIPAY_SANDBOX_ENABLED=true`. The subscription service must
+separately set `SUBSCRIPTION_WAAFIPAY_SANDBOX_ENABLED=true` and provide
+`WAAFIPAY_SANDBOX_MERCHANT_UID`, `WAAFIPAY_SANDBOX_API_USER_ID`, and
+`WAAFIPAY_SANDBOX_API_KEY`. These credentials are separate from production
+credentials. Until both enable flags and all sandbox/service credentials are
+present, sandbox checkout returns a configuration error without contacting
+WaafiPay.
+
+The sandbox endpoint is `https://sandbox.waafipay.com/asm`. Its dedicated
+`/sandbox-checkout` handler does not call the payment store or subscription
+activation database function. It returns only allowlisted provider diagnostics
+and a sanitized request preview. Thus sandbox attempts cannot alter production
+payment records or subscriptions, and the payment-status API avoids reading the
+production payment ledger while the app is in sandbox mode. Configure the web
+app's regular private service URL/token to reach the subscription service; do
+not expose sandbox credentials to the browser. Do not copy production
+credentials into the sandbox variables.
+
+The production payment ledger is stored in Supabase. Database credentials are
+service-side only; production checkout remains behind the production
+configuration gate. The isolated sandbox handler does not access this ledger.
 
 ## Deploying the service to Railway
 
@@ -95,6 +118,10 @@ Subscription service variables (set only on the private service):
 - `WAAFIPAY_MERCHANT_UID`
 - `WAAFIPAY_API_USER_ID`
 - `WAAFIPAY_API_KEY`
+- `SUBSCRIPTION_WAAFIPAY_SANDBOX_ENABLED=false` until sandbox testing is approved
+- `WAAFIPAY_SANDBOX_MERCHANT_UID` (sandbox credential)
+- `WAAFIPAY_SANDBOX_API_USER_ID` (sandbox credential)
+- `WAAFIPAY_SANDBOX_API_KEY` (sandbox credential)
 - `WAAFIPAY_HPP_STORE_ID`
 - `WAAFIPAY_HPP_KEY`
 - `WAAFIPAY_WEBHOOK_SECRET` (optional; required only for webhook updates)

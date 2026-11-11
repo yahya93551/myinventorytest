@@ -4,12 +4,15 @@ import { test } from "node:test";
 
 import {
   buildProductionPurchaseRequest,
+  getSandboxConfigurationIssues,
   getVerifiedWebhookPayment,
   isProductionConfigured,
   makeProductionPurchase,
+  makeSandboxPurchase,
   signWaafiWebhookForTest,
   verifyWaafiWebhook,
   WAAFIPAY_PRODUCTION_ENDPOINT,
+  WAAFIPAY_SANDBOX_ENDPOINT,
 } from "./production-waafipay.mjs";
 
 const env = {
@@ -140,6 +143,67 @@ test("builds a direct API_PURCHASE request with server-only production credentia
   );
 
   assert.equal(request.timestamp.length, 20);
+});
+
+test("sandbox purchase uses separate credentials and endpoint while only previewing a masked number", async () => {
+  const sandboxEnv = {
+    ...env,
+    SUBSCRIPTION_WAAFIPAY_SANDBOX_ENABLED: "true",
+    WAAFIPAY_SANDBOX_MERCHANT_UID: "M400395",
+    WAAFIPAY_SANDBOX_API_USER_ID: "SANDBOX1",
+    WAAFIPAY_SANDBOX_API_KEY: "sandbox-api-key-012345678901",
+  };
+  const calls = [];
+  const result = await makeSandboxPurchase({
+    env: sandboxEnv,
+    payment,
+    fetcher: async (url, options) => {
+      calls.push({
+        url: String(url),
+        body: JSON.parse(options.body),
+      });
+      return new Response(JSON.stringify({
+        responseCode: "5206",
+        responseMsg: `Sandbox response for ${payment.accountNo}`,
+        errorCode: "sandbox-error",
+        serviceParams: {
+          state: "unknown",
+          transactionId: `sandbox-${payment.accountNo}`,
+          providerReference: `sandbox-ref-${payment.accountNo}`,
+        },
+      }), { status: 200 });
+    },
+  });
+
+  assert.equal(getSandboxConfigurationIssues(sandboxEnv).length, 0);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, WAAFIPAY_SANDBOX_ENDPOINT);
+  assert.equal(calls[0].body.serviceName, "API_PURCHASE");
+  assert.equal(
+    calls[0].body.serviceParams.payerInfo.accountNo,
+    payment.accountNo,
+  );
+  assert.equal(
+    calls[0].body.serviceParams.apiKey,
+    sandboxEnv.WAAFIPAY_SANDBOX_API_KEY,
+  );
+  assert.equal(result.httpStatus, 200);
+  assert.equal(result.responseCode, "5206");
+  assert.equal(result.responseMessage, "Sandbox response for ****1111");
+  assert.equal(result.errorCode, "sandbox-error");
+  assert.equal(result.state, "unknown");
+  assert.equal(result.transactionId, "sandbox-****1111");
+  assert.equal(result.providerReference, "sandbox-ref-****1111");
+  assert.equal(result.requestPreview.endpoint, WAAFIPAY_SANDBOX_ENDPOINT);
+  assert.equal(
+    result.requestPreview.payload.serviceParams.payerInfo.accountNo,
+    "****1111",
+  );
+  assert.equal(
+    JSON.stringify(result.requestPreview).includes(payment.accountNo),
+    false,
+  );
+  assert.equal(JSON.stringify(result).includes(payment.accountNo), false);
 });
 
 test("only an approved provider state with success response code is successful", async () => {
