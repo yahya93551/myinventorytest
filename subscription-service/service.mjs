@@ -6,6 +6,7 @@ import { timingSafeEqual } from "node:crypto";
 import {
   isProductionConfigured,
   isProductionCredentialsConfigured,
+  getProductionConfigurationIssues,
   getVerifiedWebhookPayment,
   makeProductionPurchase,
   verifyWaafiWebhook,
@@ -128,6 +129,7 @@ export function createServer({
             : "not_configured",
         provider: "waafipay",
         environment: "production",
+        missingConfiguration: getProductionConfigurationIssues(env),
       });
 
       return;
@@ -223,6 +225,8 @@ export function createServer({
       if (!isProductionConfigured(env)) {
         sendJson(response, 503, {
           error: "WaafiPay payment service is not configured",
+          requestSent: false,
+          missingConfiguration: getProductionConfigurationIssues(env),
         });
         return;
       }
@@ -267,8 +271,10 @@ export function createServer({
         }
 
         // New payment: send the request to WaafiPay once.
+        let requestPreview = null;
         try {
           const result = await productionPurchase({ env, payment });
+          requestPreview = result?.requestPreview || null;
 
           const updated = await productionStore.applyResult({
             referenceId: record.reference_id,
@@ -287,7 +293,8 @@ export function createServer({
 
           sendJson(response, 200, {
             referenceId: record.reference_id,
-            outcome: paymentStatus,
+            outcome:             paymentStatus,
+            requestSent: false,
             providerState: updated?.provider_state
               || result?.state
               || "awaiting_manual_verification",
@@ -295,6 +302,8 @@ export function createServer({
             verified: paymentStatus === "succeeded" || paymentStatus === "failed",
             paymentStatus,
             responseCode: result?.responseCode || null,
+            requestSent: true,
+            requestPreview,
             plan: record.plan,
             durationMonths: record.duration_months,
             message,
@@ -312,6 +321,8 @@ export function createServer({
             duplicate: false,
             verified: false,
             paymentStatus: "pending",
+            requestSent: true,
+            requestPreview: error?.requestPreview || requestPreview,
             plan: record.plan,
             durationMonths: record.duration_months,
             error: "Payment result could not be confirmed. Do not retry with a new reference.",

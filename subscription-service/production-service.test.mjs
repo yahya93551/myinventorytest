@@ -51,6 +51,16 @@ before(async () => {
       state: "approved",
       outcome: "succeeded",
       transactionId: "1303630",
+      requestPreview: {
+        endpoint: "https://api.waafipay.net/asm",
+        payload: {
+          serviceName: "API_PURCHASE",
+          serviceParams: {
+            apiKey: "[REDACTED]",
+            accountNo: "****1111",
+          },
+        },
+      },
     }),
   });
 
@@ -78,6 +88,7 @@ test("production readiness is private and reports configured production mode", a
     status: "ready",
     provider: "waafipay",
     environment: "production",
+    missingConfiguration: [],
   });
 });
 
@@ -108,6 +119,7 @@ test("non-production checkout is unavailable and cannot call the provider", asyn
       status: "not_configured",
       provider: "waafipay",
       environment: "production",
+      missingConfiguration: ["NODE_ENV"],
     });
 
     const checkout = await fetch(`${localUrl}/checkout`, {
@@ -148,6 +160,62 @@ test("production checkout requires service authentication", async () => {
   assert.equal(denied.status, 401);
 });
 
+test("unconfigured checkout reports missing variable names and confirms no provider request was sent", async () => {
+  let localServer;
+
+  try {
+    localServer = createServer({
+      env: {
+        ...env,
+        WAAFIPAY_API_KEY: "",
+        WAAFIPAY_WEBHOOK_SECRET: "",
+      },
+      productionPurchase: async () => {
+        throw new Error("Unconfigured checkout must not call WaafiPay");
+      },
+    });
+
+    await new Promise((resolve, reject) => {
+      localServer.once("error", reject);
+      localServer.listen(0, "127.0.0.1", resolve);
+    });
+
+    const response = await fetch(
+      `http://127.0.0.1:${localServer.address().port}/checkout`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${serviceSecret}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          tenantId: "tenant-1",
+          amountMinor: 1234,
+          currency: "USD",
+          referenceId: "sub-not-configured",
+          accountNo: "252611111111",
+          plan: "basic",
+          durationMonths: 1,
+        }),
+      },
+    );
+    const result = await response.json();
+
+    assert.equal(response.status, 503);
+    assert.equal(result.requestSent, false);
+    assert.deepEqual(result.missingConfiguration, [
+      "WAAFIPAY_API_KEY",
+      "WAAFIPAY_WEBHOOK_SECRET",
+    ]);
+  } finally {
+    if (localServer) {
+      await new Promise((resolve, reject) => {
+        localServer.close((error) => error ? reject(error) : resolve());
+      });
+    }
+  }
+});
+
 test("confirmed provider success is persisted as succeeded", async () => {
   const payload = {
     tenantId: "tenant-1",
@@ -178,6 +246,8 @@ test("confirmed provider success is persisted as succeeded", async () => {
   assert.equal(result.verified, true);
   assert.equal(result.paymentStatus, "succeeded");
   assert.equal(result.responseCode, "2001");
+  assert.equal(result.requestSent, true);
+  assert.equal(result.requestPreview.payload.serviceParams.apiKey, "[REDACTED]");
   assert.equal(applied.at(-1).outcome, "succeeded");
 });
 

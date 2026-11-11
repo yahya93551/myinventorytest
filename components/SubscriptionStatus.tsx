@@ -45,6 +45,7 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
   const [checkoutEnabled, setCheckoutEnabled] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [checkoutResult, setCheckoutResult] = useState<string | null>(null);
+  const [providerRequestPreview, setProviderRequestPreview] = useState<unknown>(null);
   const [lastCheckoutPayload, setLastCheckoutPayload] = useState<{
     plan: SubscriptionPlan;
     durationMonths: number;
@@ -122,6 +123,7 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
   const handleRequest = async () => {
     setRequestMessage('');
     setCheckoutResult('Sending checkout request...');
+    setProviderRequestPreview(null);
     setRequesting(true);
     const checkoutPayload = {
       plan: selectedPlan,
@@ -134,12 +136,24 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
         ? `${'*'.repeat(Math.max(0, accountNo.length - 4))}${accountNo.slice(-4)}`
         : '(empty)',
     });
+    console.info('[Subscription checkout] App request payload (account number masked)', {
+      endpoint: 'POST /api/subscriptions/checkout',
+      payload: {
+        plan: selectedPlan,
+        durationMonths: selectedDurationMonths,
+        accountNo: accountNo
+          ? `${'*'.repeat(Math.max(0, accountNo.length - 4))}${accountNo.slice(-4)}`
+          : '(empty)',
+      },
+    });
 
     try {
       const result = await apiPost<{
         referenceId: string;
         status: string;
         responseCode?: string | null;
+        requestSent?: boolean;
+        requestPreview?: unknown;
         providerState: string | null;
         plan: SubscriptionPlan;
         durationMonths: number;
@@ -147,6 +161,14 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
         currency: string;
         createdAt?: string;
       }>('/api/subscriptions/checkout', checkoutPayload);
+      console.info('[Subscription checkout] WaafiPay request diagnostics', {
+        requestSent: result.data?.requestSent === true,
+        requestPreview: result.data?.requestPreview ?? null,
+        paymentStatus: result.data?.status ?? 'not returned',
+        referenceId: result.data?.referenceId ?? null,
+        responseCode: result.data?.responseCode ?? null,
+        providerState: result.data?.providerState ?? null,
+      });
       if (!result.data?.referenceId) {
         throw new Error('WaafiPay did not return a payment reference. Please try again later.');
       }
@@ -155,6 +177,7 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
         providerState: result.data.providerState ?? null,
         createdAt: result.data.createdAt ?? new Date().toISOString(),
       });
+      setProviderRequestPreview(result.data.requestPreview ?? null);
       if (result.data.status === 'succeeded') {
         setAccountNo('');
         setRequestMessage('WaafiPay confirmed your payment. Your subscription is activated.');
@@ -166,11 +189,12 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
         setRequestMessage('Checkout was submitted. Check your phone for the EVC wallet prompt and approve or reject it there. Do not retry while this payment is pending.');
       }
       setCheckoutResult(
-        `Payment status: ${result.data.status}; WaafiPay response code: ${result.data.responseCode || 'not returned'}; reference: ${result.data.referenceId}; provider state: ${result.data.providerState || 'not returned'}.`,
+        `Request sent: ${result.data.requestSent === true ? 'yes' : 'no'}; payment status: ${result.data.status}; WaafiPay response code: ${result.data.responseCode || 'not returned'}; reference: ${result.data.referenceId}; provider state: ${result.data.providerState || 'not returned'}.`,
       );
       if (onRequestClick) onRequestClick();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Error requesting subscription';
+      console.warn('[Subscription checkout] Checkout request failed', { message });
       setRequestMessage(message);
       setCheckoutResult(`Request failed: ${message}`);
     } finally {
@@ -407,6 +431,14 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
                 <p role="status" aria-live="polite" className="mt-2 break-words">
                   Result: {checkoutResult}
                 </p>
+              )}
+              {providerRequestPreview !== null && (
+                <>
+                  <p className="mt-3 font-medium">WaafiPay request sent (credentials and wallet number masked)</p>
+                  <pre className="mt-1 overflow-x-auto rounded bg-slate-900 p-3 text-xs text-slate-100">
+                    {JSON.stringify(providerRequestPreview, null, 2)}
+                  </pre>
+                </>
               )}
             </div>
 

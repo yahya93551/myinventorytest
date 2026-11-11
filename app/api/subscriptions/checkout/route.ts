@@ -155,6 +155,10 @@ export async function POST(req: Request) {
     : typeof serviceData.outcome === "string"
       ? serviceData.outcome
       : null;
+  const requestSent = serviceData.requestSent === true;
+  const requestPreview = isRecord(serviceData.requestPreview)
+    ? serviceData.requestPreview
+    : null;
   const serviceResponseCode = typeof serviceData.responseCode === "string"
     && /^[A-Za-z0-9._-]{1,40}$/.test(serviceData.responseCode)
     ? serviceData.responseCode
@@ -169,6 +173,8 @@ export async function POST(req: Request) {
         referenceId: responseReference,
         status: "pending",
         responseCode: serviceResponseCode,
+        requestSent,
+        requestPreview,
         providerState: typeof serviceData.providerState === "string"
           ? serviceData.providerState
           : "verification_pending",
@@ -183,11 +189,17 @@ export async function POST(req: Request) {
   }
 
   if (!serviceResponse.ok || !responseReference) {
+    const missingConfiguration = Array.isArray(serviceData.missingConfiguration)
+      ? serviceData.missingConfiguration.filter(
+          (item): item is string => typeof item === "string"
+            && /^[A-Z0-9_]{1,80}$/.test(item),
+        )
+      : [];
     return NextResponse.json(
       {
         success: false,
         error: serviceResponse.status === 503
-          ? "WaafiPay checkout is unavailable. No payment was sent."
+          ? `WaafiPay checkout is unavailable. No WaafiPay request was sent.${missingConfiguration.length > 0 ? ` Check Railway variables: ${missingConfiguration.join(", ")}.` : ""}`
           : "Payment service could not start checkout",
       },
       { status: serviceResponse.status === 503 ? 503 : 502 },
@@ -205,6 +217,8 @@ export async function POST(req: Request) {
       referenceId: responseReference,
       status,
       responseCode: serviceResponseCode,
+      requestSent,
+      requestPreview,
       providerState: typeof serviceData.providerState === "string"
         ? serviceData.providerState
         : null,

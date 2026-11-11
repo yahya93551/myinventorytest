@@ -59,6 +59,11 @@ events. The customer UI polls the payment record while it is pending. The
 browser never grants access based on its own state; activation is performed by
 the database RPC after a confirmed provider approval.
 
+The `/ready` response and configuration-related checkout errors list missing
+environment-variable names only. After a provider request is attempted, the
+checkout response includes a sanitized payload preview with credentials and
+the payer's full account number redacted.
+
 The payment ledger is stored in Supabase. Database credentials are service-side
 only; the checkout path is production-only.
 

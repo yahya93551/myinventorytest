@@ -176,6 +176,20 @@ test("only an approved provider state with success response code is successful",
   assert.equal(result.state, "approved");
   assert.equal(result.outcome, "succeeded");
   assert.equal(result.transactionId, "1303630");
+  assert.equal(result.requestPreview.endpoint, WAAFIPAY_PRODUCTION_ENDPOINT);
+  assert.equal(result.requestPreview.payload.serviceParams.apiKey, "[REDACTED]");
+  assert.equal(
+    result.requestPreview.payload.serviceParams.payerInfo.accountNo,
+    "****1111",
+  );
+  assert.equal(
+    JSON.stringify(result.requestPreview).includes(env.WAAFIPAY_API_KEY),
+    false,
+  );
+  assert.equal(
+    JSON.stringify(result.requestPreview).includes(payment.accountNo),
+    false,
+  );
 });
 
 test("does not perform HPP verification or make a second provider request", async () => {

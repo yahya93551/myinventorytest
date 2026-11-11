@@ -20,36 +20,53 @@ function isConfiguredValue(value) {
  * the wallet holder's later approval or rejection.
  */
 export function isProductionCredentialsConfigured(env = process.env) {
-  const required = [
-    "WAAFIPAY_MERCHANT_UID",
-    "WAAFIPAY_API_USER_ID",
-    "WAAFIPAY_API_KEY",
+  return (
+    env.NODE_ENV === "production"
+    && getProductionConfigurationIssues(env)
+      .every((name) => name === "SUBSCRIPTION_WAAFIPAY_PRODUCTION_ENABLED")
+  );
+}
+
+export function getProductionConfigurationIssues(env = process.env) {
+  const issues = [];
+
+  if (env.NODE_ENV !== "production") issues.push("NODE_ENV");
+  if (env.SUBSCRIPTION_WAAFIPAY_PRODUCTION_ENABLED !== "true") {
+    issues.push("SUBSCRIPTION_WAAFIPAY_PRODUCTION_ENABLED");
+  }
+  if (
+    !isConfiguredValue(env.WAAFIPAY_MERCHANT_UID)
+    || env.WAAFIPAY_MERCHANT_UID.trim().length < 7
+    || env.WAAFIPAY_MERCHANT_UID.trim().length > 15
+  ) issues.push("WAAFIPAY_MERCHANT_UID");
+  if (
+    !isConfiguredValue(env.WAAFIPAY_API_USER_ID)
+    || env.WAAFIPAY_API_USER_ID.trim().length < 7
+    || env.WAAFIPAY_API_USER_ID.trim().length > 15
+  ) issues.push("WAAFIPAY_API_USER_ID");
+  if (
+    !isConfiguredValue(env.WAAFIPAY_API_KEY)
+    || env.WAAFIPAY_API_KEY.trim().length < 20
+    || env.WAAFIPAY_API_KEY.trim().length > 40
+  ) issues.push("WAAFIPAY_API_KEY");
+
+  for (const name of [
     "WAAFIPAY_WEBHOOK_SECRET",
     "SUBSCRIPTION_SERVICE_SHARED_SECRET",
     "SUPABASE_URL",
     "SUPABASE_SERVICE_ROLE_KEY",
-  ];
+  ]) {
+    if (!isConfiguredValue(env[name])) issues.push(name);
+  }
 
-  const credentialsConfigured =
-    isConfiguredValue(env.WAAFIPAY_MERCHANT_UID)
-    && env.WAAFIPAY_MERCHANT_UID.trim().length >= 7
-    && env.WAAFIPAY_MERCHANT_UID.trim().length <= 15
-    && isConfiguredValue(env.WAAFIPAY_API_USER_ID)
-    && env.WAAFIPAY_API_USER_ID.trim().length >= 7
-    && env.WAAFIPAY_API_USER_ID.trim().length <= 15
-    && isConfiguredValue(env.WAAFIPAY_API_KEY)
-    && env.WAAFIPAY_API_KEY.trim().length >= 20
-    && env.WAAFIPAY_API_KEY.trim().length <= 40
-    && isConfiguredValue(env.SUBSCRIPTION_SERVICE_SHARED_SECRET)
-    && env.SUBSCRIPTION_SERVICE_SHARED_SECRET.length >= 32
-    && isConfiguredValue(env.SUPABASE_URL)
-    && isConfiguredValue(env.SUPABASE_SERVICE_ROLE_KEY);
+  if (
+    isConfiguredValue(env.SUBSCRIPTION_SERVICE_SHARED_SECRET)
+    && env.SUBSCRIPTION_SERVICE_SHARED_SECRET.length < 32
+  ) {
+    issues.push("SUBSCRIPTION_SERVICE_SHARED_SECRET");
+  }
 
-  return (
-    env.NODE_ENV === "production"
-    && credentialsConfigured
-    && required.every((name) => isConfiguredValue(env[name]))
-  );
+  return [...new Set(issues)];
 }
 
 /**
@@ -57,10 +74,7 @@ export function isProductionCredentialsConfigured(env = process.env) {
  * Credentials AND explicit production enablement are required.
  */
 export function isProductionConfigured(env = process.env) {
-  return (
-    isProductionCredentialsConfigured(env)
-    && env.SUBSCRIPTION_WAAFIPAY_PRODUCTION_ENABLED === "true"
-  );
+  return getProductionConfigurationIssues(env).length === 0;
 }
 
 function validatePayment(payment, { requireAccountNo = true } = {}) {
@@ -155,6 +169,25 @@ export function buildProductionPurchaseRequest({
   };
 }
 
+function makeSafeRequestPreview(payload) {
+  return {
+    endpoint: WAAFIPAY_PRODUCTION_ENDPOINT,
+    payload: {
+      ...payload,
+      serviceParams: {
+        ...payload.serviceParams,
+        merchantUid: "[REDACTED]",
+        apiUserId: "[REDACTED]",
+        apiKey: "[REDACTED]",
+        payerInfo: {
+          ...payload.serviceParams.payerInfo,
+          accountNo: `****${payload.serviceParams.payerInfo.accountNo.slice(-4)}`,
+        },
+      },
+    },
+  };
+}
+
 function findResponseParams(result) {
   return [
     result?.serviceParams,
@@ -221,10 +254,17 @@ export async function makeProductionPurchase({
   payment,
   fetcher = fetch,
 }) {
-  const purchaseResponse = await postWaafi(
-    buildProductionPurchaseRequest({ env, payment }),
-    fetcher,
-  );
+  const requestPayload = buildProductionPurchaseRequest({ env, payment });
+  const requestPreview = makeSafeRequestPreview(requestPayload);
+  let purchaseResponse;
+  try {
+    purchaseResponse = await postWaafi(requestPayload, fetcher);
+  } catch (error) {
+    if (error instanceof Error) {
+      error.requestPreview = requestPreview;
+    }
+    throw error;
+  }
 
   const purchaseParams = findResponseParams(purchaseResponse);
 
@@ -257,6 +297,7 @@ export async function makeProductionPurchase({
     state: purchaseState || "unknown",
     outcome,
     transactionId,
+    requestPreview,
   };
 }
 
