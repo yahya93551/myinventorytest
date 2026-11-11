@@ -1,10 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useSubscription } from '@/hooks/useSubscription';
-import { apiPost } from '@/lib/apiClient';
+import { apiGet, apiPost } from '@/lib/apiClient';
 import {
   getSubscriptionDiscountForDuration,
   getSubscriptionDurationPrice,
-  getSubscriptionMonthlyFeeForPlan,
   getSubscriptionPlan,
   isSubscriptionPlan,
   SubscriptionPlan
@@ -39,14 +38,22 @@ const PLAN_DETAILS: Record<SubscriptionPlan, { label: string; products: string; 
 };
 
 export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) {
-  const { subscription, loading, error, isActive, refetch } = useSubscription();
+  const { subscription, loading, error, isActive } = useSubscription();
   const [requesting, setRequesting] = useState(false);
-  const [payerName, setPayerName] = useState('');
-  const [paymentPhone, setPaymentPhone] = useState('');
-  const [paymentEmail, setPaymentEmail] = useState('');
-  const [businessName, setBusinessName] = useState('');
-  const [paymentReference, setPaymentReference] = useState('');
-  const [additionalNotes, setAdditionalNotes] = useState('');
+  const [accountNo, setAccountNo] = useState('');
+  const [paymentLoading, setPaymentLoading] = useState(true);
+  const [checkoutEnabled, setCheckoutEnabled] = useState(false);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [payment, setPayment] = useState<{
+    referenceId: string;
+    status: string;
+    providerState: string | null;
+    plan: SubscriptionPlan;
+    durationMonths: number;
+    amountMinor: number;
+    currency: string;
+    createdAt: string;
+  } | null>(null);
   const [requestMessage, setRequestMessage] = useState('');
   const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan>(() => getSubscriptionPlan(subscription ?? null));
   const [selectedDurationMonths, setSelectedDurationMonths] = useState<number>(1);
@@ -58,7 +65,30 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
     }
   }, [subscription]);
 
-  const selectedPlanFee = getSubscriptionMonthlyFeeForPlan(selectedPlan);
+  useEffect(() => {
+    let active = true;
+    apiGet<{
+      payment: typeof payment;
+      checkoutEnabled: boolean;
+    }>('/api/subscriptions/payment')
+      .then((result) => {
+        if (!active) return;
+        setPayment(result.data?.payment ?? null);
+        setCheckoutEnabled(result.data?.checkoutEnabled === true);
+      })
+      .catch((err) => {
+        if (!active) return;
+        setPaymentError(err instanceof Error ? err.message : 'Could not load payment status.');
+      })
+      .finally(() => {
+        if (active) setPaymentLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const selectedDurationDiscount = getSubscriptionDiscountForDuration(selectedDurationMonths);
   const selectedDurationTotal = getSubscriptionDurationPrice(selectedPlan, selectedDurationMonths);
 
@@ -72,29 +102,35 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
     setRequestMessage('');
     setRequesting(true);
     try {
-      await apiPost('/api/subscriptions', {
+      const result = await apiPost<{
+        referenceId: string;
+        status: string;
+        providerState: string | null;
+        plan: SubscriptionPlan;
+        durationMonths: number;
+        amountMinor: number;
+        currency: string;
+        createdAt?: string;
+      }>('/api/subscriptions/checkout', {
         plan: selectedPlan,
-        subscription_duration_months: selectedDurationMonths,
-        monthly_fee: selectedPlanFee,
-        payer_name: payerName,
-        payment_phone: paymentPhone,
-        payment_email: paymentEmail,
-        business_name: businessName,
-        payment_reference: paymentReference,
-        notes: additionalNotes,
+        durationMonths: selectedDurationMonths,
+        accountNo,
       });
-      await refetch();
-      if (onRequestClick) onRequestClick();
-      setRequestMessage('Subscription request submitted. Waiting for admin approval.');
-      setPayerName('');
-      setPaymentPhone('');
-      setPaymentEmail('');
-      setBusinessName('');
-      setPaymentReference('');
-      setAdditionalNotes('');
-      if (subscription?.plan && isSubscriptionPlan(subscription.plan)) {
-        setSelectedPlan(subscription.plan);
+      if (!result.data?.referenceId) {
+        throw new Error('WaafiPay did not return a payment reference. Please try again later.');
       }
+      setPayment({
+        ...result.data,
+        providerState: result.data.providerState ?? null,
+        createdAt: result.data.createdAt ?? new Date().toISOString(),
+      });
+      setAccountNo('');
+      setRequestMessage(
+        result.data.status === 'pending'
+          ? 'Payment request sent. Your subscription will not activate until an administrator verifies the payment.'
+          : 'This payment already has a recorded result. Contact an administrator before making another payment.',
+      );
+      if (onRequestClick) onRequestClick();
     } catch (err) {
       setRequestMessage(err instanceof Error ? err.message : 'Error requesting subscription');
     } finally {
@@ -182,7 +218,33 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
               : 'N/A'}
           </p>
 
-          {subscription?.status === 'pending' && (
+          {paymentError && (
+            <p role="alert" className="rounded bg-red-50 p-2 text-sm text-red-800">
+              {paymentError}
+            </p>
+          )}
+
+          {payment && (
+            <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+              <p className="font-semibold">
+                {payment.status === 'pending'
+                  ? 'Payment pending — awaiting manual verification'
+                  : 'Payment recorded — contact an administrator to confirm its status'}
+              </p>
+              <p className="mt-2">
+                Reference: <span className="font-mono font-semibold">{payment.referenceId}</span>
+              </p>
+              <p className="mt-1">
+                {payment.plan} plan, {payment.durationMonths} month{payment.durationMonths === 1 ? '' : 's'} —{' '}
+                {payment.currency} {(payment.amountMinor / 100).toFixed(2)}
+              </p>
+              <p className="mt-2">
+                A provider response does not activate your subscription. Keep this reference and wait for an administrator to verify the payment.
+              </p>
+            </div>
+          )}
+
+          {subscription?.status === 'pending' && !payment && (
             <p className="text-yellow-700 bg-yellow-50 p-2 rounded">
               Your subscription request is pending approval from an admin.
             </p>
@@ -193,30 +255,14 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
           <>
             <div className="mt-6 space-y-4 border-t border-theme-input pt-4">
               <div className="rounded-2xl border border-cyan-300 bg-cyan-50 p-4 text-sm text-cyan-900">
-                <p className="font-semibold">💰 Payment Instructions</p>
-
-                <div className="mt-3 space-y-2">
-                  <p className="font-medium">Please contact us on WhatsApp and then fill the payment details below:</p>
-                  <p className="ml-2 font-mono font-bold text-cyan-700">+252686859656</p>
-
-                  <p className="mt-3">After sending the payment, complete the form below so the admin can verify your subscription.</p>
-
-                  <p className="mt-3">
-                    <a
-                      href="https://wa.me/252686859656"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="font-semibold underline hover:text-cyan-700"
-                    >
-                      Message us on WhatsApp
-                    </a>
-                  </p>
-                </div>
+                <p className="font-semibold">Pay securely with WaafiPay</p>
+                <p className="mt-2">
+                  Enter your WaafiPay account number to start checkout. Your subscription remains unchanged until the payment is manually verified.
+                </p>
               </div>
 
               <div className="space-y-4 text-sm text-theme-secondary">
-                <p className="font-medium text-theme-primary">Payment details</p>
-                <p>Enter your payment information so the admin can verify your subscription request.</p>
+                <p className="font-medium text-theme-primary">Choose your plan and pay</p>
 
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="relative">
@@ -253,7 +299,9 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
                   <div className="rounded-2xl border border-cyan-200 bg-cyan-50 p-4 text-sm text-cyan-900">
                     <p className="font-semibold">Selected duration</p>
                     <p className="mt-1">
-                      {selectedDurationMonths === 12 ? '1 year' : `${selectedDurationMonths} months`}
+                      {selectedDurationMonths === 12
+                        ? '1 year'
+                        : `${selectedDurationMonths} month${selectedDurationMonths === 1 ? '' : 's'}`}
                     </p>
                     {selectedDurationDiscount > 0 && (
                       <p className="mt-2 font-medium text-cyan-700">
@@ -265,54 +313,34 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
                     </p>
                   </div>
 
-                  <input
-                    value={payerName}
-                    onChange={(e) => setPayerName(e.target.value)}
-                    placeholder="Payer name"
-                    className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
-                  />
-                  <input
-                    value={paymentPhone}
-                    onChange={(e) => setPaymentPhone(e.target.value)}
-                    placeholder="Phone used to send money"
-                    className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
-                  />
-                  <input
-                    value={paymentEmail}
-                    onChange={(e) => setPaymentEmail(e.target.value)}
-                    placeholder="Payment email"
-                    className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
-                  />
-                  <input
-                    value={businessName}
-                    onChange={(e) => setBusinessName(e.target.value)}
-                    placeholder="Business name"
-                    className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
-                  />
+                  <label className="block">
+                    <span className="text-sm font-medium text-theme-primary">WaafiPay account number</span>
+                    <input
+                      value={accountNo}
+                      onChange={(e) => setAccountNo(e.target.value.replace(/\D/g, '').slice(0, 20))}
+                      inputMode="numeric"
+                      autoComplete="tel"
+                      placeholder="International number without + or leading zero"
+                      className="mt-1 w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
+                    />
+                  </label>
                 </div>
-
-                <input
-                  value={paymentReference}
-                  onChange={(e) => setPaymentReference(e.target.value)}
-                  placeholder="Payment reference / transaction ID"
-                  className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
-                />
-                <textarea
-                  value={additionalNotes}
-                  onChange={(e) => setAdditionalNotes(e.target.value)}
-                  placeholder="Additional notes or instructions"
-                  className="w-full min-h-30 rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
-                />
               </div>
             </div>
 
             <Button
               onClick={handleRequest}
-              disabled={requesting || !payerName.trim() || !paymentPhone.trim() || !paymentEmail.trim() || !businessName.trim()}
+              disabled={requesting || paymentLoading || payment?.status === 'pending' || !/^[1-9][0-9]{9,19}$/.test(accountNo)}
               className="w-full mt-4"
             >
-              {requesting ? 'Submitting...' : 'Request Subscription'}
+              {requesting ? 'Connecting to WaafiPay...' : 'Checkout with WaafiPay'}
             </Button>
+
+            {!checkoutEnabled && (
+              <p className="mt-3 text-sm text-amber-700">
+                WaafiPay checkout is currently disabled. No payment will be sent.
+              </p>
+            )}
 
             {requestMessage && (
               <p className="mt-3 text-sm text-theme-secondary">{requestMessage}</p>
@@ -320,7 +348,11 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
           </>
         )}
 
-        {subscription?.status === 'pending' && (
+        {paymentLoading && (
+          <p className="text-sm text-theme-secondary">Checking payment status...</p>
+        )}
+
+        {subscription?.status === 'pending' && !payment && (
           <div className="p-2 bg-blue-50 text-blue-800 rounded text-sm">
             Waiting for admin approval...
           </div>

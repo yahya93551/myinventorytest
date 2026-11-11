@@ -1,0 +1,2498 @@
+﻿diff --git a/components/SubscriptionStatus.tsx b/components/SubscriptionStatus.tsx
+index 41e302b..c3ca4f4 100644
+--- a/components/SubscriptionStatus.tsx
++++ b/components/SubscriptionStatus.tsx
+@@ -1,10 +1,9 @@
+ import React, { useEffect, useState } from 'react';
+ import { useSubscription } from '@/hooks/useSubscription';
+-import { apiPost } from '@/lib/apiClient';
++import { apiGet, apiPost } from '@/lib/apiClient';
+ import {
+   getSubscriptionDiscountForDuration,
+   getSubscriptionDurationPrice,
+-  getSubscriptionMonthlyFeeForPlan,
+   getSubscriptionPlan,
+   isSubscriptionPlan,
+   SubscriptionPlan
+@@ -39,14 +38,22 @@ const PLAN_DETAILS: Record<SubscriptionPlan, { label: string; products: string;
+ };
+ 
+ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) {
+-  const { subscription, loading, error, isActive, refetch } = useSubscription();
++  const { subscription, loading, error, isActive } = useSubscription();
+   const [requesting, setRequesting] = useState(false);
+-  const [payerName, setPayerName] = useState('');
+-  const [paymentPhone, setPaymentPhone] = useState('');
+-  const [paymentEmail, setPaymentEmail] = useState('');
+-  const [businessName, setBusinessName] = useState('');
+-  const [paymentReference, setPaymentReference] = useState('');
+-  const [additionalNotes, setAdditionalNotes] = useState('');
++  const [accountNo, setAccountNo] = useState('');
++  const [paymentLoading, setPaymentLoading] = useState(true);
++  const [checkoutEnabled, setCheckoutEnabled] = useState(false);
++  const [paymentError, setPaymentError] = useState<string | null>(null);
++  const [payment, setPayment] = useState<{
++    referenceId: string;
++    status: string;
++    providerState: string | null;
++    plan: SubscriptionPlan;
++    durationMonths: number;
++    amountMinor: number;
++    currency: string;
++    createdAt: string;
++  } | null>(null);
+   const [requestMessage, setRequestMessage] = useState('');
+   const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan>(() => getSubscriptionPlan(subscription ?? null));
+   const [selectedDurationMonths, setSelectedDurationMonths] = useState<number>(1);
+@@ -58,7 +65,30 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps)
+     }
+   }, [subscription]);
+ 
+-  const selectedPlanFee = getSubscriptionMonthlyFeeForPlan(selectedPlan);
++  useEffect(() => {
++    let active = true;
++    apiGet<{
++      payment: typeof payment;
++      checkoutEnabled: boolean;
++    }>('/api/subscriptions/payment')
++      .then((result) => {
++        if (!active) return;
++        setPayment(result.data?.payment ?? null);
++        setCheckoutEnabled(result.data?.checkoutEnabled === true);
++      })
++      .catch((err) => {
++        if (!active) return;
++        setPaymentError(err instanceof Error ? err.message : 'Could not load payment status.');
++      })
++      .finally(() => {
++        if (active) setPaymentLoading(false);
++      });
++
++    return () => {
++      active = false;
++    };
++  }, []);
++
+   const selectedDurationDiscount = getSubscriptionDiscountForDuration(selectedDurationMonths);
+   const selectedDurationTotal = getSubscriptionDurationPrice(selectedPlan, selectedDurationMonths);
+ 
+@@ -72,29 +102,35 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps)
+     setRequestMessage('');
+     setRequesting(true);
+     try {
+-      await apiPost('/api/subscriptions', {
++      const result = await apiPost<{
++        referenceId: string;
++        status: string;
++        providerState: string | null;
++        plan: SubscriptionPlan;
++        durationMonths: number;
++        amountMinor: number;
++        currency: string;
++        createdAt?: string;
++      }>('/api/subscriptions/checkout', {
+         plan: selectedPlan,
+-        subscription_duration_months: selectedDurationMonths,
+-        monthly_fee: selectedPlanFee,
+-        payer_name: payerName,
+-        payment_phone: paymentPhone,
+-        payment_email: paymentEmail,
+-        business_name: businessName,
+-        payment_reference: paymentReference,
+-        notes: additionalNotes,
++        durationMonths: selectedDurationMonths,
++        accountNo,
+       });
+-      await refetch();
+-      if (onRequestClick) onRequestClick();
+-      setRequestMessage('Subscription request submitted. Waiting for admin approval.');
+-      setPayerName('');
+-      setPaymentPhone('');
+-      setPaymentEmail('');
+-      setBusinessName('');
+-      setPaymentReference('');
+-      setAdditionalNotes('');
+-      if (subscription?.plan && isSubscriptionPlan(subscription.plan)) {
+-        setSelectedPlan(subscription.plan);
++      if (!result.data?.referenceId) {
++        throw new Error('WaafiPay did not return a payment reference. Please try again later.');
+       }
++      setPayment({
++        ...result.data,
++        providerState: result.data.providerState ?? null,
++        createdAt: result.data.createdAt ?? new Date().toISOString(),
++      });
++      setAccountNo('');
++      setRequestMessage(
++        result.data.status === 'pending'
++          ? 'Payment request sent. Your subscription will not activate until an administrator verifies the payment.'
++          : 'This payment already has a recorded result. Contact an administrator before making another payment.',
++      );
++      if (onRequestClick) onRequestClick();
+     } catch (err) {
+       setRequestMessage(err instanceof Error ? err.message : 'Error requesting subscription');
+     } finally {
+@@ -182,7 +218,33 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps)
+               : 'N/A'}
+           </p>
+ 
+-          {subscription?.status === 'pending' && (
++          {paymentError && (
++            <p role="alert" className="rounded bg-red-50 p-2 text-sm text-red-800">
++              {paymentError}
++            </p>
++          )}
++
++          {payment && (
++            <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
++              <p className="font-semibold">
++                {payment.status === 'pending'
++                  ? 'Payment pending ΓÇö awaiting manual verification'
++                  : 'Payment recorded ΓÇö contact an administrator to confirm its status'}
++              </p>
++              <p className="mt-2">
++                Reference: <span className="font-mono font-semibold">{payment.referenceId}</span>
++              </p>
++              <p className="mt-1">
++                {payment.plan} plan, {payment.durationMonths} month{payment.durationMonths === 1 ? '' : 's'} ΓÇö{' '}
++                {payment.currency} {(payment.amountMinor / 100).toFixed(2)}
++              </p>
++              <p className="mt-2">
++                A provider response does not activate your subscription. Keep this reference and wait for an administrator to verify the payment.
++              </p>
++            </div>
++          )}
++
++          {subscription?.status === 'pending' && !payment && (
+             <p className="text-yellow-700 bg-yellow-50 p-2 rounded">
+               Your subscription request is pending approval from an admin.
+             </p>
+@@ -193,30 +255,14 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps)
+           <>
+             <div className="mt-6 space-y-4 border-t border-theme-input pt-4">
+               <div className="rounded-2xl border border-cyan-300 bg-cyan-50 p-4 text-sm text-cyan-900">
+-                <p className="font-semibold">≡ƒÆ░ Payment Instructions</p>
+-
+-                <div className="mt-3 space-y-2">
+-                  <p className="font-medium">Please contact us on WhatsApp and then fill the payment details below:</p>
+-                  <p className="ml-2 font-mono font-bold text-cyan-700">+252686859656</p>
+-
+-                  <p className="mt-3">After sending the payment, complete the form below so the admin can verify your subscription.</p>
+-
+-                  <p className="mt-3">
+-                    <a
+-                      href="https://wa.me/252686859656"
+-                      target="_blank"
+-                      rel="noopener noreferrer"
+-                      className="font-semibold underline hover:text-cyan-700"
+-                    >
+-                      Message us on WhatsApp
+-                    </a>
+-                  </p>
+-                </div>
++                <p className="font-semibold">Pay securely with WaafiPay</p>
++                <p className="mt-2">
++                  Enter your WaafiPay account number to start checkout. Your subscription remains unchanged until the payment is manually verified.
++                </p>
+               </div>
+ 
+               <div className="space-y-4 text-sm text-theme-secondary">
+-                <p className="font-medium text-theme-primary">Payment details</p>
+-                <p>Enter your payment information so the admin can verify your subscription request.</p>
++                <p className="font-medium text-theme-primary">Choose your plan and pay</p>
+ 
+                 <div className="grid gap-4 sm:grid-cols-2">
+                   <div className="relative">
+@@ -253,7 +299,9 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps)
+                   <div className="rounded-2xl border border-cyan-200 bg-cyan-50 p-4 text-sm text-cyan-900">
+                     <p className="font-semibold">Selected duration</p>
+                     <p className="mt-1">
+-                      {selectedDurationMonths === 12 ? '1 year' : `${selectedDurationMonths} months`}
++                      {selectedDurationMonths === 12
++                        ? '1 year'
++                        : `${selectedDurationMonths} month${selectedDurationMonths === 1 ? '' : 's'}`}
+                     </p>
+                     {selectedDurationDiscount > 0 && (
+                       <p className="mt-2 font-medium text-cyan-700">
+@@ -265,62 +313,46 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps)
+                     </p>
+                   </div>
+ 
+-                  <input
+-                    value={payerName}
+-                    onChange={(e) => setPayerName(e.target.value)}
+-                    placeholder="Payer name"
+-                    className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
+-                  />
+-                  <input
+-                    value={paymentPhone}
+-                    onChange={(e) => setPaymentPhone(e.target.value)}
+-                    placeholder="Phone used to send money"
+-                    className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
+-                  />
+-                  <input
+-                    value={paymentEmail}
+-                    onChange={(e) => setPaymentEmail(e.target.value)}
+-                    placeholder="Payment email"
+-                    className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
+-                  />
+-                  <input
+-                    value={businessName}
+-                    onChange={(e) => setBusinessName(e.target.value)}
+-                    placeholder="Business name"
+-                    className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
+-                  />
++                  <label className="block">
++                    <span className="text-sm font-medium text-theme-primary">WaafiPay account number</span>
++                    <input
++                      value={accountNo}
++                      onChange={(e) => setAccountNo(e.target.value.replace(/\D/g, '').slice(0, 20))}
++                      inputMode="numeric"
++                      autoComplete="tel"
++                      placeholder="International number without + or leading zero"
++                      className="mt-1 w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
++                    />
++                  </label>
+                 </div>
+-
+-                <input
+-                  value={paymentReference}
+-                  onChange={(e) => setPaymentReference(e.target.value)}
+-                  placeholder="Payment reference / transaction ID"
+-                  className="w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
+-                />
+-                <textarea
+-                  value={additionalNotes}
+-                  onChange={(e) => setAdditionalNotes(e.target.value)}
+-                  placeholder="Additional notes or instructions"
+-                  className="w-full min-h-30 rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
+-                />
+               </div>
+             </div>
+ 
+             <Button
+               onClick={handleRequest}
+-              disabled={requesting || !payerName.trim() || !paymentPhone.trim() || !paymentEmail.trim() || !businessName.trim()}
++              disabled={requesting || paymentLoading || payment?.status === 'pending' || !/^[1-9][0-9]{9,19}$/.test(accountNo)}
+               className="w-full mt-4"
+             >
+-              {requesting ? 'Submitting...' : 'Request Subscription'}
++              {requesting ? 'Connecting to WaafiPay...' : 'Checkout with WaafiPay'}
+             </Button>
+ 
++            {!checkoutEnabled && (
++              <p className="mt-3 text-sm text-amber-700">
++                WaafiPay checkout is currently disabled. No payment will be sent.
++              </p>
++            )}
++
+             {requestMessage && (
+               <p className="mt-3 text-sm text-theme-secondary">{requestMessage}</p>
+             )}
+           </>
+         )}
+ 
+-        {subscription?.status === 'pending' && (
++        {paymentLoading && (
++          <p className="text-sm text-theme-secondary">Checking payment status...</p>
++        )}
++
++        {subscription?.status === 'pending' && !payment && (
+           <div className="p-2 bg-blue-50 text-blue-800 rounded text-sm">
+             Waiting for admin approval...
+           </div>
+diff --git a/env.example b/env.example
+index 6c63b3a..eabaf83 100644
+--- a/env.example
++++ b/env.example
+@@ -2,6 +2,11 @@
+ NEXT_PUBLIC_SUPABASE_URL=your-supabase-url
+ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+ SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
++# Server-only credentials for the standalone subscription service.
++SUBSCRIPTION_PAYMENT_SERVICE_URL=https://selfless-illumination-production-ec7e.up.railway.app
++SUBSCRIPTION_PAYMENT_SERVICE_TOKEN=
++# Keep disabled until production checkout is explicitly approved.
++SUBSCRIPTION_WAAFIPAY_PRODUCTION_ENABLED=false
+ TWILIO_ACCOUNT_SID=your-twilio-account-sid
+ TWILIO_AUTH_TOKEN=your-twilio-auth-token
+ TWILIO_PHONE_NUMBER=+1234567890
+diff --git a/subscription-service/production-payment-store.mjs b/subscription-service/production-payment-store.mjs
+index f3a7710..a21e300 100644
+--- a/subscription-service/production-payment-store.mjs
++++ b/subscription-service/production-payment-store.mjs
+@@ -1,38 +1,60 @@
++
+ function getSupabaseRestUrl(env) {
+   const rawUrl = env.SUPABASE_URL?.trim();
+   const serviceKey = env.SUPABASE_SERVICE_ROLE_KEY?.trim();
++
+   if (!rawUrl || !serviceKey) {
+     throw new Error("Production payment database is not configured");
+   }
+ 
+   let baseUrl;
++
+   try {
+     baseUrl = new URL(rawUrl);
+   } catch {
+     throw new Error("SUPABASE_URL must be a valid URL");
+   }
++
+   const localHttp = baseUrl.protocol === "http:"
+     && ["localhost", "127.0.0.1", "[::1]"].includes(baseUrl.hostname);
++
+   if (baseUrl.protocol !== "https:" && !localHttp) {
+     throw new Error("SUPABASE_URL must use HTTPS except for local development");
+   }
+-  if (baseUrl.username || baseUrl.password || baseUrl.search || baseUrl.hash) {
++
++  if (
++    baseUrl.username
++    || baseUrl.password
++    || baseUrl.search
++    || baseUrl.hash
++  ) {
+     throw new Error("SUPABASE_URL must not contain credentials, query parameters, or a fragment");
+   }
++
+   return { baseUrl, serviceKey };
+ }
+ 
+-async function databaseRequest({ env, path, method = "GET", body, prefer, fetcher = fetch }) {
++async function databaseRequest({
++  env,
++  path,
++  method = "GET",
++  body,
++  prefer,
++  fetcher = fetch,
++}) {
+   const { baseUrl, serviceKey } = getSupabaseRestUrl(env);
+   const url = new URL(`/rest/v1/${path}`, baseUrl);
++
+   const headers = new Headers({
+     Accept: "application/json",
+     apikey: serviceKey,
+     Authorization: `Bearer ${serviceKey}`,
+   });
++
+   if (body !== undefined) {
+     headers.set("Content-Type", "application/json");
+   }
++
+   if (prefer) {
+     headers.set("Prefer", prefer);
+   }
+@@ -44,21 +66,25 @@ async function databaseRequest({ env, path, method = "GET", body, prefer, fetche
+     cache: "no-store",
+     signal: AbortSignal.timeout(10000),
+   });
+-  const text = await response.text();
++
++  const responseText = await response.text();
+   let result = null;
+-  if (text) {
++
++  if (responseText) {
+     try {
+-      result = JSON.parse(text);
++      result = JSON.parse(responseText);
+     } catch {
+       throw new Error("Payment database returned an invalid response");
+     }
+   }
++
+   if (!response.ok) {
+     const error = new Error("Payment database request failed");
+     error.status = response.status;
+     error.code = result?.code;
+     throw error;
+   }
++
+   return result;
+ }
+ 
+@@ -77,11 +103,13 @@ async function getPaymentByReference({ env, referenceId, fetcher }) {
+     reference_id: `eq.${referenceId}`,
+     limit: "1",
+   });
++
+   const rows = await databaseRequest({
+     env,
+     path: `waafipay_subscription_payments?${query}`,
+     fetcher,
+   });
++
+   return Array.isArray(rows) ? rows[0] ?? null : null;
+ }
+ 
+@@ -92,15 +120,21 @@ async function getPendingPaymentByTenant({ env, tenantId, fetcher }) {
+     status: "eq.pending",
+     limit: "1",
+   });
++
+   const rows = await databaseRequest({
+     env,
+     path: `waafipay_subscription_payments?${query}`,
+     fetcher,
+   });
++
+   return Array.isArray(rows) ? rows[0] ?? null : null;
+ }
+ 
+-export async function beginProductionPayment({ env = process.env, payment, fetcher = fetch }) {
++export async function beginProductionPayment({
++  env = process.env,
++  payment,
++  fetcher = fetch,
++}) {
+   try {
+     const rows = await databaseRequest({
+       env,
+@@ -119,35 +153,48 @@ export async function beginProductionPayment({ env = process.env, payment, fetch
+       },
+       fetcher,
+     });
++
+     if (!Array.isArray(rows) || !rows[0]) {
+       throw new Error("Payment database did not create a payment record");
+     }
++
+     return { record: rows[0], created: true };
+   } catch (error) {
+     if (error?.status !== 409) {
+       throw error;
+     }
++
+     const record = await getPaymentByReference({
+       env,
+       referenceId: payment.referenceId,
+       fetcher,
+     });
++
+     if (record) {
+       if (!samePayment(record, payment)) {
+-        throw Object.assign(new Error("Payment reference is already used for different payment details"), {
+-          status: 409,
+-        });
++        throw Object.assign(
++          new Error("Payment reference is already used for different payment details"),
++          { status: 409 },
++        );
+       }
++
+       return { record, created: false };
+     }
++
+     const pendingRecord = await getPendingPaymentByTenant({
+       env,
+       tenantId: payment.tenantId,
+       fetcher,
+     });
++
+     if (pendingRecord) {
+-      return { record: pendingRecord, created: false, restored: true };
++      return {
++        record: pendingRecord,
++        created: false,
++        restored: true,
++      };
+     }
++
+     throw Object.assign(
+       new Error("Another payment for this account is still pending; reconcile it before retrying"),
+       { status: 409 },
+@@ -163,35 +210,22 @@ export async function applyProductionResult({
+   transactionId,
+   fetcher = fetch,
+ }) {
++  if (outcome !== "pending") {
++    throw new Error(
++      "Only pending payment updates are permitted. Manual approval is required.",
++    );
++  }
++
+   return databaseRequest({
+     env,
+     path: "rpc/apply_waafipay_verified_result",
+     method: "POST",
+     body: {
+       p_reference_id: referenceId,
+-      p_outcome: outcome,
++      p_outcome: "pending",
+       p_provider_state: providerState,
+       p_provider_transaction_id: transactionId,
+     },
+     fetcher,
+   });
+ }
+-
+-export async function processProductionWebhook({ env = process.env, eventId, payment, fetcher = fetch }) {
+-  return databaseRequest({
+-    env,
+-    path: "rpc/process_waafipay_subscription_webhook",
+-    method: "POST",
+-    body: {
+-      p_event_id: eventId,
+-      p_event: payment.event,
+-      p_reference_id: payment.referenceId,
+-      p_status: payment.status,
+-      p_provider_transaction_id: payment.transactionId,
+-      p_amount_minor: payment.amountMinor,
+-      p_currency: payment.currency,
+-      p_merchant_uid: payment.merchantUid,
+-    },
+-    fetcher,
+-  });
+-}
+diff --git a/subscription-service/production-payment-store.test.mjs b/subscription-service/production-payment-store.test.mjs
+index 17192eb..c065afd 100644
+--- a/subscription-service/production-payment-store.test.mjs
++++ b/subscription-service/production-payment-store.test.mjs
+@@ -1,9 +1,9 @@
++
+ import assert from "node:assert/strict";
+ import { test } from "node:test";
+ import {
+   applyProductionResult,
+   beginProductionPayment,
+-  processProductionWebhook,
+ } from "./production-payment-store.mjs";
+ 
+ const env = {
+@@ -23,21 +23,42 @@ const payment = {
+ 
+ test("creates a durable pending payment using the server-only Supabase credential", async () => {
+   let request;
++
+   const result = await beginProductionPayment({
+     env,
+     payment,
+     fetcher: async (url, options) => {
+       request = { url: String(url), options };
+-      return new Response(JSON.stringify([{ reference_id: payment.referenceId, status: "pending" }]), {
+-        status: 201,
+-      });
++
++      return new Response(
++        JSON.stringify([
++          {
++            reference_id: payment.referenceId,
++            status: "pending",
++          },
++        ]),
++        { status: 201 },
++      );
+     },
+   });
+ 
+   assert.equal(result.created, true);
+-  assert.equal(request.url, "https://example.supabase.co/rest/v1/waafipay_subscription_payments");
+-  assert.equal(request.options.headers.get("apikey"), env.SUPABASE_SERVICE_ROLE_KEY);
+-  assert.equal(request.options.headers.get("authorization"), `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`);
++
++  assert.equal(
++    request.url,
++    "https://example.supabase.co/rest/v1/waafipay_subscription_payments",
++  );
++
++  assert.equal(
++    request.options.headers.get("apikey"),
++    env.SUPABASE_SERVICE_ROLE_KEY,
++  );
++
++  assert.equal(
++    request.options.headers.get("authorization"),
++    `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
++  );
++
+   assert.deepEqual(JSON.parse(request.options.body), {
+     tenant_id: payment.tenantId,
+     reference_id: payment.referenceId,
+@@ -52,24 +73,41 @@ test("creates a durable pending payment using the server-only Supabase credentia
+ 
+ test("returns an existing same-reference payment without creating another charge", async () => {
+   let calls = 0;
++
+   const result = await beginProductionPayment({
+     env,
+     payment,
+     fetcher: async (url) => {
+       calls += 1;
++
+       if (calls === 1) {
+-        return new Response(JSON.stringify({ code: "23505" }), { status: 409 });
++        return new Response(
++          JSON.stringify({ code: "23505" }),
++          { status: 409 },
++        );
+       }
+-      assert.match(String(url), /reference_id=eq\.sub-payment-001/);
+-      return new Response(JSON.stringify([{
+-        reference_id: payment.referenceId,
+-        tenant_id: payment.tenantId,
+-        amount_minor: payment.amountMinor,
+-        currency: payment.currency,
+-        plan: payment.plan,
+-        duration_months: payment.durationMonths,
+-        status: "pending",
+-      }]), { status: 200 });
++
++      const parsedUrl = new URL(String(url));
++
++      assert.equal(
++        parsedUrl.searchParams.get("reference_id"),
++        `eq.${payment.referenceId}`,
++      );
++
++      return new Response(
++        JSON.stringify([
++          {
++            reference_id: payment.referenceId,
++            tenant_id: payment.tenantId,
++            amount_minor: payment.amountMinor,
++            currency: payment.currency,
++            plan: payment.plan,
++            duration_months: payment.durationMonths,
++            status: "pending",
++          },
++        ]),
++        { status: 200 },
++      );
+     },
+   });
+ 
+@@ -80,27 +118,48 @@ test("returns an existing same-reference payment without creating another charge
+ 
+ test("recovers a different unresolved tenant attempt instead of creating a second reference", async () => {
+   let calls = 0;
++
+   const result = await beginProductionPayment({
+     env,
+-    payment: { ...payment, referenceId: "sub-new-reference" },
++    payment: {
++      ...payment,
++      referenceId: "sub-new-reference",
++    },
+     fetcher: async (url) => {
+       calls += 1;
++
+       if (calls === 1) {
+-        return new Response(JSON.stringify({ code: "23505" }), { status: 409 });
++        return new Response(
++          JSON.stringify({ code: "23505" }),
++          { status: 409 },
++        );
+       }
++
+       if (calls === 2) {
+         return new Response("[]", { status: 200 });
+       }
+-      assert.match(String(url), /tenant_id=eq\.tenant-1/);
+-      return new Response(JSON.stringify([{
+-        reference_id: payment.referenceId,
+-        tenant_id: payment.tenantId,
+-        amount_minor: payment.amountMinor,
+-        currency: payment.currency,
+-        plan: payment.plan,
+-        duration_months: payment.durationMonths,
+-        status: "pending",
+-      }]), { status: 200 });
++
++      const parsedUrl = new URL(String(url));
++
++      assert.equal(
++        parsedUrl.searchParams.get("tenant_id"),
++        `eq.${payment.tenantId}`,
++      );
++
++      return new Response(
++        JSON.stringify([
++          {
++            reference_id: payment.referenceId,
++            tenant_id: payment.tenantId,
++            amount_minor: payment.amountMinor,
++            currency: payment.currency,
++            plan: payment.plan,
++            duration_months: payment.durationMonths,
++            status: "pending",
++          },
++        ]),
++        { status: 200 },
++      );
+     },
+   });
+ 
+@@ -110,44 +169,61 @@ test("recovers a different unresolved tenant attempt instead of creating a secon
+   assert.equal(calls, 3);
+ });
+ 
+-test("sends verified payment outcomes and webhook events through restricted RPCs", async () => {
+-  const calls = [];
+-  const fetcher = async (url, options) => {
+-    calls.push({ url: String(url), body: JSON.parse(options.body) });
+-    return new Response(JSON.stringify({ status: "succeeded" }), { status: 200 });
+-  };
++test("rejects automatic successful payment approval", async () => {
++  let calls = 0;
++
++  await assert.rejects(
++    () =>
++      applyProductionResult({
++        env,
++        referenceId: payment.referenceId,
++        outcome: "succeeded",
++        providerState: "approved",
++        transactionId: "1303630",
++        fetcher: async () => {
++          calls += 1;
++          return new Response("{}", { status: 200 });
++        },
++      }),
++    /Only pending payment updates are permitted/,
++  );
++
++  assert.equal(calls, 0);
++});
++
++test("allows pending payment updates through the restricted Supabase RPC", async () => {
++  let request;
+ 
+-  await applyProductionResult({
++  const result = await applyProductionResult({
+     env,
+     referenceId: payment.referenceId,
+-    outcome: "succeeded",
+-    providerState: "approved",
+-    transactionId: "1303630",
+-    fetcher,
+-  });
+-  await processProductionWebhook({
+-    env,
+-    eventId: "event-001",
+-    payment: {
+-      event: "authorization",
+-      referenceId: payment.referenceId,
+-      status: "APPROVED",
+-      transactionId: "1303630",
+-      amountMinor: 1234,
+-      currency: "USD",
+-      merchantUid: env.WAAFIPAY_MERCHANT_UID,
++    outcome: "pending",
++    providerState: "processing",
++    transactionId: null,
++    fetcher: async (url, options) => {
++      request = {
++        url: String(url),
++        body: JSON.parse(options.body),
++      };
++
++      return new Response(
++        JSON.stringify({ status: "pending" }),
++        { status: 200 },
++      );
+     },
+-    fetcher,
+   });
+ 
+-  assert.equal(calls[0].url, "https://example.supabase.co/rest/v1/rpc/apply_waafipay_verified_result");
+-  assert.deepEqual(calls[0].body, {
++  assert.equal(
++    request.url,
++    "https://example.supabase.co/rest/v1/rpc/apply_waafipay_verified_result",
++  );
++
++  assert.deepEqual(request.body, {
+     p_reference_id: payment.referenceId,
+-    p_outcome: "succeeded",
+-    p_provider_state: "approved",
+-    p_provider_transaction_id: "1303630",
++    p_outcome: "pending",
++    p_provider_state: "processing",
++    p_provider_transaction_id: null,
+   });
+-  assert.equal(calls[1].url, "https://example.supabase.co/rest/v1/rpc/process_waafipay_subscription_webhook");
+-  assert.equal(calls[1].body.p_event_id, "event-001");
+-  assert.equal(calls[1].body.p_amount_minor, 1234);
++
++  assert.deepEqual(result, { status: "pending" });
+ });
+diff --git a/subscription-service/production-service.test.mjs b/subscription-service/production-service.test.mjs
+index 886a2ac..223edc3 100644
+--- a/subscription-service/production-service.test.mjs
++++ b/subscription-service/production-service.test.mjs
+@@ -1,9 +1,10 @@
++
+ import assert from "node:assert/strict";
+ import { after, before, test } from "node:test";
+ import { createServer } from "./service.mjs";
+-import { signWaafiWebhookForTest } from "./production-waafipay.mjs";
+ 
+ const serviceSecret = "service-token-012345678901234567";
++
+ const env = {
+   NODE_ENV: "production",
+   SUBSCRIPTION_WAAFIPAY_PRODUCTION_ENABLED: "true",
+@@ -11,9 +12,6 @@ const env = {
+   WAAFIPAY_MERCHANT_UID: "M400394",
+   WAAFIPAY_API_USER_ID: "APIUSER1",
+   WAAFIPAY_API_KEY: "012345678901234567890123",
+-  WAAFIPAY_HPP_STORE_ID: "1234567890",
+-  WAAFIPAY_HPP_KEY: "hpp-key-012345678901234567",
+-  WAAFIPAY_WEBHOOK_SECRET: "waafi-webhook-secret-012345678901",
+   SUPABASE_URL: "https://example.supabase.co",
+   SUPABASE_SERVICE_ROLE_KEY: "supabase-service-role-test-key",
+ };
+@@ -21,7 +19,6 @@ const env = {
+ let server;
+ let baseUrl;
+ const applied = [];
+-const processedWebhooks = [];
+ 
+ before(async () => {
+   server = createServer({
+@@ -29,14 +26,17 @@ before(async () => {
+     productionStore: {
+       begin: async (payment) => ({
+         created: true,
+-        record: { reference_id: payment.referenceId, status: "pending" },
++        record: {
++          reference_id: payment.referenceId,
++          status: "pending",
++        },
+       }),
+       applyResult: async (result) => {
+         applied.push(result);
+         return { status: result.outcome };
+       },
+-      processWebhook: async (eventId, payment) => {
+-        processedWebhooks.push({ eventId, payment });
++      processWebhook: async () => {
++        throw new Error("Automatic webhook processing must remain disabled");
+       },
+     },
+     productionPurchase: async () => ({
+@@ -46,10 +46,12 @@ before(async () => {
+       transactionId: "1303630",
+     }),
+   });
++
+   await new Promise((resolve, reject) => {
+     server.once("error", reject);
+     server.listen(0, "127.0.0.1", resolve);
+   });
++
+   baseUrl = `http://127.0.0.1:${server.address().port}`;
+ });
+ 
+@@ -63,6 +65,7 @@ after(async () => {
+ 
+ test("production readiness is private and reports configured production mode", async () => {
+   const response = await fetch(`${baseUrl}/ready`);
++
+   assert.equal(response.status, 200);
+   assert.deepEqual(await response.json(), {
+     status: "ready",
+@@ -74,6 +77,7 @@ test("production readiness is private and reports configured production mode", a
+ test("non-production checkout is unavailable and cannot call the provider", async () => {
+   let localServer;
+   let purchaseCalls = 0;
++
+   try {
+     localServer = createServer({
+       env: { ...env, NODE_ENV: "development" },
+@@ -82,13 +86,16 @@ test("non-production checkout is unavailable and cannot call the provider", asyn
+         throw new Error("Non-production must not call the payment provider");
+       },
+     });
++
+     await new Promise((resolve, reject) => {
+       localServer.once("error", reject);
+       localServer.listen(0, "127.0.0.1", resolve);
+     });
++
+     const localUrl = `http://127.0.0.1:${localServer.address().port}`;
+ 
+     const readiness = await fetch(`${localUrl}/ready`);
++
+     assert.equal(readiness.status, 503);
+     assert.deepEqual(await readiness.json(), {
+       status: "not_configured",
+@@ -101,6 +108,7 @@ test("non-production checkout is unavailable and cannot call the provider", asyn
+       headers: { "Content-Type": "application/json" },
+       body: JSON.stringify({}),
+     });
++
+     assert.equal(checkout.status, 404);
+     assert.equal(purchaseCalls, 0);
+   } finally {
+@@ -112,7 +120,7 @@ test("non-production checkout is unavailable and cannot call the provider", asyn
+   }
+ });
+ 
+-test("production checkout requires service authentication and returns server verification", async () => {
++test("production checkout requires service authentication", async () => {
+   const payload = {
+     tenantId: "tenant-1",
+     amountMinor: 1234,
+@@ -123,12 +131,27 @@ test("production checkout requires service authentication and returns server ver
+     plan: "basic",
+     durationMonths: 3,
+   };
++
+   const denied = await fetch(`${baseUrl}/checkout`, {
+     method: "POST",
+     headers: { "Content-Type": "application/json" },
+     body: JSON.stringify(payload),
+   });
++
+   assert.equal(denied.status, 401);
++});
++
++test("successful-looking provider response remains pending until manual verification", async () => {
++  const payload = {
++    tenantId: "tenant-1",
++    amountMinor: 1234,
++    currency: "USD",
++    referenceId: "sub-manual-001",
++    accountNo: "252611111111",
++    description: "Test subscription",
++    plan: "basic",
++    durationMonths: 3,
++  };
+ 
+   const response = await fetch(`${baseUrl}/checkout`, {
+     method: "POST",
+@@ -138,23 +161,23 @@ test("production checkout requires service authentication and returns server ver
+     },
+     body: JSON.stringify(payload),
+   });
++
+   assert.equal(response.status, 200);
+-  assert.deepEqual(await response.json(), {
+-    referenceId: payload.referenceId,
+-    outcome: "succeeded",
+-    providerState: "approved",
+-    duplicate: false,
+-    verified: true,
+-    paymentStatus: "succeeded",
+-  });
+-  assert.equal(applied.length, 1);
++
++  const result = await response.json();
++
++  assert.equal(result.referenceId, payload.referenceId);
++  assert.equal(result.outcome, "pending");
++  assert.equal(result.verified, false);
++  assert.equal(result.paymentStatus, "pending");
++  assert.equal(applied.at(-1).outcome, "pending");
+ });
+ 
+-test("retries reconcile an existing pending reference without starting another charge", async () => {
++test("duplicate pending payment does not start another charge or automatic verification", async () => {
+   let serverForTest;
+-  let baseForTest;
+   let purchaseCalls = 0;
+   let verificationCalls = 0;
++
+   try {
+     serverForTest = createServer({
+       env,
+@@ -172,7 +195,9 @@ test("retries reconcile an existing pending reference without starting another c
+           },
+         }),
+         applyResult: async ({ outcome }) => ({ status: outcome }),
+-        processWebhook: async () => undefined,
++        processWebhook: async () => {
++          throw new Error("Webhook processing must remain disabled");
++        },
+       },
+       productionPurchase: async () => {
+         purchaseCalls += 1;
+@@ -180,19 +205,16 @@ test("retries reconcile an existing pending reference without starting another c
+       },
+       productionVerify: async () => {
+         verificationCalls += 1;
+-        return {
+-          responseCode: "2001",
+-          state: "processing",
+-          outcome: "pending",
+-          transactionId: null,
+-        };
++        throw new Error("Automatic verification must remain disabled");
+       },
+     });
++
+     await new Promise((resolve, reject) => {
+       serverForTest.once("error", reject);
+       serverForTest.listen(0, "127.0.0.1", resolve);
+     });
+-    baseForTest = `http://127.0.0.1:${serverForTest.address().port}`;
++
++    const baseForTest = `http://127.0.0.1:${serverForTest.address().port}`;
+ 
+     const response = await fetch(`${baseForTest}/checkout`, {
+       method: "POST",
+@@ -211,6 +233,7 @@ test("retries reconcile an existing pending reference without starting another c
+         durationMonths: 1,
+       }),
+     });
++
+     const result = await response.json();
+ 
+     assert.equal(response.status, 200);
+@@ -219,7 +242,7 @@ test("retries reconcile an existing pending reference without starting another c
+     assert.equal(result.plan, "basic");
+     assert.equal(result.durationMonths, 3);
+     assert.equal(purchaseCalls, 0);
+-    assert.equal(verificationCalls, 1);
++    assert.equal(verificationCalls, 0);
+   } finally {
+     if (serverForTest) {
+       await new Promise((resolve, reject) => {
+@@ -229,71 +252,15 @@ test("retries reconcile an existing pending reference without starting another c
+   }
+ });
+ 
+-test("production webhook accepts test pings and processes only signed payment events", async () => {
+-  const testPing = await fetch(`${baseUrl}/webhooks/waafipay`, {
++test("automatic WaafiPay webhook activation is disabled", async () => {
++  const appliedBefore = applied.length;
++
++  const response = await fetch(`${baseUrl}/webhooks/waafipay`, {
+     method: "POST",
+     headers: { "Content-Type": "application/json" },
+     body: JSON.stringify({ event: "webhook.test" }),
+   });
+-  assert.equal(testPing.status, 200);
+-  assert.equal(processedWebhooks.length, 0);
+-
+-  const rawBody = Buffer.from(JSON.stringify({
+-    event: "authorization",
+-    merchant_uid: env.WAAFIPAY_MERCHANT_UID,
+-    payment: {
+-      reference_id: "sub-production-001",
+-      status: "APPROVED",
+-      transaction_id: "1303630",
+-      amount: 12.34,
+-      currency: "USD",
+-    },
+-  }));
+-  const timestamp = String(Math.floor(Date.now() / 1000));
+-  const eventId = "waafi-event-001";
+-  const signature = signWaafiWebhookForTest({
+-    secret: env.WAAFIPAY_WEBHOOK_SECRET,
+-    timestamp,
+-    eventId,
+-    rawBody,
+-  });
+-  const response = await fetch(`${baseUrl}/webhooks/waafipay`, {
+-    method: "POST",
+-    headers: {
+-      "Content-Type": "application/json",
+-      "X-Webhook-Timestamp": timestamp,
+-      "X-Webhook-Event-Id": eventId,
+-      "X-Webhook-Signature-Alg": "HMAC-SHA256",
+-      "X-Webhook-Signature": signature,
+-    },
+-    body: rawBody,
+-  });
+-  assert.equal(response.status, 200);
+-  assert.equal(processedWebhooks.length, 1);
+-  assert.equal(processedWebhooks[0].eventId, eventId);
+-  assert.equal(processedWebhooks[0].payment.referenceId, "sub-production-001");
+-});
+ 
+-test("production webhook rejects invalid signatures", async () => {
+-  const response = await fetch(`${baseUrl}/webhooks/waafipay`, {
+-    method: "POST",
+-    headers: {
+-      "Content-Type": "application/json",
+-      "X-Webhook-Timestamp": String(Math.floor(Date.now() / 1000)),
+-      "X-Webhook-Event-Id": "invalid-event",
+-      "X-Webhook-Signature-Alg": "HMAC-SHA256",
+-      "X-Webhook-Signature": "0".repeat(64),
+-    },
+-    body: JSON.stringify({
+-      event: "authorization",
+-      merchant_uid: env.WAAFIPAY_MERCHANT_UID,
+-      payment: {
+-        reference_id: "sub-production-001",
+-        status: "APPROVED",
+-        amount: 12.34,
+-        currency: "USD",
+-      },
+-    }),
+-  });
+-  assert.equal(response.status, 401);
++  assert.equal(response.status, 404);
++  assert.equal(applied.length, appliedBefore);
+ });
+diff --git a/subscription-service/production-waafipay.mjs b/subscription-service/production-waafipay.mjs
+index 67a480c..689e1e4 100644
+--- a/subscription-service/production-waafipay.mjs
++++ b/subscription-service/production-waafipay.mjs
+@@ -1,27 +1,36 @@
++
+ import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
+ 
+-export const WAAFIPAY_PRODUCTION_ENDPOINT = "https://api.waafipay.net/asm";
+-const FINAL_FAILURE_STATES = new Set(["declined", "failed", "cancelled", "canceled"]);
++export const WAAFIPAY_PRODUCTION_ENDPOINT =
++  "https://api.waafipay.net/asm";
+ 
+ function isConfiguredValue(value) {
+-  return typeof value === "string"
++  return (
++    typeof value === "string"
+     && value.trim().length > 0
+-    && !/your_real|your-production|\*/i.test(value.trim());
++    && !/your_real|your-production|\*{3,}/i.test(value.trim())
++  );
+ }
+ 
+-export function isProductionConfigured(env = process.env) {
++/**
++ * Checks whether all required production credentials are configured.
++ * This does NOT enable payments.
++ *
++ * HPP credentials are not required.
++ * Webhook secret is optional for manual payment review.
++ */
++export function isProductionCredentialsConfigured(env = process.env) {
+   const required = [
+     "WAAFIPAY_MERCHANT_UID",
+     "WAAFIPAY_API_USER_ID",
+     "WAAFIPAY_API_KEY",
+-    "WAAFIPAY_HPP_STORE_ID",
+-    "WAAFIPAY_HPP_KEY",
+-    "WAAFIPAY_WEBHOOK_SECRET",
+     "SUBSCRIPTION_SERVICE_SHARED_SECRET",
+     "SUPABASE_URL",
+     "SUPABASE_SERVICE_ROLE_KEY",
+   ];
+-  const credentialsConfigured = isConfiguredValue(env.WAAFIPAY_MERCHANT_UID)
++
++  const credentialsConfigured =
++    isConfiguredValue(env.WAAFIPAY_MERCHANT_UID)
+     && env.WAAFIPAY_MERCHANT_UID.trim().length >= 7
+     && env.WAAFIPAY_MERCHANT_UID.trim().length <= 15
+     && isConfiguredValue(env.WAAFIPAY_API_USER_ID)
+@@ -30,38 +39,61 @@ export function isProductionConfigured(env = process.env) {
+     && isConfiguredValue(env.WAAFIPAY_API_KEY)
+     && env.WAAFIPAY_API_KEY.trim().length >= 20
+     && env.WAAFIPAY_API_KEY.trim().length <= 40
+-    && isConfiguredValue(env.WAAFIPAY_HPP_STORE_ID)
+-    && isConfiguredValue(env.WAAFIPAY_HPP_KEY)
+-    && env.WAAFIPAY_HPP_KEY.trim().length >= 20
+-    && env.WAAFIPAY_HPP_KEY.trim().length <= 40
+-    && isConfiguredValue(env.WAAFIPAY_WEBHOOK_SECRET)
+-    && env.WAAFIPAY_WEBHOOK_SECRET.trim().length >= 32
+     && isConfiguredValue(env.SUBSCRIPTION_SERVICE_SHARED_SECRET)
+     && env.SUBSCRIPTION_SERVICE_SHARED_SECRET.length >= 32
+     && isConfiguredValue(env.SUPABASE_URL)
+     && isConfiguredValue(env.SUPABASE_SERVICE_ROLE_KEY);
+-  return env.NODE_ENV === "production"
+-    && env.SUBSCRIPTION_WAAFIPAY_PRODUCTION_ENABLED === "true"
++
++  return (
++    env.NODE_ENV === "production"
+     && credentialsConfigured
+-    && required.every((name) => isConfiguredValue(env[name]));
++    && required.every((name) => isConfiguredValue(env[name]))
++  );
++}
++
++/**
++ * Actual production checkout gate.
++ * Credentials AND explicit production enablement are required.
++ */
++export function isProductionConfigured(env = process.env) {
++  return (
++    isProductionCredentialsConfigured(env)
++    && env.SUBSCRIPTION_WAAFIPAY_PRODUCTION_ENABLED === "true"
++  );
+ }
+ 
+ function validatePayment(payment, { requireAccountNo = true } = {}) {
+-  if (!payment || !Number.isSafeInteger(payment.amountMinor) || payment.amountMinor <= 0) {
++  if (
++    !payment
++    || !Number.isSafeInteger(payment.amountMinor)
++    || payment.amountMinor <= 0
++  ) {
+     throw new TypeError("amountMinor must be a positive safe integer");
+   }
+-  if (requireAccountNo && !/^[0-9]{10,20}$/.test(payment.accountNo)) {
+-    throw new TypeError("accountNo must be a full international number without plus sign or leading zero");
++
++  if (
++    requireAccountNo
++    && !/^[0-9]{10,20}$/.test(payment.accountNo)
++  ) {
++    throw new TypeError(
++      "accountNo must be a full international number without plus sign or leading zero",
++    );
+   }
++
+   if (!/^[A-Za-z0-9._-]{1,50}$/.test(payment.referenceId)) {
+-    throw new TypeError("referenceId must use only letters, numbers, dot, underscore, or dash");
++    throw new TypeError(
++      "referenceId must use only letters, numbers, dot, underscore, or dash",
++    );
+   }
++
+   if (!["basic", "pro", "unlimited"].includes(payment.plan)) {
+     throw new TypeError("plan must be a supported subscription plan");
+   }
++
+   if (![1, 3, 6, 12].includes(payment.durationMonths)) {
+     throw new TypeError("durationMonths must be 1, 3, 6, or 12");
+   }
++
+   if (payment.currency !== "USD") {
+     throw new TypeError("Production subscription payments must use USD");
+   }
+@@ -77,15 +109,26 @@ function createRequestBase(serviceName) {
+   };
+ }
+ 
+-export function buildProductionPurchaseRequest({ env = process.env, payment }) {
++/**
++ * Builds a direct WaafiPay API_PURCHASE request.
++ * No HPP credentials are used.
++ */
++export function buildProductionPurchaseRequest({
++  env = process.env,
++  payment,
++}) {
+   validatePayment(payment);
++
+   const credentials = [
+     "WAAFIPAY_MERCHANT_UID",
+     "WAAFIPAY_API_USER_ID",
+     "WAAFIPAY_API_KEY",
+   ];
++
+   if (credentials.some((name) => !isConfiguredValue(env[name]))) {
+-    throw new Error("Production WaafiPay API credentials are not configured");
++    throw new Error(
++      "Production WaafiPay API credentials are not configured",
++    );
+   }
+ 
+   return {
+@@ -95,22 +138,34 @@ export function buildProductionPurchaseRequest({ env = process.env, payment }) {
+       apiUserId: env.WAAFIPAY_API_USER_ID.trim(),
+       apiKey: env.WAAFIPAY_API_KEY.trim(),
+       paymentMethod: "MWALLET_ACCOUNT",
+-      payerInfo: { accountNo: payment.accountNo },
++      payerInfo: {
++        accountNo: payment.accountNo,
++      },
+       transactionInfo: {
+         referenceId: payment.referenceId,
+         invoiceId: payment.referenceId,
+         amount: Number((payment.amountMinor / 100).toFixed(2)),
+         currency: payment.currency,
+-        description: String(payment.description || "Subscription payment").slice(0, 255),
++        description: String(
++          payment.description || "Subscription payment",
++        ).slice(0, 255),
+       },
+     },
+   };
+ }
+ 
+ function findResponseParams(result) {
+-  return [result?.serviceParams, result?.params, result?.responseParams, result]
+-    .find((candidate) => candidate && typeof candidate === "object" && !Array.isArray(candidate))
+-    || {};
++  return [
++    result?.serviceParams,
++    result?.params,
++    result?.responseParams,
++    result,
++  ].find(
++    (candidate) =>
++      candidate
++      && typeof candidate === "object"
++      && !Array.isArray(candidate),
++  ) || {};
+ }
+ 
+ async function postWaafi(payload, fetcher) {
+@@ -126,170 +181,189 @@ async function postWaafi(payload, fetcher) {
+   });
+ 
+   let result;
++
+   try {
+     result = await response.json();
+   } catch {
+     throw new Error("WaafiPay returned an invalid response");
+   }
+-  if (!response.ok || !result || typeof result !== "object" || Array.isArray(result)) {
++
++  if (
++    !response.ok
++    || !result
++    || typeof result !== "object"
++    || Array.isArray(result)
++  ) {
+     throw new Error("WaafiPay request could not be confirmed");
+   }
++
+   return result;
+ }
+ 
+ function normalizeState(params) {
+-  const state = params.state ?? params.status ?? params.tranStatusDesc;
+-  return typeof state === "string" ? state.trim().toLowerCase() : "";
+-}
++  const state =
++    params.state
++    ?? params.status
++    ?? params.tranStatusDesc;
+ 
+-function buildTransactionInfoRequest({ env, payment }) {
+-  for (const name of ["WAAFIPAY_HPP_STORE_ID", "WAAFIPAY_HPP_KEY"]) {
+-    if (!isConfiguredValue(env[name])) {
+-      throw new Error("Production WaafiPay transaction verification credentials are not configured");
+-    }
+-  }
+-  return {
+-    ...createRequestBase("HPP_GETTRANINFO"),
+-    serviceParams: {
+-      merchantUid: env.WAAFIPAY_MERCHANT_UID.trim(),
+-      storeId: env.WAAFIPAY_HPP_STORE_ID.trim(),
+-      hppKey: env.WAAFIPAY_HPP_KEY.trim(),
+-      referenceId: payment.referenceId,
+-    },
+-  };
++  return typeof state === "string"
++    ? state.trim().toLowerCase()
++    : "";
+ }
+ 
+-export async function makeProductionPurchase({ env = process.env, payment, fetcher = fetch }) {
++/**
++ * Sends one direct API_PURCHASE request.
++ *
++ * All valid provider responses remain pending.
++ * No response automatically approves or rejects a subscription.
++ * Manual verification and activation are required.
++ *
++ * Never automatically retry a purchase after an uncertain
++ * network response. Reuse the same payment reference.
++ */
++export async function makeProductionPurchase({
++  env = process.env,
++  payment,
++  fetcher = fetch,
++}) {
+   const purchaseResponse = await postWaafi(
+     buildProductionPurchaseRequest({ env, payment }),
+     fetcher,
+   );
++
+   const purchaseParams = findResponseParams(purchaseResponse);
+-  const purchaseCode = typeof purchaseResponse.responseCode === "string"
+-    ? purchaseResponse.responseCode
+-    : "";
+-  const purchaseState = normalizeState(purchaseParams);
+ 
+-  if (FINAL_FAILURE_STATES.has(purchaseState)) {
+-    return {
+-      responseCode: purchaseCode,
+-      state: purchaseState,
+-      outcome: "failed",
+-      transactionId: null,
+-    };
+-  }
+-  if (purchaseCode !== "2001" || purchaseState !== "approved") {
+-    return {
+-      responseCode: purchaseCode || "unknown",
+-      state: purchaseState || "unknown",
+-      outcome: "pending",
+-      transactionId: null,
+-    };
+-  }
++  const purchaseCode =
++    typeof purchaseResponse.responseCode === "string"
++      ? purchaseResponse.responseCode
++      : "";
+ 
+-  return verifyProductionTransaction({ env, payment, fetcher });
+-}
++  const purchaseState = normalizeState(purchaseParams);
+ 
+-export async function verifyProductionTransaction({ env = process.env, payment, fetcher = fetch }) {
+-  validatePayment(payment, { requireAccountNo: false });
+-  const verificationResponse = await postWaafi(
+-    buildTransactionInfoRequest({ env, payment }),
+-    fetcher,
+-  );
+-  const verificationParams = findResponseParams(verificationResponse);
+-  const verificationState = normalizeState(verificationParams);
+-  const verificationCode = typeof verificationResponse.responseCode === "string"
+-    ? verificationResponse.responseCode
+-    : "";
+-  const verifiedAmount = Number(verificationParams.tranAmount ?? verificationParams.amount);
+-  const verifiedCurrency = typeof verificationParams.currency === "string"
+-    ? verificationParams.currency.toUpperCase()
+-    : "";
+-  const verifiedInvoice = verificationParams.invoiceId;
+-  const verifiedReference = verificationParams.referenceId ?? verificationParams.reference_id;
+-
+-  if (verificationCode === "2001"
+-    && verificationState === "approved"
+-    && verifiedAmount === payment.amountMinor / 100
+-    && verifiedCurrency === payment.currency
+-    && verifiedInvoice === payment.referenceId
+-    && (verifiedReference === undefined || verifiedReference === payment.referenceId)) {
+-    return {
+-      responseCode: verificationCode,
+-      state: verificationState,
+-      outcome: "succeeded",
+-      transactionId: typeof verificationParams.transactionId === "string"
+-        ? verificationParams.transactionId
+-        : null,
+-    };
+-  }
++  const transactionId =
++    typeof purchaseParams.transactionId === "string"
++      ? purchaseParams.transactionId
++      : null;
+ 
+-  if (FINAL_FAILURE_STATES.has(verificationState)) {
+-    return {
+-      responseCode: verificationCode || purchaseCode,
+-      state: verificationState,
+-      outcome: "failed",
+-      transactionId: typeof verificationParams.transactionId === "string"
+-        ? verificationParams.transactionId
+-        : null,
+-    };
+-  }
++  return {
++    responseCode: purchaseCode || "unknown",
++    state: purchaseState || "unknown",
++    outcome: "pending",
++    transactionId,
++  };
++}
+ 
++/**
++ * Compatibility export for service.mjs.
++ * HPP verification is removed.
++ * This function cannot mark a payment as successful.
++ */
++export async function verifyProductionTransaction() {
+   return {
+-    responseCode: verificationCode || purchaseCode,
+-    state: verificationState || "verification_mismatch",
++    responseCode: "manual_verification_required",
++    state: "pending_manual_verification",
+     outcome: "pending",
+     transactionId: null,
+   };
+ }
+ 
+-export function verifyWaafiWebhook({ env = process.env, headers, rawBody, now = Date.now() }) {
++/**
++ * Optional webhook signature verification.
++ * Not used for automatic subscription activation.
++ */
++export function verifyWaafiWebhook({
++  env = process.env,
++  headers,
++  rawBody,
++  now = Date.now(),
++}) {
+   if (!isConfiguredValue(env.WAAFIPAY_WEBHOOK_SECRET)) {
+     return false;
+   }
+-  const getHeader = (name) => typeof headers?.get === "function"
+-    ? headers.get(name)
+-    : headers?.[name.toLowerCase()] ?? null;
++
++  const getHeader = (name) =>
++    typeof headers?.get === "function"
++      ? headers.get(name)
++      : headers?.[name.toLowerCase()] ?? null;
++
+   const timestamp = getHeader("x-webhook-timestamp");
+   const eventId = getHeader("x-webhook-event-id");
+   const algorithm = getHeader("x-webhook-signature-alg");
+   const signature = getHeader("x-webhook-signature");
+-  if (!timestamp || !/^[0-9]{1,12}$/.test(timestamp)
+-    || !eventId || eventId.length > 200
++
++  if (
++    !timestamp
++    || !/^[0-9]{1,12}$/.test(timestamp)
++    || !eventId
++    || eventId.length > 200
+     || algorithm !== "HMAC-SHA256"
+-    || !signature || !/^[a-f0-9]{64}$/.test(signature)) {
++    || !signature
++    || !/^[a-f0-9]{64}$/.test(signature)
++  ) {
+     return false;
+   }
+ 
+   const timestampSeconds = Number(timestamp);
+-  if (!Number.isSafeInteger(timestampSeconds)
+-    || Math.abs(Math.floor(now / 1000) - timestampSeconds) > 300) {
++
++  if (
++    !Number.isSafeInteger(timestampSeconds)
++    || Math.abs(Math.floor(now / 1000) - timestampSeconds) > 300
++  ) {
+     return false;
+   }
+ 
+-  const expected = createHmac("sha256", env.WAAFIPAY_WEBHOOK_SECRET.trim())
++  const expected = createHmac(
++    "sha256",
++    env.WAAFIPAY_WEBHOOK_SECRET.trim(),
++  )
+     .update(`${timestamp}.${eventId}.`, "utf8")
+     .update(rawBody)
+     .digest();
++
+   const actual = Buffer.from(signature, "hex");
+-  return actual.length === expected.length && timingSafeEqual(actual, expected);
++
++  return (
++    actual.length === expected.length
++    && timingSafeEqual(actual, expected)
++  );
+ }
+ 
+-export function signWaafiWebhookForTest({ secret, timestamp, eventId, rawBody }) {
++export function signWaafiWebhookForTest({
++  secret,
++  timestamp,
++  eventId,
++  rawBody,
++}) {
+   return createHmac("sha256", secret)
+     .update(`${timestamp}.${eventId}.`, "utf8")
+     .update(rawBody)
+     .digest("hex");
+ }
+ 
+-export function getVerifiedWebhookPayment(payload, expectedMerchantUid) {
+-  if (!payload || typeof payload !== "object" || Array.isArray(payload)
+-    || payload.merchant_uid !== expectedMerchantUid) {
++/**
++ * Validates the structure of a WaafiPay webhook payment.
++ * This function does not approve or activate subscriptions.
++ */
++export function getVerifiedWebhookPayment(
++  payload,
++  expectedMerchantUid,
++) {
++  if (
++    !payload
++    || typeof payload !== "object"
++    || Array.isArray(payload)
++    || payload.merchant_uid !== expectedMerchantUid
++  ) {
+     return null;
+   }
++
+   const payment = payload.payment;
+   const amount = Number(payment?.amount);
+-  if (!payment || typeof payment !== "object" || Array.isArray(payment)
++
++  if (
++    !payment
++    || typeof payment !== "object"
++    || Array.isArray(payment)
+     || typeof payment.reference_id !== "string"
+     || !/^[A-Za-z0-9._-]{1,50}$/.test(payment.reference_id)
+     || typeof payment.status !== "string"
+@@ -297,19 +371,23 @@ export function getVerifiedWebhookPayment(payload, expectedMerchantUid) {
+     || !Number.isSafeInteger(amount * 100)
+     || amount <= 0
+     || typeof payment.currency !== "string"
+-    || !/^[A-Za-z]{3}$/.test(payment.currency)) {
++    || !/^[A-Za-z]{3}$/.test(payment.currency)
++  ) {
+     return null;
+   }
++
+   if (!["authorization", "declined"].includes(payload.event)) {
+     return { ignored: true };
+   }
++
+   return {
+     event: payload.event,
+     referenceId: payment.reference_id,
+     status: payment.status.toUpperCase(),
+-    transactionId: typeof payment.transaction_id === "string"
+-      ? payment.transaction_id
+-      : null,
++    transactionId:
++      typeof payment.transaction_id === "string"
++        ? payment.transaction_id
++        : null,
+     amountMinor: amount * 100,
+     currency: payment.currency.toUpperCase(),
+     merchantUid: payload.merchant_uid,
+diff --git a/subscription-service/production-waafipay.test.mjs b/subscription-service/production-waafipay.test.mjs
+index 0842d77..382b49e 100644
+--- a/subscription-service/production-waafipay.test.mjs
++++ b/subscription-service/production-waafipay.test.mjs
+@@ -1,5 +1,7 @@
++
+ import assert from "node:assert/strict";
+ import { test } from "node:test";
++
+ import {
+   buildProductionPurchaseRequest,
+   getVerifiedWebhookPayment,
+@@ -16,9 +18,6 @@ const env = {
+   WAAFIPAY_MERCHANT_UID: "M400394",
+   WAAFIPAY_API_USER_ID: "APIUSER1",
+   WAAFIPAY_API_KEY: "012345678901234567890123",
+-  WAAFIPAY_HPP_STORE_ID: "1234567890",
+-  WAAFIPAY_HPP_KEY: "hpp-key-012345678901234567",
+-  WAAFIPAY_WEBHOOK_SECRET: "waafi-webhook-secret-012345678901",
+   SUBSCRIPTION_SERVICE_SHARED_SECRET: "service-token-012345678901234567",
+   SUPABASE_URL: "https://example.supabase.co",
+   SUPABASE_SERVICE_ROLE_KEY: "supabase-service-role-test-key",
+@@ -35,118 +34,222 @@ const payment = {
+   durationMonths: 3,
+ };
+ 
+-test("production readiness requires production mode and complete unmasked credentials", () => {
++test("production readiness requires production mode and the three WaafiPay API credentials", () => {
+   assert.equal(isProductionConfigured(env), true);
+-  assert.equal(isProductionConfigured({ ...env, NODE_ENV: "development" }), false);
+-  assert.equal(isProductionConfigured({ ...env, WAAFIPAY_API_KEY: "API-d48ZL9RBf9yM**************" }), false);
+-  assert.equal(isProductionConfigured({ ...env, WAAFIPAY_HPP_KEY: "" }), false);
++
++  assert.equal(
++    isProductionConfigured({
++      ...env,
++      NODE_ENV: "development",
++    }),
++    false,
++  );
++
++  assert.equal(
++    isProductionConfigured({
++      ...env,
++      WAAFIPAY_API_KEY: "",
++    }),
++    false,
++  );
++
++  assert.equal(
++    isProductionConfigured({
++      ...env,
++      WAAFIPAY_API_USER_ID: "",
++    }),
++    false,
++  );
++
++  assert.equal(
++    isProductionConfigured({
++      ...env,
++      WAAFIPAY_MERCHANT_UID: "",
++    }),
++    false,
++  );
++
++  assert.equal(
++    isProductionConfigured({
++      ...env,
++      SUBSCRIPTION_WAAFIPAY_PRODUCTION_ENABLED: "false",
++    }),
++    false,
++  );
++});
++
++test("production readiness does not require HPP or webhook credentials", () => {
++  const withoutOptionalCredentials = {
++    ...env,
++  };
++
++  delete withoutOptionalCredentials.WAAFIPAY_HPP_STORE_ID;
++  delete withoutOptionalCredentials.WAAFIPAY_HPP_KEY;
++  delete withoutOptionalCredentials.WAAFIPAY_WEBHOOK_SECRET;
++
++  assert.equal(
++    isProductionConfigured(withoutOptionalCredentials),
++    true,
++  );
+ });
+ 
+ test("builds a direct API_PURCHASE request with server-only production credentials", () => {
+-  const request = buildProductionPurchaseRequest({ env, payment });
++  const request = buildProductionPurchaseRequest({
++    env,
++    payment,
++  });
+ 
+   assert.equal(request.serviceName, "API_PURCHASE");
+-  assert.equal(request.serviceParams.merchantUid, env.WAAFIPAY_MERCHANT_UID);
+-  assert.equal(request.serviceParams.apiUserId, env.WAAFIPAY_API_USER_ID);
+-  assert.equal(request.serviceParams.apiKey, env.WAAFIPAY_API_KEY);
+-  assert.equal(request.serviceParams.transactionInfo.amount, 12.34);
+-  assert.equal(request.serviceParams.transactionInfo.referenceId, payment.referenceId);
+-  assert.equal(request.serviceParams.payerInfo.accountNo, payment.accountNo);
++
++  assert.equal(
++    request.serviceParams.merchantUid,
++    env.WAAFIPAY_MERCHANT_UID,
++  );
++
++  assert.equal(
++    request.serviceParams.apiUserId,
++    env.WAAFIPAY_API_USER_ID,
++  );
++
++  assert.equal(
++    request.serviceParams.apiKey,
++    env.WAAFIPAY_API_KEY,
++  );
++
++  assert.equal(
++    request.serviceParams.transactionInfo.amount,
++    12.34,
++  );
++
++  assert.equal(
++    request.serviceParams.transactionInfo.referenceId,
++    payment.referenceId,
++  );
++
++  assert.equal(
++    request.serviceParams.payerInfo.accountNo,
++    payment.accountNo,
++  );
++
+   assert.equal(request.timestamp.length, 20);
+ });
+ 
+-test("production payment is approved only after matching HPP_GETTRANINFO confirmation", async () => {
++test("approved-looking WaafiPay response remains pending for manual verification", async () => {
+   const calls = [];
++
+   const result = await makeProductionPurchase({
+     env,
+     payment,
++
+     fetcher: async (url, options) => {
+-      calls.push({ url: String(url), body: JSON.parse(options.body) });
+-      if (calls.length === 1) {
+-        return new Response(JSON.stringify({
++      calls.push({
++        url: String(url),
++        body: JSON.parse(options.body),
++      });
++
++      return new Response(
++        JSON.stringify({
+           responseCode: "2001",
+-          serviceParams: { state: "approved" },
+-        }), { status: 200 });
+-      }
+-      return new Response(JSON.stringify({
+-        responseCode: "2001",
+-        params: {
+-          status: "Approved",
+-          amount: 12.34,
+-          currency: "USD",
+-          invoiceId: payment.referenceId,
+-          transactionId: "1303630",
+-        },
+-      }), { status: 200 });
++          serviceParams: {
++            state: "approved",
++            transactionId: "1303630",
++          },
++        }),
++        { status: 200 },
++      );
+     },
+   });
+ 
+-  assert.equal(calls.length, 2);
++  assert.equal(calls.length, 1);
+   assert.equal(calls[0].url, WAAFIPAY_PRODUCTION_ENDPOINT);
+   assert.equal(calls[0].body.serviceName, "API_PURCHASE");
+-  assert.equal(calls[1].body.serviceName, "HPP_GETTRANINFO");
+-  assert.equal(calls[1].body.serviceParams.referenceId, payment.referenceId);
+-  assert.deepEqual(result, {
+-    responseCode: "2001",
+-    state: "approved",
+-    outcome: "succeeded",
+-    transactionId: "1303630",
++
++  assert.equal(result.responseCode, "2001");
++  assert.equal(result.state, "approved");
++  assert.equal(result.outcome, "pending");
++  assert.equal(result.transactionId, "1303630");
++});
++
++test("does not perform HPP verification or make a second provider request", async () => {
++  let calls = 0;
++
++  await makeProductionPurchase({
++    env,
++    payment,
++
++    fetcher: async () => {
++      calls += 1;
++
++      return new Response(
++        JSON.stringify({
++          responseCode: "2001",
++          serviceParams: {
++            state: "approved",
++          },
++        }),
++        { status: 200 },
++      );
++    },
+   });
++
++  assert.equal(calls, 1);
+ });
+ 
+-test("unmatched amount or currency never verifies a payment", async () => {
+-  for (const params of [
+-    { status: "Approved", amount: 99, currency: "USD", invoiceId: payment.referenceId },
+-    { status: "Approved", amount: 12.34, currency: "DJF", invoiceId: payment.referenceId },
+-  ]) {
+-    let callNumber = 0;
++test("unmatched or incomplete provider responses remain pending", async () => {
++  const responses = [
++    {
++      responseCode: "2001",
++      serviceParams: {
++        state: "approved",
++      },
++    },
++    {
++      responseCode: "2001",
++      serviceParams: {
++        state: "processing",
++      },
++    },
++    {
++      responseCode: "5306",
++      serviceParams: {
++        state: "declined",
++      },
++    },
++  ];
++
++  for (const providerResponse of responses) {
+     const result = await makeProductionPurchase({
+       env,
+       payment,
+-      fetcher: async () => {
+-        callNumber += 1;
+-        const body = callNumber === 1
+-          ? { responseCode: "2001", serviceParams: { state: "approved" } }
+-          : { responseCode: "2001", params };
+-        return new Response(JSON.stringify(body), { status: 200 });
+-      },
++
++      fetcher: async () =>
++        new Response(
++          JSON.stringify(providerResponse),
++          { status: 200 },
++        ),
+     });
++
+     assert.equal(result.outcome, "pending");
+   }
+ });
+ 
+-test("unconfirmed and explicitly declined responses are handled separately", async () => {
+-  const pending = await makeProductionPurchase({
+-    env,
+-    payment,
+-    fetcher: async () => new Response(JSON.stringify({
+-      responseCode: "2001",
+-      serviceParams: { state: "processing" },
+-    }), { status: 200 }),
+-  });
+-  assert.equal(pending.outcome, "pending");
+-
+-  const failed = await makeProductionPurchase({
+-    env,
+-    payment,
+-    fetcher: async () => new Response(JSON.stringify({
+-      responseCode: "5306",
+-      serviceParams: { state: "declined" },
+-    }), { status: 200 }),
+-  });
+-  assert.equal(failed.outcome, "failed");
+-});
++test("verifies webhook HMAC utility over raw bytes and rejects stale or altered deliveries", () => {
++  const webhookEnv = {
++    ...env,
++    WAAFIPAY_WEBHOOK_SECRET: "waafi-webhook-secret-012345678901",
++  };
+ 
+-test("verifies webhook HMAC over raw bytes and rejects stale or altered deliveries", () => {
+   const rawBody = Buffer.from('{"event":"authorization"}');
+   const timestamp = String(Math.floor(Date.now() / 1000));
+   const eventId = "event-001";
++
+   const signature = signWaafiWebhookForTest({
+-    secret: env.WAAFIPAY_WEBHOOK_SECRET,
++    secret: webhookEnv.WAAFIPAY_WEBHOOK_SECRET,
+     timestamp,
+     eventId,
+     rawBody,
+   });
++
+   const headers = new Headers({
+     "x-webhook-timestamp": timestamp,
+     "x-webhook-event-id": eventId,
+@@ -154,34 +257,54 @@ test("verifies webhook HMAC over raw bytes and rejects stale or altered deliveri
+     "x-webhook-signature": signature,
+   });
+ 
+-  assert.equal(verifyWaafiWebhook({ env, headers, rawBody }), true);
+-  assert.equal(verifyWaafiWebhook({
+-    env,
+-    headers,
+-    rawBody: Buffer.from(`${rawBody.toString()} `),
+-  }), false);
+-  assert.equal(verifyWaafiWebhook({
+-    env,
+-    headers: new Headers({
+-      ...Object.fromEntries(headers),
+-      "x-webhook-timestamp": String(Math.floor(Date.now() / 1000) - 301),
++  assert.equal(
++    verifyWaafiWebhook({
++      env: webhookEnv,
++      headers,
++      rawBody,
+     }),
+-    rawBody,
+-  }), false);
++    true,
++  );
++
++  assert.equal(
++    verifyWaafiWebhook({
++      env: webhookEnv,
++      headers,
++      rawBody: Buffer.from(`${rawBody.toString()} `),
++    }),
++    false,
++  );
++
++  assert.equal(
++    verifyWaafiWebhook({
++      env: webhookEnv,
++      headers: new Headers({
++        ...Object.fromEntries(headers),
++        "x-webhook-timestamp": String(
++          Math.floor(Date.now() / 1000) - 301,
++        ),
++      }),
++      rawBody,
++    }),
++    false,
++  );
+ });
+ 
+ test("extracts only well-formed production authorization data", () => {
+-  const event = getVerifiedWebhookPayment({
+-    event: "authorization",
+-    merchant_uid: env.WAAFIPAY_MERCHANT_UID,
+-    payment: {
+-      reference_id: payment.referenceId,
+-      status: "APPROVED",
+-      transaction_id: "1303630",
+-      amount: 12.34,
+-      currency: "USD",
++  const event = getVerifiedWebhookPayment(
++    {
++      event: "authorization",
++      merchant_uid: env.WAAFIPAY_MERCHANT_UID,
++      payment: {
++        reference_id: payment.referenceId,
++        status: "APPROVED",
++        transaction_id: "1303630",
++        amount: 12.34,
++        currency: "USD",
++      },
+     },
+-  }, env.WAAFIPAY_MERCHANT_UID);
++    env.WAAFIPAY_MERCHANT_UID,
++  );
+ 
+   assert.deepEqual(event, {
+     event: "authorization",
+@@ -192,9 +315,18 @@ test("extracts only well-formed production authorization data", () => {
+     currency: "USD",
+     merchantUid: env.WAAFIPAY_MERCHANT_UID,
+   });
+-  assert.equal(getVerifiedWebhookPayment({
+-    event: "authorization",
+-    merchant_uid: "different-merchant",
+-    payment: { reference_id: payment.referenceId },
+-  }, env.WAAFIPAY_MERCHANT_UID), null);
++
++  assert.equal(
++    getVerifiedWebhookPayment(
++      {
++        event: "authorization",
++        merchant_uid: "different-merchant",
++        payment: {
++          reference_id: payment.referenceId,
++        },
++      },
++      env.WAAFIPAY_MERCHANT_UID,
++    ),
++    null,
++  );
+ });
+diff --git a/subscription-service/service.mjs b/subscription-service/service.mjs
+index 863781b..f1eb44b 100644
+--- a/subscription-service/service.mjs
++++ b/subscription-service/service.mjs
+@@ -1,17 +1,17 @@
++
+ import { createServer as createHttpServer } from "node:http";
+ import { pathToFileURL } from "node:url";
+ import { timingSafeEqual } from "node:crypto";
++
+ import {
+-  getVerifiedWebhookPayment,
+   isProductionConfigured,
++  isProductionCredentialsConfigured,
+   makeProductionPurchase,
+-  verifyProductionTransaction,
+-  verifyWaafiWebhook,
+ } from "./production-waafipay.mjs";
++
+ import {
+   applyProductionResult,
+   beginProductionPayment,
+-  processProductionWebhook,
+ } from "./production-payment-store.mjs";
+ 
+ const MAX_BODY_BYTES = 16 * 1024;
+@@ -23,142 +23,140 @@ function sendJson(response, status, value, headers = {}) {
+     "X-Content-Type-Options": "nosniff",
+     ...headers,
+   });
++
+   response.end(JSON.stringify(value));
+ }
+ 
+ function isAuthorized(request, env) {
+   const expected = env.SUBSCRIPTION_SERVICE_SHARED_SECRET;
+   const authorization = request.headers.authorization;
+-  if (typeof expected !== "string" || expected.length < 32 || typeof authorization !== "string") {
++
++  if (
++    typeof expected !== "string"
++    || expected.length < 32
++    || typeof authorization !== "string"
++  ) {
+     return false;
+   }
++
+   const prefix = "Bearer ";
++
+   if (!authorization.startsWith(prefix)) {
+     return false;
+   }
++
+   const actualBytes = Buffer.from(authorization.slice(prefix.length));
+   const expectedBytes = Buffer.from(expected);
+-  return actualBytes.length === expectedBytes.length && timingSafeEqual(actualBytes, expectedBytes);
++
++  return (
++    actualBytes.length === expectedBytes.length
++    && timingSafeEqual(actualBytes, expectedBytes)
++  );
+ }
+ 
+ async function readJsonBody(request) {
+   const chunks = [];
+   let totalBytes = 0;
++
+   for await (const chunk of request) {
+     const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
++
+     totalBytes += bytes.length;
++
+     if (totalBytes > MAX_BODY_BYTES) {
+-      throw Object.assign(new Error("Request body is too large"), { status: 413 });
++      throw Object.assign(new Error("Request body is too large"), {
++        status: 413,
++      });
+     }
++
+     chunks.push(bytes);
+   }
++
+   try {
+     return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+   } catch {
+-    throw Object.assign(new Error("Request body must be valid JSON"), { status: 400 });
++    throw Object.assign(new Error("Request body must be valid JSON"), {
++      status: 400,
++    });
+   }
+ }
+ 
+-async function readRawBody(request) {
+-  const chunks = [];
+-  let totalBytes = 0;
+-  for await (const chunk of request) {
+-    const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+-    totalBytes += bytes.length;
+-    if (totalBytes > MAX_BODY_BYTES) {
+-      throw Object.assign(new Error("Request body is too large"), { status: 413 });
+-    }
+-    chunks.push(bytes);
+-  }
+-  return Buffer.concat(chunks);
+-}
+-
+ export function createServer({
+   env = process.env,
+   productionPurchase = makeProductionPurchase,
+-  productionVerify = verifyProductionTransaction,
++
+   productionStore = {
+     begin: (payment) => beginProductionPayment({ env, payment }),
+     applyResult: (result) => applyProductionResult({ env, ...result }),
+-    processWebhook: (eventId, payment) => processProductionWebhook({ env, eventId, payment }),
+   },
+ } = {}) {
+   return createHttpServer(async (request, response) => {
+     const url = new URL(request.url || "/", "http://localhost");
++
++    // Basic health check.
+     if (request.method === "GET" && url.pathname === "/health") {
+       sendJson(response, 200, { status: "ok" });
+       return;
+     }
+ 
++    // Report credential configuration separately from checkout enablement.
+     if (request.method === "GET" && url.pathname === "/ready") {
+-      const configured = isProductionConfigured(env);
+-      sendJson(response, configured ? 200 : 503, {
+-        status: configured ? "ready" : "not_configured",
++      const credentialsConfigured =
++        isProductionCredentialsConfigured(env);
++
++      const checkoutEnabled =
++        env.SUBSCRIPTION_WAAFIPAY_PRODUCTION_ENABLED === "true";
++
++      const ready =
++        credentialsConfigured && checkoutEnabled;
++
++      sendJson(response, ready ? 200 : 503, {
++        status: ready
++          ? "ready"
++          : credentialsConfigured
++            ? "configured_disabled"
++            : "not_configured",
+         provider: "waafipay",
+         environment: "production",
+       });
++
+       return;
+     }
+ 
+-    if (url.pathname === "/webhooks/waafipay" && request.method === "POST") {
+-      if (env.NODE_ENV !== "production") {
+-        sendJson(response, 404, { error: "Not found" });
+-        return;
+-      }
+-
+-      try {
+-        const rawBody = await readRawBody(request);
+-        let payload;
+-        try {
+-          payload = JSON.parse(rawBody.toString("utf8"));
+-        } catch {
+-          sendJson(response, 400, { error: "Request body must be valid JSON" });
+-          return;
+-        }
+-
+-        if (payload?.event === "webhook.test") {
+-          sendJson(response, 200, { received: true });
+-          return;
+-        }
+-        if (!verifyWaafiWebhook({ env, headers: request.headers, rawBody })) {
+-          sendJson(response, 401, { error: "Invalid webhook signature" });
+-          return;
+-        }
+-
+-        const eventId = request.headers["x-webhook-event-id"];
+-        const payment = getVerifiedWebhookPayment(payload, env.WAAFIPAY_MERCHANT_UID);
+-        if (!payment || payment.ignored) {
+-          sendJson(response, 200, { received: true });
+-          return;
+-        }
+-        await productionStore.processWebhook(eventId, payment);
+-        sendJson(response, 200, { received: true });
+-      } catch (error) {
+-        const status = Number.isInteger(error?.status) ? error.status : 500;
+-        if (status >= 500) {
+-          console.error("WaafiPay webhook processing failed:", error instanceof Error ? error.message : "unknown error");
+-        }
+-        sendJson(response, status, { error: "Webhook processing failed" });
+-      }
++    // Automatic webhook processing is intentionally disabled.
++    // Payments must be verified and activated manually.
++    if (url.pathname === "/webhooks/waafipay") {
++      sendJson(response, 404, {
++        error: "Automatic payment activation is disabled",
++      });
+       return;
+     }
+ 
++    // Customer checkout.
+     if (url.pathname === "/checkout" && request.method === "POST") {
+       if (env.NODE_ENV !== "production") {
+-        sendJson(response, 404, { error: "Production checkout is only available in production" });
++        sendJson(response, 404, {
++          error: "Production checkout is only available in production",
++        });
+         return;
+       }
++
+       if (!isAuthorized(request, env)) {
+         sendJson(response, 401, { error: "Unauthorized" });
+         return;
+       }
++
++      // Keep the original production payment safety gate.
+       if (!isProductionConfigured(env)) {
+-        sendJson(response, 503, { error: "WaafiPay payment service is not configured" });
++        sendJson(response, 503, {
++          error: "WaafiPay payment service is not configured",
++        });
+         return;
+       }
+ 
+       try {
+         const body = await readJsonBody(request);
++
+         const payment = {
+           tenantId: body?.tenantId,
+           amountMinor: body?.amountMinor,
+@@ -170,90 +168,77 @@ export function createServer({
+           durationMonths: body?.durationMonths,
+         };
+ 
+-        const { record, created } = await productionStore.begin(payment);
++        // First create or retrieve the payment record.
++        const { record, created } =
++          await productionStore.begin(payment);
++
++        if (!record) {
++          throw new Error("Payment record could not be created");
++        }
++
++        // Existing payment: NEVER send another purchase request.
+         if (!created) {
+-          const recordedPayment = {
+-            tenantId: record.tenant_id,
+-            amountMinor: record.amount_minor,
+-            currency: record.currency,
+-            referenceId: record.reference_id,
+-            plan: record.plan,
+-            durationMonths: record.duration_months,
+-          };
+-          if (record.status === "pending") {
+-            try {
+-              const result = await productionVerify({ env, payment: recordedPayment });
+-              const updated = await productionStore.applyResult({
+-                referenceId: record.reference_id,
+-                outcome: result.outcome,
+-                providerState: result.state,
+-                transactionId: result.transactionId,
+-              });
+-              const appliedStatus = updated?.status ?? "pending";
+-              sendJson(response, 200, {
+-                referenceId: record.reference_id,
+-                outcome: appliedStatus === result.outcome ? result.outcome : "pending",
+-                providerState: result.state,
+-                duplicate: true,
+-                verified: appliedStatus === result.outcome
+-                  && (result.outcome === "succeeded" || result.outcome === "failed"),
+-                paymentStatus: appliedStatus,
+-                plan: record.plan,
+-                durationMonths: record.duration_months,
+-              });
+-            } catch (error) {
+-              console.error("Pending WaafiPay transaction could not be reconciled:", error instanceof Error ? error.message : "unknown error");
+-              sendJson(response, 200, {
+-                referenceId: record.reference_id,
+-                outcome: "pending",
+-                providerState: "verification_pending",
+-                duplicate: true,
+-                verified: false,
+-                plan: record.plan,
+-                durationMonths: record.duration_months,
+-              });
+-            }
+-            return;
+-          }
+           sendJson(response, 200, {
+             referenceId: record.reference_id,
+             outcome: record.status,
+             providerState: record.provider_state,
+             duplicate: true,
+-            verified: record.status === "succeeded" || record.status === "failed",
++            verified: record.status === "succeeded"
++              || record.status === "failed",
++            paymentStatus: record.status,
+             plan: record.plan,
+             durationMonths: record.duration_months,
+           });
++
+           return;
+         }
+ 
++        // New payment: send the request to WaafiPay once.
+         try {
+           const result = await productionPurchase({ env, payment });
++
++          // Never activate a subscription from the purchase response.
++          // Even approval-like responses remain pending until
++          // authoritative manual verification.
+           const updated = await productionStore.applyResult({
+             referenceId: record.reference_id,
+-            outcome: result.outcome,
+-            providerState: result.state,
+-            transactionId: result.transactionId,
++            outcome: "pending",
++            providerState:
++              result?.state || "awaiting_manual_verification",
++            transactionId: result?.transactionId,
+           });
+-          const appliedStatus = updated?.status ?? "pending";
++
++          const paymentStatus = updated?.status || "pending";
++
+           sendJson(response, 200, {
+             referenceId: record.reference_id,
+-            outcome: appliedStatus === result.outcome ? result.outcome : "pending",
+-            providerState: result.state,
++            outcome: paymentStatus,
++            providerState: updated?.provider_state
++              || result?.state
++              || "awaiting_manual_verification",
+             duplicate: false,
+-            verified: appliedStatus === result.outcome
+-              && (result.outcome === "succeeded" || result.outcome === "failed"),
+-            paymentStatus: appliedStatus,
++            verified: false,
++            paymentStatus,
+             plan: record.plan,
+             durationMonths: record.duration_months,
++            message: "Payment submitted. Awaiting manual verification.",
+           });
+         } catch (error) {
+-          console.error("Production WaafiPay payment could not be confirmed:", error instanceof Error ? error.message : "unknown error");
++          console.error(
++            "Production WaafiPay payment could not be confirmed:",
++            error instanceof Error ? error.message : "unknown error",
++          );
++
+           sendJson(response, 502, {
+             referenceId: record.reference_id,
+             outcome: "pending",
+             providerState: "verification_pending",
+-            error: "Payment result could not be confirmed; do not retry with a new reference",
++            duplicate: false,
++            verified: false,
++            paymentStatus: "pending",
++            plan: record.plan,
++            durationMonths: record.duration_months,
++            error: "Payment result could not be confirmed. Do not retry with a new reference.",
+           });
+         }
+       } catch (error) {
+@@ -262,16 +247,32 @@ export function createServer({
+           : error instanceof TypeError
+             ? 422
+             : 500;
++
+         if (status === 500) {
+-          console.error("Production checkout request could not be recorded:", error instanceof Error ? error.message : "unknown error");
++          console.error(
++            "Production checkout request could not be recorded:",
++            error instanceof Error ? error.message : "unknown error",
++          );
+         }
+-        sendJson(response, status, { error: error instanceof Error ? error.message : "Invalid payment request" });
++
++        sendJson(response, status, {
++          error: error instanceof Error
++            ? error.message
++            : "Invalid payment request",
++        });
+       }
++
+       return;
+     }
+ 
+     if (request.method !== "GET") {
+-      sendJson(response, 405, { error: "Method not allowed" }, { Allow: "GET" });
++      sendJson(
++        response,
++        405,
++        { error: "Method not allowed" },
++        { Allow: "GET" },
++      );
++
+       return;
+     }
+ 
+@@ -281,20 +282,28 @@ export function createServer({
+ 
+ function parsePort(value) {
+   const port = Number(value);
++
+   if (!Number.isInteger(port) || port < 1 || port > 65535) {
+     throw new Error("PORT must be an integer between 1 and 65535");
+   }
++
+   return port;
+ }
+ 
+-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
++if (
++  process.argv[1]
++  && import.meta.url === pathToFileURL(process.argv[1]).href
++) {
+   const host = process.env.HOST
+     || (process.env.NODE_ENV === "production" ? "0.0.0.0" : "127.0.0.1");
++
+   const port = parsePort(process.env.PORT || "4100");
+   const server = createServer();
+ 
+   server.listen(port, host, () => {
+-    console.log(`Subscription service listening on http://${host}:${port}`);
++    console.log(
++      `Subscription service listening on http://${host}:${port}`,
++    );
+   });
+ 
+   server.on("error", (error) => {
