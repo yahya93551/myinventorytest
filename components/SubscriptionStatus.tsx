@@ -62,7 +62,7 @@ function showAccountNoInPreview(preview: unknown, accountNo: string): unknown {
         ...preview.payload.serviceParams,
         payerInfo: {
           ...preview.payload.serviceParams.payerInfo,
-          accountNo,
+          accountNo: accountNo ? `+${accountNo.replace(/^\+/, '')}` : accountNo,
         },
       },
     },
@@ -492,7 +492,7 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
                   : 'This preview does not send a payment. Click Checkout with WaafiPay to send a purchase request using this number as the payer wallet. The server sends it to WaafiPay.'}
               </p>
               {checkoutResult && (
-                <p role="status" aria-live="polite" className="mt-2 break-words">
+                <p role="status" aria-live="polite" className="mt-2 wrap-break-word">
                   Result: {checkoutResult}
                 </p>
               )}
