@@ -37,6 +37,38 @@ const PLAN_DETAILS: Record<SubscriptionPlan, { label: string; products: string; 
   },
 };
 
+function showAccountNoInPreview(preview: unknown, accountNo: string): unknown {
+  if (
+    typeof preview !== 'object'
+    || preview === null
+    || !('payload' in preview)
+    || typeof preview.payload !== 'object'
+    || preview.payload === null
+    || !('serviceParams' in preview.payload)
+    || typeof preview.payload.serviceParams !== 'object'
+    || preview.payload.serviceParams === null
+    || !('payerInfo' in preview.payload.serviceParams)
+    || typeof preview.payload.serviceParams.payerInfo !== 'object'
+    || preview.payload.serviceParams.payerInfo === null
+  ) {
+    return preview;
+  }
+
+  return {
+    ...preview,
+    payload: {
+      ...preview.payload,
+      serviceParams: {
+        ...preview.payload.serviceParams,
+        payerInfo: {
+          ...preview.payload.serviceParams.payerInfo,
+          accountNo,
+        },
+      },
+    },
+  };
+}
+
 export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) {
   const { subscription, loading, error, isActive, refetch } = useSubscription();
   const [requesting, setRequesting] = useState(false);
@@ -128,10 +160,6 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
     ? Math.max(0, Math.ceil((activeUntilDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
     : null;
   const isFreeTrial = subscription?.status === 'active' && remainingDays !== null && remainingDays > 0 && remainingDays <= 14;
-  const maskedAccountNo = accountNo
-    ? `${'*'.repeat(Math.max(0, accountNo.length - 4))}${accountNo.slice(-4)}`
-    : '';
-
   const handleRequest = async () => {
     setRequestMessage('');
     setCheckoutResult('Sending checkout request...');
@@ -144,9 +172,7 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
     };
     setLastCheckoutPayload({
       ...checkoutPayload,
-      accountNo: accountNo
-        ? `${'*'.repeat(Math.max(0, accountNo.length - 4))}${accountNo.slice(-4)}`
-        : '(empty)',
+      accountNo: accountNo || '(empty)',
     });
     console.info('[Subscription checkout] App request payload (account number masked)', {
       endpoint: 'POST /api/subscriptions/checkout',
@@ -197,7 +223,9 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
         sandboxOutcome: result.data.sandboxOutcome,
         providerDiagnostics: result.data.providerDiagnostics,
       });
-      setProviderRequestPreview(result.data.requestPreview ?? null);
+      setProviderRequestPreview(
+        showAccountNoInPreview(result.data.requestPreview ?? null, accountNo),
+      );
       if (result.data.sandbox) {
         setRequestMessage('Sandbox request completed. No production payment record or subscription was changed.');
       } else if (result.data.status === 'succeeded') {
@@ -450,18 +478,18 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
                       ? 'Enabled'
                       : 'Disabled'}
               </p>
-              <p className="mt-2 font-medium">Request payload (account number masked)</p>
+              <p className="mt-2 font-medium">Request payload</p>
               <pre className="mt-1 overflow-x-auto rounded bg-slate-900 p-3 text-xs text-slate-100">
                 {JSON.stringify(lastCheckoutPayload ?? {
                   plan: selectedPlan,
                   durationMonths: selectedDurationMonths,
-                  accountNo: maskedAccountNo || '(empty)',
+                  accountNo: accountNo || '(empty)',
                 }, null, 2)}
               </pre>
               <p className="mt-2">
                 {sandboxMode
                   ? 'Sandbox requests use the WaafiPay sandbox endpoint and separate sandbox credentials. They are not written to the production payment database and cannot activate a subscription.'
-                  : 'This preview does not send a payment. Click Checkout with WaafiPay to send a purchase request using this number as the payer wallet. The server sends it to WaafiPay; the number is masked here.'}
+                  : 'This preview does not send a payment. Click Checkout with WaafiPay to send a purchase request using this number as the payer wallet. The server sends it to WaafiPay.'}
               </p>
               {checkoutResult && (
                 <p role="status" aria-live="polite" className="mt-2 break-words">
@@ -470,7 +498,7 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
               )}
               {providerRequestPreview !== null && (
                 <>
-                  <p className="mt-3 font-medium">WaafiPay request sent (credentials and wallet number masked)</p>
+                  <p className="mt-3 font-medium">WaafiPay request sent (credentials masked)</p>
                   <pre className="mt-1 overflow-x-auto rounded bg-slate-900 p-3 text-xs text-slate-100">
                     {JSON.stringify(providerRequestPreview, null, 2)}
                   </pre>
