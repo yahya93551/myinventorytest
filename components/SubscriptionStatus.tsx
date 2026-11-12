@@ -74,6 +74,7 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
   const [requesting, setRequesting] = useState(false);
   const [accountNo, setAccountNo] = useState('');
   const [paymentLoading, setPaymentLoading] = useState(true);
+  const [paymentPending, setPaymentPending] = useState(false);
   const [checkoutEnabled, setCheckoutEnabled] = useState(false);
   const [sandboxMode, setSandboxMode] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
@@ -118,19 +119,21 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
 
     const loadPaymentStatus = () => apiGet<{
       payment: typeof payment;
+      paymentPending?: boolean;
       checkoutEnabled: boolean;
       checkoutMode?: string;
     }>('/api/subscriptions/payment')
       .then((result) => {
         if (!active) return;
         setPayment(result.data?.payment ?? null);
+        setPaymentPending(result.data?.paymentPending === true);
         setCheckoutEnabled(result.data?.checkoutEnabled === true);
         setSandboxMode(result.data?.checkoutMode === 'sandbox');
         setPaymentError(null);
         if (result.data?.payment?.status === 'succeeded') {
           setCheckoutResult('WaafiPay confirmed payment; subscription is active.');
         } else if (result.data?.payment?.status === 'failed') {
-          setCheckoutResult('WaafiPay recorded that the payment was declined or failed. No subscription was activated.');
+          setCheckoutResult('Your payment was rejected. Please try again. No subscription was activated.');
         }
       })
       .catch((err) => {
@@ -142,7 +145,7 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
       });
 
     void loadPaymentStatus();
-    const interval = payment?.status === 'pending'
+    const interval = paymentPending
       ? window.setInterval(() => void loadPaymentStatus(), 5000)
       : null;
 
@@ -150,7 +153,7 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
       active = false;
       if (interval !== null) window.clearInterval(interval);
     };
-  }, [payment?.status, payment?.sandbox, sandboxMode]);
+  }, [payment?.sandbox, paymentPending, sandboxMode]);
 
   const selectedDurationDiscount = getSubscriptionDiscountForDuration(selectedDurationMonths);
   const selectedDurationTotal = getSubscriptionDurationPrice(selectedPlan, selectedDurationMonths);
@@ -215,7 +218,10 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
       if (!result.data?.referenceId) {
         throw new Error('WaafiPay did not return a payment reference. Please try again later.');
       }
-      setPayment({
+      const awaitingFinalPaymentStatus = !result.data.sandbox
+        && result.data.status === 'pending';
+      setPaymentPending(awaitingFinalPaymentStatus);
+      setPayment(awaitingFinalPaymentStatus ? null : {
         ...result.data,
         providerState: result.data.providerState ?? null,
         createdAt: result.data.createdAt ?? new Date().toISOString(),
@@ -229,16 +235,20 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
       if (result.data.sandbox) {
         setRequestMessage('Sandbox request completed. No production payment record or subscription was changed.');
       } else if (result.data.status === 'succeeded') {
+        setPaymentPending(false);
         setAccountNo('');
         setRequestMessage('WaafiPay confirmed your payment. Your subscription is activated.');
         await refetch();
       } else if (result.data.status === 'failed') {
+        setPaymentPending(false);
         setAccountNo('');
-        setRequestMessage('WaafiPay declined or failed the payment. No subscription was activated; you may try again.');
+        setRequestMessage('Your payment was rejected. Please try again. No subscription was activated.');
       } else {
-        setRequestMessage('Checkout was submitted. Check your phone for the EVC wallet prompt and approve or reject it there. Do not retry while this payment is pending.');
+        setRequestMessage('Checkout is awaiting your EVC response. Approve or reject the request on your phone. The payment will appear here only after WaafiPay confirms success or failure. Do not retry while it is awaiting confirmation.');
       }
-      setCheckoutResult(result.data.sandbox
+      setCheckoutResult(awaitingFinalPaymentStatus
+        ? 'Checkout is awaiting the EVC response. No final payment result is available yet; do not retry.'
+        : result.data.sandbox
         ? `Sandbox request sent: ${result.data.requestSent === true ? 'yes' : 'no'}; provider outcome: ${result.data.sandboxOutcome || 'unknown'}; WaafiPay response code: ${result.data.responseCode || 'not returned'}; reference: ${result.data.referenceId}; provider state: ${result.data.providerState || 'not returned'}. No production payment was recorded.`
         : `Request sent: ${result.data.requestSent === true ? 'yes' : 'no'}; payment status: ${result.data.status}; WaafiPay response code: ${result.data.responseCode || 'not returned'}; reference: ${result.data.referenceId}; provider state: ${result.data.providerState || 'not returned'}.`);
       if (onRequestClick) onRequestClick();
@@ -338,6 +348,12 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
             </p>
           )}
 
+          {paymentPending && (
+            <div role="status" aria-live="polite" className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+              WaafiPay is awaiting your EVC approval. The payment result will appear here after WaafiPay confirms success or failure. Do not submit another checkout while this request is unresolved.
+            </div>
+          )}
+
           {payment && (
             <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
               <p className="font-semibold">
@@ -346,7 +362,7 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
                   : payment.status === 'succeeded'
                   ? 'Payment successful — subscription activated'
                   : payment.status === 'failed'
-                    ? 'Payment declined or failed — no subscription was activated'
+                    ? 'Your payment was rejected — please try again'
                     : payment.status === 'pending'
                       ? 'Payment pending — check your phone for the EVC prompt'
                       : 'Payment recorded — status requires review'}
@@ -366,7 +382,7 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
                   : payment.status === 'succeeded'
                     ? 'WaafiPay confirmed the payment and the subscription is active.'
                     : payment.status === 'failed'
-                      ? 'The failed payment is recorded. You can submit a new checkout if you still want this plan.'
+                      ? 'Your payment was rejected. Please try again; no subscription was activated.'
                       : 'Keep this reference and contact support before trying another payment.'}
               </p>
               {payment.sandbox && payment.providerDiagnostics !== undefined && (
@@ -508,7 +524,7 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
 
             <Button
               onClick={handleRequest}
-              disabled={requesting || paymentLoading || (!sandboxMode && payment?.status === 'pending') || !/^[1-9][0-9]{9,19}$/.test(accountNo)}
+              disabled={requesting || paymentLoading || (!sandboxMode && paymentPending) || !/^[1-9][0-9]{9,19}$/.test(accountNo)}
               className="w-full mt-4"
             >
               {requesting

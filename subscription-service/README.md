@@ -58,9 +58,10 @@ the stored merchant, amount, currency, and payment reference, and deduplicates
 events. If the webhook secret is not configured, checkout still works but
 webhook deliveries are rejected; payments not confirmed by the immediate
 provider response remain pending for manual reconciliation. The customer UI
-polls the payment record while it is pending. The browser never grants access
-based on its own state; activation is performed by the database RPC after a
-confirmed provider approval.
+polls the internally stored pending record to prevent duplicate checkout, but
+shows only an awaiting-confirmation notice until WaafiPay confirms success or
+failure. The browser never grants access based on its own state; activation is
+performed by the database RPC after a confirmed provider approval.
 
 The `/ready` response and configuration-related checkout errors list missing
 environment-variable names only. After a provider request is attempted, the
