@@ -185,7 +185,7 @@ export function buildProductionPurchaseRequest({
       apiKey: env.WAAFIPAY_API_KEY.trim(),
       paymentMethod: "MWALLET_ACCOUNT",
       payerInfo: {
-        accountNo: `+${payment.accountNo}`,
+        accountNo: payment.accountNo,
       },
       transactionInfo: {
         referenceId: payment.referenceId,

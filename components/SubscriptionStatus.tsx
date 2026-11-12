@@ -62,7 +62,7 @@ function showAccountNoInPreview(preview: unknown, accountNo: string): unknown {
         ...preview.payload.serviceParams,
         payerInfo: {
           ...preview.payload.serviceParams.payerInfo,
-          accountNo: accountNo ? `+${accountNo.replace(/^\+/, '')}` : accountNo,
+          accountNo,
         },
       },
     },

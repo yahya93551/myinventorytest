@@ -140,7 +140,7 @@ test("builds a direct API_PURCHASE request with server-only production credentia
 
   assert.equal(
     request.serviceParams.payerInfo.accountNo,
-    `+${payment.accountNo}`,
+    payment.accountNo,
   );
 
   assert.equal(request.timestamp.length, 20);
@@ -239,7 +239,7 @@ test("only an approved provider state with success response code is successful",
   assert.equal(calls[0].body.serviceParams.paymentMethod, "MWALLET_ACCOUNT");
   assert.equal(
     calls[0].body.serviceParams.payerInfo.accountNo,
-    `+${payment.accountNo}`,
+    payment.accountNo,
   );
 
   assert.equal(result.responseCode, "2001");
