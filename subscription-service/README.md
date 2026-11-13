@@ -52,6 +52,15 @@ failed, or cancelled states are recorded as failed without activating the
 subscription. Uncertain responses remain pending; do not retry them with a new
 reference until they have been reconciled with WaafiPay.
 
+The checkout handler recognizes documented terminal response codes `5301`-
+`5309`, the `5310` / `RCS_USER_REJECTED` rejection response, and the documented
+`RCS_TRAN_ALREADY_CANCELLED` response message. It stores a stable outcome in
+`provider_state` and shows an appropriate explanation to the customer.
+`2001` / `RCS_SUCCESS` alone is not treated as a successful payment: WaafiPay
+must also return an approved transaction state. The public response-code list
+is not an exhaustive catalog of every possible runtime `responseMsg`; unknown
+or non-terminal responses remain pending for reconciliation.
+
 Webhook events are authenticated with the registered HMAC-SHA256 webhook
 secret, timestamp, and event ID. The database validates the webhook against
 the stored merchant, amount, currency, and payment reference, and deduplicates

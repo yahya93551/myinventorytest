@@ -6,6 +6,34 @@ export const WAAFIPAY_PRODUCTION_ENDPOINT =
 export const WAAFIPAY_SANDBOX_ENDPOINT =
   "https://sandbox.waafipay.com/asm";
 
+const TERMINAL_PROVIDER_RESPONSES = {
+  "5301": "invalid_credentials",
+  "5302": "invalid_hpp_token",
+  "5303": "invalid_hpp_result_token",
+  "5304": "reference_mismatch",
+  "5305": "request_id_mismatch",
+  "5306": "user_cancelled",
+  "5307": "hpp_token_expired",
+  "5308": "service_not_enabled",
+  "5309": "user_timeout",
+  "5310": "user_rejected",
+  E10207: "already_cancelled",
+};
+
+const TERMINAL_PROVIDER_MESSAGES = {
+  RCS_INVALID_HPPKEY: "invalid_credentials",
+  RCS_INVALID_HPPTOKEN: "invalid_hpp_token",
+  RCS_INVALID_HPPRESULTTOKEN: "invalid_hpp_result_token",
+  RCS_HPP_MERCHANT_REFERENCEID_MISMATCH: "reference_mismatch",
+  RCS_HPP_REQUESTID_MISMATCH: "request_id_mismatch",
+  RCS_HPP_USERACTION_CANCELLED: "user_cancelled",
+  RCS_HPPTOKEN_EXPIRED: "hpp_token_expired",
+  RCS_HPP_SUBSCRIPTION_ISNOT_ENABLED: "service_not_enabled",
+  RCS_HPP_USERACTION_TIMEOUT: "user_timeout",
+  RCS_USER_REJECTED: "user_rejected",
+  RCS_TRAN_ALREADY_CANCELLED: "already_cancelled",
+};
+
 function isConfiguredValue(value) {
   return (
     typeof value === "string"
@@ -364,6 +392,31 @@ function indicatesUserRejection(response, params) {
     || providerText.includes("customer rejected payment");
 }
 
+function getTerminalProviderState(response, params, responseCode) {
+  const providerMessage = [
+    response.responseMsg,
+    response.responseMessage,
+    params.responseMsg,
+    params.responseMessage,
+  ]
+    .find((value) => typeof value === "string")
+    ?.trim()
+    .toUpperCase();
+  const errorCode = typeof response.errorCode === "string"
+    ? response.errorCode.trim()
+    : "";
+
+  if (Object.hasOwn(TERMINAL_PROVIDER_RESPONSES, responseCode)) {
+    return TERMINAL_PROVIDER_RESPONSES[responseCode];
+  }
+  if (Object.hasOwn(TERMINAL_PROVIDER_RESPONSES, errorCode)) {
+    return TERMINAL_PROVIDER_RESPONSES[errorCode];
+  }
+  return providerMessage && Object.hasOwn(TERMINAL_PROVIDER_MESSAGES, providerMessage)
+    ? TERMINAL_PROVIDER_MESSAGES[providerMessage]
+    : null;
+}
+
 /**
  * Sends one direct API_PURCHASE request and trusts only a definitive provider
  * state. An uncertain response stays pending and must never trigger a retry.
@@ -391,9 +444,16 @@ export async function makeProductionPurchase({
     ? purchaseResponse.responseCode.trim()
     : typeof purchaseResponse.responseCode === "number"
       ? String(purchaseResponse.responseCode)
-      : "";
+      : typeof purchaseResponse.errorCode === "string"
+        ? purchaseResponse.errorCode.trim()
+        : "";
 
   const purchaseState = normalizeState(purchaseParams);
+  const terminalProviderState = getTerminalProviderState(
+    purchaseResponse,
+    purchaseParams,
+    purchaseCode,
+  );
   const insufficientBalance = indicatesInsufficientBalance(
     purchaseResponse,
     purchaseParams,
@@ -414,27 +474,24 @@ export async function makeProductionPurchase({
     "failed",
     "rejected",
   ]);
-  const outcome = purchaseCode === "2001" && purchaseState === "approved"
-    ? "succeeded"
-    : insufficientBalance
-      || userRejected
-      || failedStates.has(purchaseState)
-      || purchaseCode === "5306"
-      ? "failed"
+  const outcome = insufficientBalance
+    || userRejected
+    || terminalProviderState
+    || failedStates.has(purchaseState)
+    ? "failed"
+    : purchaseCode === "2001" && purchaseState === "approved"
+      ? "succeeded"
       : "pending";
   const state = insufficientBalance
     ? "insufficient_balance"
-    : userRejected
-      ? "user_rejected"
-    : purchaseState && purchaseState !== "unknown"
-      ? purchaseState
-      : outcome === "succeeded"
+    : terminalProviderState
+      || (userRejected ? "user_rejected" : null)
+      || (purchaseState && purchaseState !== "unknown" ? purchaseState : null)
+      || (outcome === "succeeded"
         ? "approved"
         : outcome === "failed"
-          ? purchaseCode === "5306"
-            ? "cancelled"
-            : "failed"
-          : "awaiting_confirmation";
+          ? "failed"
+          : "awaiting_confirmation");
 
   return {
     responseCode: purchaseCode || "unknown",

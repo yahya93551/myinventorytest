@@ -339,7 +339,7 @@ test("records WaafiPay's documented user-cancelled response as failed", async ()
   });
 
   assert.equal(result.outcome, "failed");
-  assert.equal(result.state, "cancelled");
+  assert.equal(result.state, "user_cancelled");
 });
 
 test("records the RCS_USER_REJECTED response as a failed payment", async () => {
@@ -368,6 +368,58 @@ test("records the RCS_USER_REJECTED response as a failed payment", async () => {
   assert.equal(result.outcome, "failed");
   assert.equal(result.state, "user_rejected");
   assert.equal(result.transactionId, "51880146");
+});
+
+test("maps all documented WaafiPay terminal response codes to failed payment states", async () => {
+  const expectedStates = {
+    "5301": "invalid_credentials",
+    "5302": "invalid_hpp_token",
+    "5303": "invalid_hpp_result_token",
+    "5304": "reference_mismatch",
+    "5305": "request_id_mismatch",
+    "5306": "user_cancelled",
+    "5307": "hpp_token_expired",
+    "5308": "service_not_enabled",
+    "5309": "user_timeout",
+  };
+
+  for (const [responseCode, expectedState] of Object.entries(expectedStates)) {
+    const result = await makeProductionPurchase({
+      env,
+      payment,
+      fetcher: async () => new Response(
+        JSON.stringify({
+          responseCode,
+          errorCode: responseCode,
+          responseMsg: `RCS_${responseCode}`,
+          params: { state: "unknown" },
+        }),
+        { status: 200 },
+      ),
+    });
+
+    assert.equal(result.outcome, "failed", `response ${responseCode}`);
+    assert.equal(result.state, expectedState, `response ${responseCode}`);
+  }
+});
+
+test("maps RCS_TRAN_ALREADY_CANCELLED from its documented response message", async () => {
+  const result = await makeProductionPurchase({
+    env,
+    payment,
+    fetcher: async () => new Response(
+      JSON.stringify({
+        responseCode: "5202",
+        errorCode: "E10207",
+        responseMsg: "RCS_TRAN_ALREADY_CANCELLED",
+        params: {},
+      }),
+      { status: 200 },
+    ),
+  });
+
+  assert.equal(result.outcome, "failed");
+  assert.equal(result.state, "already_cancelled");
 });
 
 test("reports an insufficient wallet balance as a specific failed provider state", async () => {

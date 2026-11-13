@@ -73,13 +73,30 @@ function showAccountNoInPreview(preview: unknown, accountNo: string): unknown {
 function getPaymentOutcomeMessage(status: string, providerState: string | null) {
   const state = providerState?.trim().toLowerCase();
 
+  const providerMessages: Record<string, string> = {
+    invalid_credentials: 'WaafiPay could not process the payment because the merchant API credentials are invalid. Please contact support.',
+    invalid_hpp_token: 'WaafiPay rejected an invalid hosted payment token. Please try again or contact support.',
+    invalid_hpp_result_token: 'WaafiPay could not verify the hosted payment result. Please contact support.',
+    reference_mismatch: 'The payment reference did not match WaafiPay records. Please contact support before retrying.',
+    request_id_mismatch: 'The payment request did not match WaafiPay records. Please contact support before retrying.',
+    user_cancelled: 'You canceled the WaafiPay payment request. No subscription was activated.',
+    hpp_token_expired: 'The WaafiPay payment session expired. Start a new checkout.',
+    service_not_enabled: 'This payment method is not enabled for the merchant. Please contact support.',
+    user_timeout: 'The payment request timed out before it was completed. Start a new checkout if you still want to pay.',
+    user_rejected: 'You rejected the WaafiPay payment request. No subscription was activated.',
+    already_cancelled: 'WaafiPay reports that this transaction was already canceled. No subscription was activated.',
+  };
+
+  if (state && providerMessages[state]) {
+    return providerMessages[state];
+  }
   if (state === 'insufficient_balance') {
     return 'Not enough balance in your WaafiPay wallet. Add funds and try again. No subscription was activated.';
   }
   if (state === 'cancelled' || state === 'canceled') {
     return 'You canceled the payment request. No subscription was activated.';
   }
-  if (state === 'user_rejected' || state === 'rcs_user_rejected') {
+  if (state === 'rcs_user_rejected') {
     return 'You rejected the WaafiPay payment request. No subscription was activated.';
   }
   if (status === 'succeeded') {
@@ -394,11 +411,15 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
                   : payment.status === 'failed'
                     ? payment.providerState === 'insufficient_balance'
                       ? 'Payment failed — not enough balance'
-                      : payment.providerState === 'user_rejected' || payment.providerState === 'rcs_user_rejected'
+                      : payment.providerState === 'user_rejected'
+                        || payment.providerState === 'rcs_user_rejected'
+                        || payment.providerState === 'user_cancelled'
+                        || payment.providerState === 'user_timeout'
                         ? 'Payment rejected'
-                        : payment.providerState === 'cancelled' || payment.providerState === 'canceled'
+                        : payment.providerState === 'cancelled'
+                          || payment.providerState === 'canceled'
                           ? 'Payment canceled'
-                        : 'Your payment was rejected — please try again'
+                          : 'Your payment was rejected — please try again'
                     : payment.status === 'pending'
                       ? 'Payment pending — check your phone for the EVC prompt'
                       : 'Payment recorded — status requires review'}

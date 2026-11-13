@@ -363,9 +363,7 @@ export function createServer({
                 ? "Not enough balance in your WaafiPay wallet. Add funds and try again. No subscription was activated."
                 : result?.state === "user_rejected"
                   ? "You rejected the WaafiPay payment request. No subscription was activated."
-                : result?.state === "cancelled" || result?.state === "canceled"
-                  ? "You canceled the payment request. No subscription was activated."
-                  : "WaafiPay declined or failed the payment; no subscription was activated."
+                  : "WaafiPay could not complete the payment. Check the payment status for details; no subscription was activated."
               : "Payment request submitted. Check your EVC wallet for an approval prompt. Do not retry while this payment is pending.";
 
           sendJson(response, 200, {
