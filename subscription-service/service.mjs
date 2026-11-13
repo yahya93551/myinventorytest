@@ -361,6 +361,8 @@ export function createServer({
             : paymentStatus === "failed"
               ? result?.state === "insufficient_balance"
                 ? "Not enough balance in your WaafiPay wallet. Add funds and try again. No subscription was activated."
+                : result?.state === "user_rejected"
+                  ? "You rejected the WaafiPay payment request. No subscription was activated."
                 : result?.state === "cancelled" || result?.state === "canceled"
                   ? "You canceled the payment request. No subscription was activated."
                   : "WaafiPay declined or failed the payment; no subscription was activated."

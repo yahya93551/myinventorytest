@@ -347,6 +347,23 @@ function indicatesInsufficientBalance(response, params) {
   return /insufficient.{0,30}(balance|funds|credit)|not enough.{0,30}(balance|funds|credit)|low.{0,20}balance|balance.{0,30}(too low|low|insufficient|not enough)|funds.{0,30}insufficient/.test(providerText);
 }
 
+function indicatesUserRejection(response, params) {
+  const providerText = [
+    response.responseMsg,
+    response.responseMessage,
+    params.responseMsg,
+    params.responseMessage,
+    params.description,
+  ]
+    .filter((value) => typeof value === "string")
+    .join(" ")
+    .trim()
+    .toLowerCase();
+
+  return providerText.includes("rcs_user_rejected")
+    || providerText.includes("customer rejected payment");
+}
+
 /**
  * Sends one direct API_PURCHASE request and trusts only a definitive provider
  * state. An uncertain response stays pending and must never trigger a retry.
@@ -381,6 +398,10 @@ export async function makeProductionPurchase({
     purchaseResponse,
     purchaseParams,
   );
+  const userRejected = indicatesUserRejection(
+    purchaseResponse,
+    purchaseParams,
+  );
 
   const transactionId =
     typeof purchaseParams.transactionId === "string"
@@ -396,12 +417,15 @@ export async function makeProductionPurchase({
   const outcome = purchaseCode === "2001" && purchaseState === "approved"
     ? "succeeded"
     : insufficientBalance
+      || userRejected
       || failedStates.has(purchaseState)
       || purchaseCode === "5306"
       ? "failed"
       : "pending";
   const state = insufficientBalance
     ? "insufficient_balance"
+    : userRejected
+      ? "user_rejected"
     : purchaseState && purchaseState !== "unknown"
       ? purchaseState
       : outcome === "succeeded"

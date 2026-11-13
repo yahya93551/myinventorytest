@@ -79,6 +79,9 @@ function getPaymentOutcomeMessage(status: string, providerState: string | null) 
   if (state === 'cancelled' || state === 'canceled') {
     return 'You canceled the payment request. No subscription was activated.';
   }
+  if (state === 'user_rejected' || state === 'rcs_user_rejected') {
+    return 'You rejected the WaafiPay payment request. No subscription was activated.';
+  }
   if (status === 'succeeded') {
     return 'WaafiPay confirmed your payment. Your subscription is active.';
   }
@@ -391,8 +394,10 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
                   : payment.status === 'failed'
                     ? payment.providerState === 'insufficient_balance'
                       ? 'Payment failed — not enough balance'
-                      : payment.providerState === 'cancelled' || payment.providerState === 'canceled'
-                        ? 'Payment canceled'
+                      : payment.providerState === 'user_rejected' || payment.providerState === 'rcs_user_rejected'
+                        ? 'Payment rejected'
+                        : payment.providerState === 'cancelled' || payment.providerState === 'canceled'
+                          ? 'Payment canceled'
                         : 'Your payment was rejected — please try again'
                     : payment.status === 'pending'
                       ? 'Payment pending — check your phone for the EVC prompt'

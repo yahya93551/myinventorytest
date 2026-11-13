@@ -342,6 +342,34 @@ test("records WaafiPay's documented user-cancelled response as failed", async ()
   assert.equal(result.state, "cancelled");
 });
 
+test("records the RCS_USER_REJECTED response as a failed payment", async () => {
+  const response = {
+    schemaVersion: "1.0",
+    timestamp: "2026-11-13 13:52:25.3",
+    responseId: "GENERATE-A-NEW-UUID",
+    responseCode: "5310",
+    errorCode: "5310",
+    responseMsg: "RCS_USER_REJECTED",
+    params: {
+      orderId: "104558628",
+      description: "Customer rejected payment",
+      referenceId: "myinventory-postman-test-001",
+      transactionId: "51880146",
+      txAmount: "5.0",
+    },
+  };
+  const result = await makeProductionPurchase({
+    env,
+    payment,
+    fetcher: async () => new Response(JSON.stringify(response), { status: 200 }),
+  });
+
+  assert.equal(result.responseCode, "5310");
+  assert.equal(result.outcome, "failed");
+  assert.equal(result.state, "user_rejected");
+  assert.equal(result.transactionId, "51880146");
+});
+
 test("reports an insufficient wallet balance as a specific failed provider state", async () => {
   const result = await makeProductionPurchase({
     env,
