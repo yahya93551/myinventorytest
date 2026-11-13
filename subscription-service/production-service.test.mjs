@@ -457,7 +457,7 @@ test("confirmed provider success is persisted as succeeded", async () => {
   assert.equal(applied.at(-1).outcome, "succeeded");
 });
 
-test("provider rejection is persisted as failed without activating a subscription", async () => {
+test("provider insufficient balance is persisted and returned with a clear message", async () => {
   let localServer;
   const appliedResults = [];
 
@@ -479,7 +479,7 @@ test("provider rejection is persisted as failed without activating a subscriptio
       },
       productionPurchase: async () => ({
         responseCode: "5306",
-        state: "declined",
+        state: "insufficient_balance",
         outcome: "failed",
         transactionId: null,
       }),
@@ -514,8 +514,10 @@ test("provider rejection is persisted as failed without activating a subscriptio
     assert.equal(result.paymentStatus, "failed");
     assert.equal(result.outcome, "failed");
     assert.equal(result.responseCode, "5306");
-    assert.match(result.message, /no subscription was activated/i);
+    assert.match(result.message, /not enough balance/i);
+    assert.equal(result.providerState, "insufficient_balance");
     assert.equal(appliedResults.at(-1).outcome, "failed");
+    assert.equal(appliedResults.at(-1).providerState, "insufficient_balance");
   } finally {
     if (localServer) {
       await new Promise((resolve, reject) => {

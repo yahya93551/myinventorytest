@@ -86,7 +86,7 @@ function normalizeSubscription(subscription: any) {
   if (!subscription) {
     return {
       status: "inactive",
-      monthly_fee: 5.0,
+      monthly_fee: getSubscriptionMonthlyFeeForPlan("basic"),
       message: "No active subscription",
       plan: "basic",
     };

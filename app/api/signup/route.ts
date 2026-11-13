@@ -10,6 +10,7 @@ import {
 } from "@/lib/rateLimit";
 import { createPhoneFallbackEmail, isPhoneNumber, normalizePhoneNumber } from "@/lib/auth";
 import { getAndDeleteOtp } from "@/lib/redis";
+import { getSubscriptionMonthlyFeeForPlan } from "@/lib/subscriptionPlans";
 
 const SignUpSchema = z.object({
   email: z.string().email().optional(),
@@ -192,7 +193,7 @@ export async function POST(req: Request) {
     .insert({
       tenant_id: user.id,
       status: "active",
-      monthly_fee: 5.0,
+      monthly_fee: getSubscriptionMonthlyFeeForPlan("basic"),
       billing_date: now.toISOString().split("T")[0],
       next_billing_date: activeUntil.toISOString().split("T")[0],
       active_until: activeUntil.toISOString(),

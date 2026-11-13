@@ -27,7 +27,7 @@ export function getSubscriptionPlan(subscription: { monthly_fee?: number | null;
     return subscription.plan;
   }
 
-  const fee = Number(subscription?.monthly_fee ?? 5);
+  const fee = Number(subscription?.monthly_fee ?? SUBSCRIPTION_PLAN_MONTHLY_FEE.basic);
   if (!Number.isFinite(fee)) {
     return "basic";
   }

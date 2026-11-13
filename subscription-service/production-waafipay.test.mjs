@@ -339,6 +339,25 @@ test("records WaafiPay's documented user-cancelled response as failed", async ()
   });
 
   assert.equal(result.outcome, "failed");
+  assert.equal(result.state, "cancelled");
+});
+
+test("reports an insufficient wallet balance as a specific failed provider state", async () => {
+  const result = await makeProductionPurchase({
+    env,
+    payment,
+    fetcher: async () => new Response(
+      JSON.stringify({
+        responseCode: "5306",
+        responseMsg: "Insufficient balance in wallet",
+        serviceParams: { state: "declined" },
+      }),
+      { status: 200 },
+    ),
+  });
+
+  assert.equal(result.outcome, "failed");
+  assert.equal(result.state, "insufficient_balance");
 });
 
 test("verifies webhook HMAC utility over raw bytes and rejects stale or altered deliveries", () => {

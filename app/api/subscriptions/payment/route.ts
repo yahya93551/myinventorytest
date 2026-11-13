@@ -50,7 +50,7 @@ export async function GET(req: Request) {
       checkoutEnabled: process.env.SUBSCRIPTION_WAAFIPAY_PRODUCTION_ENABLED === "true",
       checkoutMode: "production",
       paymentPending: payment?.status === "pending",
-      payment: payment && payment.status !== "pending"
+      payment: payment
         ? {
             referenceId: payment.reference_id,
             status: ["pending", "succeeded", "failed"].includes(payment.status)

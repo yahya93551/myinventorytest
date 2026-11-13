@@ -324,6 +324,29 @@ function normalizeState(params) {
     : "";
 }
 
+function indicatesInsufficientBalance(response, params) {
+  const providerText = [
+    response.responseMsg,
+    response.responseMessage,
+    response.message,
+    response.errorMessage,
+    response.errorCode,
+    params.state,
+    params.status,
+    params.tranStatusDesc,
+    params.responseMsg,
+    params.responseMessage,
+    params.message,
+    params.errorMessage,
+    params.errorCode,
+  ]
+    .filter((value) => typeof value === "string")
+    .join(" ")
+    .toLowerCase();
+
+  return /insufficient.{0,30}(balance|funds|credit)|not enough.{0,30}(balance|funds|credit)|low.{0,20}balance|balance.{0,30}(too low|low|insufficient|not enough)|funds.{0,30}insufficient/.test(providerText);
+}
+
 /**
  * Sends one direct API_PURCHASE request and trusts only a definitive provider
  * state. An uncertain response stays pending and must never trigger a retry.
@@ -347,12 +370,17 @@ export async function makeProductionPurchase({
 
   const purchaseParams = findResponseParams(purchaseResponse);
 
-  const purchaseCode =
-    typeof purchaseResponse.responseCode === "string"
-      ? purchaseResponse.responseCode
+  const purchaseCode = typeof purchaseResponse.responseCode === "string"
+    ? purchaseResponse.responseCode.trim()
+    : typeof purchaseResponse.responseCode === "number"
+      ? String(purchaseResponse.responseCode)
       : "";
 
   const purchaseState = normalizeState(purchaseParams);
+  const insufficientBalance = indicatesInsufficientBalance(
+    purchaseResponse,
+    purchaseParams,
+  );
 
   const transactionId =
     typeof purchaseParams.transactionId === "string"
@@ -367,13 +395,26 @@ export async function makeProductionPurchase({
   ]);
   const outcome = purchaseCode === "2001" && purchaseState === "approved"
     ? "succeeded"
-    : failedStates.has(purchaseState) || purchaseCode === "5306"
+    : insufficientBalance
+      || failedStates.has(purchaseState)
+      || purchaseCode === "5306"
       ? "failed"
       : "pending";
+  const state = insufficientBalance
+    ? "insufficient_balance"
+    : purchaseState && purchaseState !== "unknown"
+      ? purchaseState
+      : outcome === "succeeded"
+        ? "approved"
+        : outcome === "failed"
+          ? purchaseCode === "5306"
+            ? "cancelled"
+            : "failed"
+          : "awaiting_confirmation";
 
   return {
     responseCode: purchaseCode || "unknown",
-    state: purchaseState || "unknown",
+    state,
     outcome,
     transactionId,
     requestPreview,
