@@ -59,7 +59,7 @@ function getPaymentOutcomeMessage(status: string, providerState: string | null) 
     return providerMessages[state];
   }
   if (state === 'insufficient_balance') {
-    return 'Haraaga xisaabtaadu kuguma filna, haraagaagu waa:';
+    return 'Haraaga xisaabtaadu kuguma filna';
   }
   if (state === 'cancelled' || state === 'canceled') {
     return 'You canceled the payment request. No subscription was activated.';
@@ -336,13 +336,6 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
                     : payment.status === 'pending'
                       ? 'Payment pending — check your phone for the EVC prompt'
                       : 'Payment recorded — status requires review'}
-              </p>
-              <p className="mt-2">
-                Reference: <span className="font-mono font-semibold">{payment.referenceId}</span>
-              </p>
-              <p className="mt-1">
-                {payment.plan} plan, {payment.durationMonths} month{payment.durationMonths === 1 ? '' : 's'} —{' '}
-                {payment.currency} {(payment.amountMinor / 100).toFixed(2)}
               </p>
               <p className="mt-2">
                 {payment.sandbox

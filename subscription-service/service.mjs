@@ -360,7 +360,7 @@ export function createServer({
             ? "EVC Plus confirmed payment; subscription activated."
             : paymentStatus === "failed"
               ? result?.state === "insufficient_balance"
-                ? "Haraaga xisaabtaadu kuguma filna, haraagaagu waa:"
+                ? "Haraaga xisaabtaadu kuguma filna"
                 : result?.state === "user_rejected"
                   ? "You rejected the EVC Plus payment request. No subscription was activated."
                   : "EVC Plus could not complete the payment. Check the payment status for details; no subscription was activated."

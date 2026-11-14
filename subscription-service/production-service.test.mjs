@@ -514,7 +514,7 @@ test("provider insufficient balance is persisted and returned with a clear messa
     assert.equal(result.paymentStatus, "failed");
     assert.equal(result.outcome, "failed");
     assert.equal(result.responseCode, "5206");
-    assert.equal(result.message, "Haraaga xisaabtaadu kuguma filna, haraagaagu waa:");
+    assert.equal(result.message, "Haraaga xisaabtaadu kuguma filna");
     assert.equal(result.providerState, "insufficient_balance");
     assert.equal(appliedResults.at(-1).outcome, "failed");
     assert.equal(appliedResults.at(-1).providerState, "insufficient_balance");
