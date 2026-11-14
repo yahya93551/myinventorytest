@@ -219,7 +219,7 @@ export function createServer({
       const missingConfiguration = getSandboxConfigurationIssues(env);
       if (missingConfiguration.length > 0) {
         sendJson(response, 503, {
-          error: "WaafiPay sandbox checkout is not configured",
+          error: "EVC Plus sandbox checkout is not configured",
           requestSent: false,
           missingConfiguration,
         });
@@ -295,7 +295,7 @@ export function createServer({
       // Keep the original production payment safety gate.
       if (!isProductionConfigured(env)) {
         sendJson(response, 503, {
-          error: "WaafiPay payment service is not configured",
+          error: "EVC Plus payment service is not configured",
           requestSent: false,
           missingConfiguration: getProductionConfigurationIssues(env),
         });
@@ -357,13 +357,13 @@ export function createServer({
 
           const paymentStatus = updated?.status || result?.outcome || "pending";
           const message = paymentStatus === "succeeded"
-            ? "WaafiPay confirmed payment; subscription activated."
+            ? "EVC Plus confirmed payment; subscription activated."
             : paymentStatus === "failed"
               ? result?.state === "insufficient_balance"
-                ? "Not enough balance in your WaafiPay wallet. Add funds and try again. No subscription was activated."
+                ? "Haraaga xisaabtaadu kuguma filna, haraagaagu waa:"
                 : result?.state === "user_rejected"
-                  ? "You rejected the WaafiPay payment request. No subscription was activated."
-                  : "WaafiPay could not complete the payment. Check the payment status for details; no subscription was activated."
+                  ? "You rejected the EVC Plus payment request. No subscription was activated."
+                  : "EVC Plus could not complete the payment. Check the payment status for details; no subscription was activated."
               : "Payment request submitted. Check your EVC wallet for an approval prompt. Do not retry while this payment is pending.";
 
           sendJson(response, 200, {

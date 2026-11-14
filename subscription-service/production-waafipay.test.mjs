@@ -422,15 +422,19 @@ test("maps RCS_TRAN_ALREADY_CANCELLED from its documented response message", asy
   assert.equal(result.state, "already_cancelled");
 });
 
-test("reports an insufficient wallet balance as a specific failed provider state", async () => {
+test("maps WaafiPay Somali insufficient-balance response to a failed payment", async () => {
   const result = await makeProductionPurchase({
     env,
     payment,
     fetcher: async () => new Response(
       JSON.stringify({
-        responseCode: "5306",
-        responseMsg: "Insufficient balance in wallet",
-        serviceParams: { state: "declined" },
+        responseCode: "5206",
+        errorCode: "E10205",
+        responseMsg: "Payment Failed (Haraaga xisaabtaadu kuguma filna, haraagaagu waa: )",
+        params: {
+          description: "Haraaga xisaabtaadu kuguma filna, haraagaagu waa: ",
+          transactionId: "51880146",
+        },
       }),
       { status: 200 },
     ),
@@ -438,6 +442,7 @@ test("reports an insufficient wallet balance as a specific failed provider state
 
   assert.equal(result.outcome, "failed");
   assert.equal(result.state, "insufficient_balance");
+  assert.equal(result.responseCode, "5206");
 });
 
 test("verifies webhook HMAC utility over raw bytes and rejects stale or altered deliveries", () => {

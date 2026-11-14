@@ -27,6 +27,8 @@ export default function Dashboard() {
     ? Math.max(0, Math.ceil((activeUntilDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
     : null;
   const subscriptionEndingSoon = !subscriptionLoading && subscription?.status === "active" && subscriptionRemainingDays !== null && subscriptionRemainingDays <= 10 && subscriptionRemainingDays >= 0;
+  const subscriptionInactive = !subscriptionLoading
+    && (subscription?.status === "inactive" || subscription?.status === "expired");
 
   // Helper: safely extract a valid Date object from a sale (handles both 'date' and 'created_at')
   const getSaleDate = (sale: any): Date | null => {
@@ -152,6 +154,16 @@ export default function Dashboard() {
           </p>
         </div>
       </div>
+
+      {subscriptionInactive && (
+        <Link
+          href="/settings?tab=subscription"
+          className="mt-4 flex items-center justify-between gap-4 rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-700 transition-colors hover:bg-red-500/15 dark:text-red-300"
+        >
+          <span className="font-semibold">Subscription: Inactive</span>
+          <span className="shrink-0 underline">Manage subscription</span>
+        </Link>
+      )}
 
       {subscriptionEndingSoon && (
         <Link href="/settings" className="pointer-events-auto fixed right-4 top-4 z-50 animate-[floatIn_0.35s_ease-out] hover:scale-[1.02] transition-transform duration-200">

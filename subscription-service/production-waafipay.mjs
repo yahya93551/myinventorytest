@@ -17,6 +17,7 @@ const TERMINAL_PROVIDER_RESPONSES = {
   "5308": "service_not_enabled",
   "5309": "user_timeout",
   "5310": "user_rejected",
+  E10205: "insufficient_balance",
   E10207: "already_cancelled",
 };
 
@@ -372,7 +373,7 @@ function indicatesInsufficientBalance(response, params) {
     .join(" ")
     .toLowerCase();
 
-  return /insufficient.{0,30}(balance|funds|credit)|not enough.{0,30}(balance|funds|credit)|low.{0,20}balance|balance.{0,30}(too low|low|insufficient|not enough)|funds.{0,30}insufficient/.test(providerText);
+  return /insufficient.{0,30}(balance|funds|credit)|not enough.{0,30}(balance|funds|credit)|low.{0,20}balance|balance.{0,30}(too low|low|insufficient|not enough)|funds.{0,30}insufficient|haraaga\s+xisaabtaadu\s+kuguma\s+filna/.test(providerText);
 }
 
 function indicatesUserRejection(response, params) {

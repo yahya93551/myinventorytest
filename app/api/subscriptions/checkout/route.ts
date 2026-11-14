@@ -10,7 +10,7 @@ const CheckoutSchema = z.object({
     (duration) => [1, 3, 6, 12].includes(duration),
     "Select a valid subscription duration",
   ),
-  accountNo: z.string().regex(/^[1-9][0-9]{9,19}$/, "Enter a valid WaafiPay account number"),
+  accountNo: z.string().regex(/^[1-9][0-9]{9,19}$/, "Enter a valid EVC Plus account number"),
 });
 
 function paymentServiceConfig() {
@@ -81,8 +81,8 @@ export async function POST(req: Request) {
       {
         success: false,
         error: sandboxMode
-          ? "WaafiPay sandbox checkout is disabled. No request was sent."
-          : "WaafiPay checkout is currently disabled. No payment was sent.",
+          ? "EVC Plus sandbox checkout is disabled. No request was sent."
+          : "EVC Plus checkout is currently disabled. No payment was sent.",
       },
       { status: 503 },
     );
@@ -91,7 +91,7 @@ export async function POST(req: Request) {
   const serviceConfig = paymentServiceConfig();
   if (!serviceConfig) {
     return NextResponse.json(
-      { success: false, error: "WaafiPay payment service is not configured on the server" },
+      { success: false, error: "EVC Plus payment service is not configured on the server" },
       { status: 503 },
     );
   }
@@ -245,7 +245,7 @@ export async function POST(req: Request) {
       {
         success: false,
         error: serviceResponse.status === 503
-          ? `WaafiPay checkout is unavailable. No WaafiPay request was sent.${missingConfiguration.length > 0 ? ` Check Railway variables: ${missingConfiguration.join(", ")}.` : ""}`
+          ? `EVC Plus checkout is unavailable. No payment request was sent.${missingConfiguration.length > 0 ? ` Check Railway variables: ${missingConfiguration.join(", ")}.` : ""}`
           : "Payment service could not start checkout",
       },
       { status: serviceResponse.status === 503 ? 503 : 502 },
@@ -273,6 +273,9 @@ export async function POST(req: Request) {
       amountMinor,
       currency: "USD",
       createdAt: new Date().toISOString(),
+      message: typeof serviceData.message === "string"
+        ? serviceData.message
+        : null,
     },
     message: status === "pending"
       ? "Payment submitted. Await manual verification."

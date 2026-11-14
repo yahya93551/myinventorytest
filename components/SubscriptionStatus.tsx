@@ -38,75 +38,43 @@ const PLAN_DETAILS: Record<SubscriptionPlan, { label: string; products: string; 
   },
 };
 
-function showAccountNoInPreview(preview: unknown, accountNo: string): unknown {
-  if (
-    typeof preview !== 'object'
-    || preview === null
-    || !('payload' in preview)
-    || typeof preview.payload !== 'object'
-    || preview.payload === null
-    || !('serviceParams' in preview.payload)
-    || typeof preview.payload.serviceParams !== 'object'
-    || preview.payload.serviceParams === null
-    || !('payerInfo' in preview.payload.serviceParams)
-    || typeof preview.payload.serviceParams.payerInfo !== 'object'
-    || preview.payload.serviceParams.payerInfo === null
-  ) {
-    return preview;
-  }
-
-  return {
-    ...preview,
-    payload: {
-      ...preview.payload,
-      serviceParams: {
-        ...preview.payload.serviceParams,
-        payerInfo: {
-          ...preview.payload.serviceParams.payerInfo,
-          accountNo,
-        },
-      },
-    },
-  };
-}
-
 function getPaymentOutcomeMessage(status: string, providerState: string | null) {
   const state = providerState?.trim().toLowerCase();
 
   const providerMessages: Record<string, string> = {
-    invalid_credentials: 'WaafiPay could not process the payment because the merchant API credentials are invalid. Please contact support.',
-    invalid_hpp_token: 'WaafiPay rejected an invalid hosted payment token. Please try again or contact support.',
-    invalid_hpp_result_token: 'WaafiPay could not verify the hosted payment result. Please contact support.',
-    reference_mismatch: 'The payment reference did not match WaafiPay records. Please contact support before retrying.',
-    request_id_mismatch: 'The payment request did not match WaafiPay records. Please contact support before retrying.',
-    user_cancelled: 'You canceled the WaafiPay payment request. No subscription was activated.',
-    hpp_token_expired: 'The WaafiPay payment session expired. Start a new checkout.',
+    invalid_credentials: 'EVC Plus could not process the payment because the merchant API credentials are invalid. Please contact support.',
+    invalid_hpp_token: 'EVC Plus rejected an invalid hosted payment token. Please try again or contact support.',
+    invalid_hpp_result_token: 'EVC Plus could not verify the hosted payment result. Please contact support.',
+    reference_mismatch: 'The payment reference did not match EVC Plus records. Please contact support before retrying.',
+    request_id_mismatch: 'The payment request did not match EVC Plus records. Please contact support before retrying.',
+    user_cancelled: 'You canceled the EVC Plus payment request. No subscription was activated.',
+    hpp_token_expired: 'The EVC Plus payment session expired. Start a new checkout.',
     service_not_enabled: 'This payment method is not enabled for the merchant. Please contact support.',
     user_timeout: 'The payment request timed out before it was completed. Start a new checkout if you still want to pay.',
-    user_rejected: 'You rejected the WaafiPay payment request. No subscription was activated.',
-    already_cancelled: 'WaafiPay reports that this transaction was already canceled. No subscription was activated.',
+    user_rejected: 'You rejected the EVC Plus payment request. No subscription was activated.',
+    already_cancelled: 'EVC Plus reports that this transaction was already canceled. No subscription was activated.',
   };
 
   if (state && providerMessages[state]) {
     return providerMessages[state];
   }
   if (state === 'insufficient_balance') {
-    return 'Not enough balance in your WaafiPay wallet. Add funds and try again. No subscription was activated.';
+    return 'Haraaga xisaabtaadu kuguma filna, haraagaagu waa:';
   }
   if (state === 'cancelled' || state === 'canceled') {
     return 'You canceled the payment request. No subscription was activated.';
   }
   if (state === 'rcs_user_rejected') {
-    return 'You rejected the WaafiPay payment request. No subscription was activated.';
+    return 'You rejected the EVC Plus payment request. No subscription was activated.';
   }
   if (status === 'succeeded') {
-    return 'WaafiPay confirmed your payment. Your subscription is active.';
+    return 'EVC Plus confirmed your payment. Your subscription is active.';
   }
   if (status === 'failed') {
     return 'Your payment was rejected. Please try again. No subscription was activated.';
   }
   if (status === 'pending') {
-    return 'Payment is awaiting WaafiPay confirmation. Do not submit another checkout while it is unresolved.';
+    return 'Payment is awaiting EVC Plus confirmation. Do not submit another checkout while it is unresolved.';
   }
   return 'Payment status requires review. Contact support before trying another payment.';
 }
@@ -114,19 +82,12 @@ function getPaymentOutcomeMessage(status: string, providerState: string | null) 
 export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) {
   const { subscription, loading, error, isActive, refetch } = useSubscription();
   const [requesting, setRequesting] = useState(false);
-  const [accountNo, setAccountNo] = useState('');
+  const [accountNo, setAccountNo] = useState('252');
   const [paymentLoading, setPaymentLoading] = useState(true);
   const [paymentPending, setPaymentPending] = useState(false);
   const [checkoutEnabled, setCheckoutEnabled] = useState(false);
   const [sandboxMode, setSandboxMode] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
-  const [checkoutResult, setCheckoutResult] = useState<string | null>(null);
-  const [providerRequestPreview, setProviderRequestPreview] = useState<unknown>(null);
-  const [lastCheckoutPayload, setLastCheckoutPayload] = useState<{
-    plan: SubscriptionPlan;
-    durationMonths: number;
-    accountNo: string;
-  } | null>(null);
   const [payment, setPayment] = useState<{
     referenceId: string;
     status: string;
@@ -138,7 +99,6 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
     createdAt: string;
     sandbox?: boolean;
     sandboxOutcome?: string;
-    providerDiagnostics?: unknown;
   } | null>(null);
   const [requestMessage, setRequestMessage] = useState('');
   const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan>(() => getSubscriptionPlan(subscription ?? null));
@@ -172,11 +132,6 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
         setCheckoutEnabled(result.data?.checkoutEnabled === true);
         setSandboxMode(result.data?.checkoutMode === 'sandbox');
         setPaymentError(null);
-        if (result.data?.payment?.status === 'succeeded') {
-          setCheckoutResult('WaafiPay confirmed payment; subscription is active.');
-        } else if (result.data?.payment?.status === 'failed') {
-          setCheckoutResult('Your payment was rejected. Please try again. No subscription was activated.');
-        }
       })
       .catch((err) => {
         if (!active) return;
@@ -207,39 +162,19 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
   const isFreeTrial = subscription?.status === 'active' && remainingDays !== null && remainingDays > 0 && remainingDays <= 14;
   const handleRequest = async () => {
     setRequestMessage('');
-    setCheckoutResult('Sending checkout request...');
-    setProviderRequestPreview(null);
     setRequesting(true);
     const checkoutPayload = {
       plan: selectedPlan,
       durationMonths: selectedDurationMonths,
       accountNo,
     };
-    setLastCheckoutPayload({
-      ...checkoutPayload,
-      accountNo: accountNo || '(empty)',
-    });
-    console.info('[Subscription checkout] App request payload (account number masked)', {
-      endpoint: 'POST /api/subscriptions/checkout',
-      payload: {
-        plan: selectedPlan,
-        durationMonths: selectedDurationMonths,
-        accountNo: accountNo
-          ? `${'*'.repeat(Math.max(0, accountNo.length - 4))}${accountNo.slice(-4)}`
-          : '(empty)',
-      },
-    });
 
     try {
       const result = await apiPost<{
         referenceId: string;
         status: string;
-        responseCode?: string | null;
-        requestSent?: boolean;
-        requestPreview?: unknown;
         sandbox?: boolean;
         sandboxOutcome?: string;
-        providerDiagnostics?: unknown;
         providerState: string | null;
         plan: SubscriptionPlan;
         durationMonths: number;
@@ -247,18 +182,8 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
         currency: string;
         createdAt?: string;
       }>('/api/subscriptions/checkout', checkoutPayload);
-      console.info('[Subscription checkout] WaafiPay request diagnostics', {
-        requestSent: result.data?.requestSent === true,
-        requestPreview: result.data?.requestPreview ?? null,
-        paymentStatus: result.data?.status ?? 'not returned',
-        sandboxOutcome: result.data?.sandboxOutcome ?? null,
-        providerDiagnostics: result.data?.providerDiagnostics ?? null,
-        referenceId: result.data?.referenceId ?? null,
-        responseCode: result.data?.responseCode ?? null,
-        providerState: result.data?.providerState ?? null,
-      });
       if (!result.data?.referenceId) {
-        throw new Error('WaafiPay did not return a payment reference. Please try again later.');
+        throw new Error('EVC Plus did not return a payment reference. Please try again later.');
       }
       const awaitingFinalPaymentStatus = !result.data.sandbox
         && result.data.status === 'pending';
@@ -269,38 +194,26 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
         createdAt: result.data.createdAt ?? new Date().toISOString(),
         sandbox: result.data.sandbox === true,
         sandboxOutcome: result.data.sandboxOutcome,
-        providerDiagnostics: result.data.providerDiagnostics,
       });
-      setProviderRequestPreview(
-        showAccountNoInPreview(result.data.requestPreview ?? null, accountNo),
-      );
       if (result.data.sandbox) {
         setRequestMessage('Sandbox request completed. No production payment record or subscription was changed.');
       } else if (result.data.status === 'succeeded') {
         setPaymentPending(false);
-        setAccountNo('');
+        setAccountNo('252');
         setRequestMessage(getPaymentOutcomeMessage(result.data.status, result.data.providerState));
         await refetch();
       } else if (result.data.status === 'failed') {
         setPaymentPending(false);
-        setAccountNo('');
+        setAccountNo('252');
         setRequestMessage(getPaymentOutcomeMessage(result.data.status, result.data.providerState));
       } else {
-        setRequestMessage('Checkout is awaiting your EVC response. Approve or reject the request on your phone. The payment will appear here only after WaafiPay confirms success or failure. Do not retry while it is awaiting confirmation.');
+        setRequestMessage('Checkout is awaiting your EVC Plus response. Approve or reject the request on your phone. The payment will appear here only after EVC Plus confirms success or failure. Do not retry while it is awaiting confirmation.');
       }
-      setCheckoutResult(awaitingFinalPaymentStatus
-        ? 'Checkout is awaiting the EVC response. No final payment result is available yet; do not retry.'
-        : result.data.sandbox
-        ? `Sandbox request sent: ${result.data.requestSent === true ? 'yes' : 'no'}; provider outcome: ${result.data.sandboxOutcome || 'unknown'}; WaafiPay response code: ${result.data.responseCode || 'not returned'}; reference: ${result.data.referenceId}; provider state: ${result.data.providerState || 'not returned'}. No production payment was recorded.`
-        : result.data.status === 'failed'
-          ? getPaymentOutcomeMessage(result.data.status, result.data.providerState)
-        : `Request sent: ${result.data.requestSent === true ? 'yes' : 'no'}; payment status: ${result.data.status}; WaafiPay response code: ${result.data.responseCode || 'not returned'}; reference: ${result.data.referenceId}; provider state: ${result.data.providerState || 'not returned'}.`);
       if (onRequestClick) onRequestClick();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Error requesting subscription';
       console.warn('[Subscription checkout] Checkout request failed', { message });
       setRequestMessage(message);
-      setCheckoutResult(`Request failed: ${message}`);
     } finally {
       setRequesting(false);
     }
@@ -395,9 +308,9 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
           {paymentPending && (
             <div role="status" aria-live="polite" className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
               {payment?.providerState && payment.providerState !== 'awaiting_confirmation'
-                ? `Payment status from WaafiPay: ${payment.providerState}. `
-                : 'WaafiPay is awaiting your EVC approval. '}
-              The payment result will appear here after WaafiPay confirms success or failure. Do not submit another checkout while this request is unresolved.
+                ? `Payment status from EVC Plus: ${payment.providerState}. `
+                : 'EVC Plus is awaiting your approval. '}
+              The payment result will appear here after EVC Plus confirms success or failure. Do not submit another checkout while this request is unresolved.
             </div>
           )}
 
@@ -436,11 +349,6 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
                   ? `Sandbox outcome: ${payment.sandboxOutcome || 'unknown'}. This result was not saved as a payment and cannot activate a subscription.`
                   : getPaymentOutcomeMessage(payment.status, payment.providerState)}
               </p>
-              {payment.sandbox && payment.providerDiagnostics !== undefined && (
-                <pre className="mt-2 overflow-x-auto rounded bg-slate-900 p-3 text-xs text-slate-100">
-                  {JSON.stringify(payment.providerDiagnostics, null, 2)}
-                </pre>
-              )}
             </div>
           )}
 
@@ -455,9 +363,9 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
           <>
             <div className="mt-6 space-y-4 border-t border-theme-input pt-4">
               <div className="rounded-2xl border border-cyan-300 bg-cyan-50 p-4 text-sm text-cyan-900">
-                <p className="font-semibold">Pay securely with WaafiPay</p>
+                <p className="font-semibold">Pay securely with EVC Plus</p>
                 <p className="mt-2">
-                  Enter your WaafiPay account number to start checkout. WaafiPay may send an EVC approval prompt to that wallet. A confirmed payment activates the subscription; a declined payment is recorded as failed.
+                  Enter your EVC Plus account number to start checkout. EVC Plus may send an approval prompt to that wallet. A confirmed payment activates the subscription; a declined payment is recorded as failed.
                 </p>
               </div>
 
@@ -514,63 +422,49 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
                   </div>
 
                   <label className="block">
-                    <span className="text-sm font-medium text-theme-primary">WaafiPay account number</span>
+                    <span className="text-sm font-medium text-theme-primary">EVC Plus account number</span>
                     <input
                       value={accountNo}
-                      onChange={(e) => setAccountNo(e.target.value.replace(/\D/g, '').slice(0, 20))}
+                      onChange={(e) => {
+                        const digits = e.target.value.replace(/\D/g, '').slice(0, 20);
+                        const numberWithoutPrefix = digits.startsWith('252')
+                          ? digits.slice(3)
+                          : digits;
+                        setAccountNo(`252${numberWithoutPrefix}`.slice(0, 20));
+                      }}
+                      onKeyDown={(e) => {
+                        const input = e.currentTarget;
+                        const selectionTouchesPrefix = (input.selectionStart ?? 0) < 3
+                          && (input.selectionEnd ?? 0) > 0;
+                        const selectingWholeValue = input.selectionStart === 0
+                          && input.selectionEnd === input.value.length;
+                        const isEditingKey = e.key === 'Backspace'
+                          || e.key === 'Delete'
+                          || e.key.length === 1;
+                        if (
+                          selectionTouchesPrefix
+                          && !selectingWholeValue
+                          && !e.ctrlKey
+                          && !e.metaKey
+                          && isEditingKey
+                        ) {
+                          e.preventDefault();
+                        }
+                        if (
+                          (e.key === 'Backspace' && input.selectionStart === 3 && input.selectionEnd === 3)
+                          || (e.key === 'Delete' && input.selectionStart === 2 && input.selectionEnd === 2)
+                        ) {
+                          e.preventDefault();
+                        }
+                      }}
                       inputMode="numeric"
                       autoComplete="tel"
-                      placeholder="International number without + or leading zero"
+                      placeholder="252 followed by your number"
                       className="mt-1 w-full rounded-2xl border border-theme bg-theme-input px-4 py-3 text-theme-primary outline-none focus:border-cyan-400"
                     />
                   </label>
                 </div>
               </div>
-            </div>
-
-            <div className="mt-4 rounded-2xl border border-slate-300 bg-slate-50 p-4 text-sm text-slate-800">
-              <p className="font-semibold">Checkout diagnostics</p>
-              <p className="mt-2">
-                Endpoint: <code>POST /api/subscriptions/checkout</code>
-              </p>
-              <p className="mt-1">
-                Checkout mode: {sandboxMode ? 'Sandbox (no production payment record)' : 'Production'}
-              </p>
-              <p className="mt-1">
-                WaafiPay checkout: {paymentLoading
-                  ? 'Checking configuration...'
-                  : paymentError
-                    ? 'Configuration status could not be loaded'
-                    : checkoutEnabled
-                      ? 'Enabled'
-                      : 'Disabled'}
-              </p>
-              <p className="mt-2 font-medium">Request payload</p>
-              <pre className="mt-1 overflow-x-auto rounded bg-slate-900 p-3 text-xs text-slate-100">
-                {JSON.stringify(lastCheckoutPayload ?? {
-                  plan: selectedPlan,
-                  durationMonths: selectedDurationMonths,
-                  accountNo: accountNo || '(empty)',
-                }, null, 2)}
-              </pre>
-              <p className="mt-2">
-                {sandboxMode
-                  ? 'Sandbox requests use the WaafiPay sandbox endpoint and separate sandbox credentials. They are not written to the production payment database and cannot activate a subscription.'
-                  : 'This preview does not send a payment. Click Checkout with WaafiPay to send a purchase request using this number as the payer wallet. The server sends it to WaafiPay.'}
-              </p>
-              {checkoutResult && (
-                <p role="status" aria-live="polite" className="mt-2 wrap-break-word">
-                  Result: {checkoutResult}
-                </p>
-              )}
-              {providerRequestPreview !== null && (
-                <>
-                  <p className="mt-3 font-medium">WaafiPay request sent (credentials masked)</p>
-                  <pre className="mt-1 overflow-x-auto rounded bg-slate-900 p-3 text-xs text-slate-100">
-                    {JSON.stringify(providerRequestPreview, null, 2)}
-                  </pre>
-                </>
-              )}
             </div>
 
             <Button
@@ -579,13 +473,13 @@ export function SubscriptionStatus({ onRequestClick }: SubscriptionStatusProps) 
               className="w-full mt-4"
             >
               {requesting
-                ? sandboxMode ? 'Connecting to WaafiPay Sandbox...' : 'Connecting to WaafiPay...'
-                : sandboxMode ? 'Test WaafiPay Sandbox Checkout' : 'Checkout with WaafiPay'}
+                ? sandboxMode ? 'Connecting to EVC Plus Sandbox...' : 'Connecting to EVC Plus...'
+                : sandboxMode ? 'Test EVC Plus Sandbox Checkout' : 'Checkout with EVC Plus'}
             </Button>
 
             {!checkoutEnabled && (
               <p className="mt-3 text-sm text-amber-700">
-                WaafiPay checkout is currently disabled. No payment will be sent.
+                EVC Plus checkout is currently disabled. No payment will be sent.
               </p>
             )}
 

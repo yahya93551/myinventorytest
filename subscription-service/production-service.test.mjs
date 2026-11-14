@@ -478,7 +478,7 @@ test("provider insufficient balance is persisted and returned with a clear messa
         },
       },
       productionPurchase: async () => ({
-        responseCode: "5306",
+        responseCode: "5206",
         state: "insufficient_balance",
         outcome: "failed",
         transactionId: null,
@@ -513,8 +513,8 @@ test("provider insufficient balance is persisted and returned with a clear messa
     assert.equal(response.status, 200);
     assert.equal(result.paymentStatus, "failed");
     assert.equal(result.outcome, "failed");
-    assert.equal(result.responseCode, "5306");
-    assert.match(result.message, /not enough balance/i);
+    assert.equal(result.responseCode, "5206");
+    assert.equal(result.message, "Haraaga xisaabtaadu kuguma filna, haraagaagu waa:");
     assert.equal(result.providerState, "insufficient_balance");
     assert.equal(appliedResults.at(-1).outcome, "failed");
     assert.equal(appliedResults.at(-1).providerState, "insufficient_balance");
