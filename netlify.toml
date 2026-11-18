@@ -1,6 +1,9 @@
-[build]
+﻿[build]
   command = "npm run build"
   publish = ".next"
+
+[build.environment]
+  SECRETS_SCAN_OMIT_KEYS = "SUBSCRIPTION_WAAFIPAY_ENV"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
