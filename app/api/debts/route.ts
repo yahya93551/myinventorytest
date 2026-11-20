@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { getServerTenantContext, jsonError, jsonSuccess, requireRole, requireActiveSubscription } from "@/lib/api";
+import { jsonError, jsonSuccess, requireRole, requireActiveSubscription } from "@/lib/api";
 
 const NewDebtSchema = z.object({
   customer_name: z.string().trim().min(1, "Customer name is required"),
@@ -14,7 +14,14 @@ const UpdateDebtSchema = z.object({
   id: z.string().uuid("Debt id must be a valid UUID"),
   paid: z.boolean().optional(),
   note: z.string().optional(),
-});
+  payment_amount: z.number()
+    .positive("Payment amount must be greater than zero")
+    .refine((amount) => Math.abs(amount * 100 - Math.round(amount * 100)) < 1e-7, "Payment amount can have at most two decimal places")
+    .optional(),
+}).refine(
+  (payload) => payload.payment_amount === undefined || (payload.paid === undefined && payload.note === undefined),
+  "Record a payment separately from other debt updates",
+);
 
 const DeleteDebtSchema = z.object({
   id: z.string().uuid("Debt id must be a valid UUID"),
@@ -34,7 +41,7 @@ export async function GET(req: Request) {
 
   const { data, error } = await supabaseAdmin
     .from("debts")
-    .select("id, customer_name, customer_phone, amount, note, date, paid, created_at")
+    .select("id, customer_name, customer_phone, amount, amount_paid, note, date, paid, created_at")
     .eq("tenant_id", tenantContext.tenantId)
     .order("created_at", { ascending: false });
 
@@ -80,11 +87,12 @@ export async function POST(req: Request) {
       customer_name,
       customer_phone,
       amount,
+      amount_paid: 0,
       date,
       note,
       paid: false,
     })
-    .select("id, customer_name, customer_phone, amount, note, date, paid, created_at")
+    .select("id, customer_name, customer_phone, amount, amount_paid, note, date, paid, created_at")
     .single();
 
   if (error || !data) {
@@ -118,11 +126,48 @@ export async function PATCH(req: Request) {
     return jsonError(parseResult.error.issues.map((issue) => issue.message).join(", "), 422);
   }
 
-  const { id, paid, note } = parseResult.data;
+  const { id, paid, note, payment_amount } = parseResult.data;
+
+  if (payment_amount !== undefined) {
+    const { data, error } = await supabaseAdmin.rpc("record_debt_payment", {
+      p_tenant_id: tenantContext.tenantId,
+      p_debt_id: id,
+      p_payment_amount: payment_amount,
+    });
+
+    if (error) {
+      const message = error.message || "Failed to record debt payment";
+      const debtError = message.match(/DEBT_(NOT_FOUND|OVERPAYMENT|INVALID):\s*(.*)/);
+      const clientMessage = debtError?.[2] || message;
+      const status = debtError?.[1] === "NOT_FOUND" ? 404
+        : debtError?.[1] === "OVERPAYMENT" ? 400
+        : debtError?.[1] === "INVALID" ? 422
+        : 500;
+      return jsonError(clientMessage, status);
+    }
+
+    if (!data) return jsonError("Failed to record debt payment", 500);
+    return jsonSuccess(data);
+  }
+
   const updates: Record<string, unknown> = {};
 
   if (paid !== undefined) {
     updates.paid = paid;
+    if (paid) {
+      const { data: debt, error } = await supabaseAdmin
+        .from("debts")
+        .select("amount")
+        .eq("tenant_id", tenantContext.tenantId)
+        .eq("id", id)
+        .maybeSingle();
+
+      if (error) return jsonError(error.message, 500);
+      if (!debt) return jsonError("Debt record was not found", 404);
+      updates.amount_paid = debt.amount;
+    } else {
+      updates.amount_paid = 0;
+    }
   }
   if (note !== undefined) {
     updates.note = note;
@@ -137,7 +182,7 @@ export async function PATCH(req: Request) {
     .update(updates)
     .eq("tenant_id", tenantContext.tenantId)
     .eq("id", id)
-    .select("id, customer_name, customer_phone, amount, note, date, paid, created_at")
+    .select("id, customer_name, customer_phone, amount, amount_paid, note, date, paid, created_at")
     .single();
 
   if (error || !data) {

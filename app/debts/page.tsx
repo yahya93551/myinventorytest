@@ -20,6 +20,7 @@ type DebtApiRecord = {
   customer_name: string;
   customer_phone: string;
   amount: number;
+  amount_paid: number;
   date: string;
   note?: string;
   paid: boolean;
@@ -33,6 +34,7 @@ const toStoredDebt = (record: DebtApiRecord): StoredDebt => ({
   name: record.customer_name,
   phone: record.customer_phone,
   amount: record.amount,
+  amount_paid: record.amount_paid,
   date: record.date,
   note: record.note,
   paid: record.paid,
@@ -100,7 +102,7 @@ export default function DebtsPage() {
       const rec = {
         name: d.name || existing?.name || "",
         phone: d.phone,
-        debts: existing ? [...existing.debts, { id: d.id, amount: d.amount, date: d.date, note: d.note, paid: d.paid }] : [{ id: d.id, amount: d.amount, date: d.date, note: d.note, paid: d.paid }],
+        debts: existing ? [...existing.debts, { id: d.id, amount: d.amount, amount_paid: d.amount_paid, date: d.date, note: d.note, paid: d.paid }] : [{ id: d.id, amount: d.amount, amount_paid: d.amount_paid, date: d.date, note: d.note, paid: d.paid }],
       };
       map.set(d.phone, rec);
     });
@@ -127,7 +129,7 @@ export default function DebtsPage() {
     arr = arr.map((customer) => ({
       ...customer,
       totalAmount: customer.debts.reduce((sum, d) => sum + (d.amount || 0), 0),
-      unpaidAmount: customer.debts.reduce((sum, d) => sum + (d.paid ? 0 : d.amount || 0), 0),
+      unpaidAmount: customer.debts.reduce((sum, d) => sum + Math.max(0, (d.amount || 0) - (d.amount_paid ?? (d.paid ? d.amount || 0 : 0))), 0),
       latestDate: customer.debts[customer.debts.length - 1]?.date || "",
     }));
 
@@ -151,7 +153,7 @@ export default function DebtsPage() {
 
   const debtStats = useMemo(() => {
     const totalDebt = debts.reduce((sum, d) => sum + (d.amount || 0), 0);
-    const totalPaid = debts.reduce((sum, d) => sum + (d.paid ? d.amount || 0 : 0), 0);
+    const totalPaid = debts.reduce((sum, d) => sum + (d.amount_paid ?? (d.paid ? d.amount || 0 : 0)), 0);
     const totalOutstanding = totalDebt - totalPaid;
     const customerCount = new Set(debts.map((d) => d.phone)).size;
     return { totalDebt, totalPaid, totalOutstanding, customerCount };
@@ -216,7 +218,7 @@ export default function DebtsPage() {
       if (!response.data) {
         throw new Error("Failed to update debt");
       }
-      setDebts((s) => s.map((d) => (d.id === debtId ? { ...d, paid: true } : d)));
+      setDebts((s) => s.map((d) => (d.id === debtId ? { ...d, paid: true, amount_paid: d.amount } : d)));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to mark debt as paid");
     }

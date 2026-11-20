@@ -39,7 +39,7 @@ async function readOwnerTotals(tenantId: string) {
   while (true) {
     let query = supabaseAdmin
       .from("debts")
-      .select("amount, id")
+      .select("amount, amount_paid, id")
       .eq("tenant_id", tenantId)
       .eq("paid", false)
       .order("id", { ascending: true })
@@ -52,7 +52,7 @@ async function readOwnerTotals(tenantId: string) {
     if (error) throw new Error(error.message);
     const rows = data || [];
     for (const debt of rows) {
-      unpaidDebtsTotal += Number(debt.amount || 0);
+      unpaidDebtsTotal += Math.max(0, Number(debt.amount || 0) - Number(debt.amount_paid || 0));
       unpaidDebtsCount += 1;
     }
     if (rows.length < PAGE_SIZE) break;

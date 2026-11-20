@@ -8,6 +8,7 @@ import { Plus, Trash, Check, ChevronDown, ChevronUp, MessageCircle } from "lucid
 export interface DebtRecord {
   id: string;
   amount: number;
+  amount_paid?: number;
   date: string;
   note?: string;
   paid?: boolean;
@@ -36,7 +37,7 @@ export default function DebtCard({ customer, businessName, onAdd, onDeleteDebt, 
     if (!digits) return "";
 
     const total = customer.debts.reduce((sum, d) => sum + (d.amount || 0), 0);
-    const paidTotal = customer.debts.reduce((sum, d) => sum + (d.paid ? d.amount || 0 : 0), 0);
+    const paidTotal = customer.debts.reduce((sum, d) => sum + (d.amount_paid ?? (d.paid ? d.amount || 0 : 0)), 0);
     const restTotal = total - paidTotal;
 
     const paidSentence =
@@ -53,9 +54,7 @@ export default function DebtCard({ customer, businessName, onAdd, onDeleteDebt, 
       (acc, d) => {
         const amount = d.amount || 0;
         acc.total += amount;
-        if (d.paid) {
-          acc.paidTotal += amount;
-        }
+        acc.paidTotal += d.amount_paid ?? (d.paid ? amount : 0);
         return acc;
       },
       { total: 0, paidTotal: 0 }
@@ -162,6 +161,9 @@ export default function DebtCard({ customer, businessName, onAdd, onDeleteDebt, 
               <div>
                 <div className="font-medium">{d.amount.toFixed(2)}</div>
                 <div className="text-xs text-theme-secondary">{d.date}</div>
+                <div className="text-xs text-theme-secondary">
+                  Paid ${(d.amount_paid ?? (d.paid ? d.amount : 0)).toFixed(2)} · Remaining ${Math.max(0, d.amount - (d.amount_paid ?? (d.paid ? d.amount : 0))).toFixed(2)}
+                </div>
                 {d.note && <div className="text-xs mt-1">{d.note}</div>}
               </div>
 
