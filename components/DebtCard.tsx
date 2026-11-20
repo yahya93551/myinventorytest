@@ -9,6 +9,7 @@ export interface DebtRecord {
   id: string;
   amount: number;
   amount_paid?: number;
+  payments?: { id: string; amount: number; paid_at: string }[];
   date: string;
   note?: string;
   paid?: boolean;
@@ -164,6 +165,11 @@ export default function DebtCard({ customer, businessName, onAdd, onDeleteDebt, 
                 <div className="text-xs text-theme-secondary">
                   Paid ${(d.amount_paid ?? (d.paid ? d.amount : 0)).toFixed(2)} · Remaining ${Math.max(0, d.amount - (d.amount_paid ?? (d.paid ? d.amount : 0))).toFixed(2)}
                 </div>
+                {d.payments?.map((payment) => (
+                  <div key={payment.id} className="text-xs text-theme-secondary">
+                    Payment ${payment.amount.toFixed(2)} · {new Date(payment.paid_at).toLocaleString()}
+                  </div>
+                ))}
                 {d.note && <div className="text-xs mt-1">{d.note}</div>}
               </div>
 

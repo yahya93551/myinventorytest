@@ -27,6 +27,54 @@ const DeleteDebtSchema = z.object({
   id: z.string().uuid("Debt id must be a valid UUID"),
 });
 
+async function loadDebtPayments(tenantId: string, debtId?: string) {
+  const pageSize = 500;
+  const payments: { id: string; debt_id: string; amount: number; paid_at: string }[] = [];
+
+  for (let offset = 0; ; offset += pageSize) {
+    let query = supabaseAdmin
+      .from("debt_payment_records")
+      .select("id, debt_id, amount, paid_at")
+      .eq("tenant_id", tenantId)
+      .order("paid_at", { ascending: false })
+      .order("id", { ascending: false });
+    if (debtId) query = query.eq("debt_id", debtId);
+
+    const { data, error } = await query.range(offset, offset + pageSize - 1);
+    if (error) return { payments: null, error };
+
+    const page = data || [];
+    payments.push(...page);
+    if (page.length < pageSize) return { payments, error: null };
+  }
+}
+
+async function recordDebtPayment(tenantId: string, debtId: string, amount: number) {
+  const { data, error } = await supabaseAdmin.rpc("record_debt_payment", {
+    p_tenant_id: tenantId,
+    p_debt_id: debtId,
+    p_payment_amount: amount,
+  });
+
+  if (error) {
+    const message = error.message || "Failed to record debt payment";
+    const debtError = message.match(/DEBT_(NOT_FOUND|OVERPAYMENT|INVALID):\s*(.*)/);
+    const clientMessage = debtError?.[2] || message;
+    const status = debtError?.[1] === "NOT_FOUND" ? 404
+      : debtError?.[1] === "OVERPAYMENT" ? 400
+      : debtError?.[1] === "INVALID" ? 422
+      : 500;
+    return jsonError(clientMessage, status);
+  }
+
+  if (!data) return jsonError("Failed to record debt payment", 500);
+
+  const { payments, error: paymentError } = await loadDebtPayments(tenantId, debtId);
+
+  if (paymentError) return jsonError(paymentError.message, 500);
+  return jsonSuccess({ ...data, payments: payments || [] });
+}
+
 export async function GET(req: Request) {
   const tenantContextOrError = await requireRole(req, ["owner"]);
   if ("error" in tenantContextOrError) {
@@ -49,7 +97,24 @@ export async function GET(req: Request) {
     return jsonError(error.message, 500);
   }
 
-  return jsonSuccess(data || []);
+  const debts = data || [];
+  if (debts.length === 0) return jsonSuccess([]);
+
+  const { payments, error: paymentError } = await loadDebtPayments(tenantContext.tenantId);
+
+  if (paymentError) return jsonError(paymentError.message, 500);
+
+  const paymentsByDebt = new Map<string, NonNullable<typeof payments>>();
+  for (const payment of payments || []) {
+    const debtPayments = paymentsByDebt.get(payment.debt_id) || [];
+    debtPayments.push(payment);
+    paymentsByDebt.set(payment.debt_id, debtPayments);
+  }
+
+  return jsonSuccess(debts.map((debt) => ({
+    ...debt,
+    payments: paymentsByDebt.get(debt.id) || [],
+  })));
 }
 
 export async function POST(req: Request) {
@@ -129,25 +194,22 @@ export async function PATCH(req: Request) {
   const { id, paid, note, payment_amount } = parseResult.data;
 
   if (payment_amount !== undefined) {
-    const { data, error } = await supabaseAdmin.rpc("record_debt_payment", {
-      p_tenant_id: tenantContext.tenantId,
-      p_debt_id: id,
-      p_payment_amount: payment_amount,
-    });
+    return recordDebtPayment(tenantContext.tenantId, id, payment_amount);
+  }
 
-    if (error) {
-      const message = error.message || "Failed to record debt payment";
-      const debtError = message.match(/DEBT_(NOT_FOUND|OVERPAYMENT|INVALID):\s*(.*)/);
-      const clientMessage = debtError?.[2] || message;
-      const status = debtError?.[1] === "NOT_FOUND" ? 404
-        : debtError?.[1] === "OVERPAYMENT" ? 400
-        : debtError?.[1] === "INVALID" ? 422
-        : 500;
-      return jsonError(clientMessage, status);
-    }
+  if (paid === true && note === undefined) {
+    const { data: debt, error } = await supabaseAdmin
+      .from("debts")
+      .select("amount, amount_paid")
+      .eq("tenant_id", tenantContext.tenantId)
+      .eq("id", id)
+      .maybeSingle();
 
-    if (!data) return jsonError("Failed to record debt payment", 500);
-    return jsonSuccess(data);
+    if (error) return jsonError(error.message, 500);
+    if (!debt) return jsonError("Debt record was not found", 404);
+
+    const remaining = Number(debt.amount) - Number(debt.amount_paid || 0);
+    if (remaining > 0) return recordDebtPayment(tenantContext.tenantId, id, remaining);
   }
 
   const updates: Record<string, unknown> = {};
@@ -177,7 +239,7 @@ export async function PATCH(req: Request) {
     return jsonError("Nothing to update", 400);
   }
 
-  const { data, error } = await supabaseAdmin
+  const { data, error: updateError } = await supabaseAdmin
     .from("debts")
     .update(updates)
     .eq("tenant_id", tenantContext.tenantId)
@@ -185,8 +247,8 @@ export async function PATCH(req: Request) {
     .select("id, customer_name, customer_phone, amount, amount_paid, note, date, paid, created_at")
     .single();
 
-  if (error || !data) {
-    return jsonError(error?.message || "Failed to update debt", 500);
+  if (updateError || !data) {
+    return jsonError(updateError?.message || "Failed to update debt", 500);
   }
 
   return jsonSuccess(data);

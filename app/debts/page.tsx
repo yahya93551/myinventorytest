@@ -21,6 +21,7 @@ type DebtApiRecord = {
   customer_phone: string;
   amount: number;
   amount_paid: number;
+  payments?: { id: string; amount: number; paid_at: string }[];
   date: string;
   note?: string;
   paid: boolean;
@@ -35,6 +36,7 @@ const toStoredDebt = (record: DebtApiRecord): StoredDebt => ({
   phone: record.customer_phone,
   amount: record.amount,
   amount_paid: record.amount_paid,
+  payments: record.payments,
   date: record.date,
   note: record.note,
   paid: record.paid,
@@ -102,7 +104,7 @@ export default function DebtsPage() {
       const rec = {
         name: d.name || existing?.name || "",
         phone: d.phone,
-        debts: existing ? [...existing.debts, { id: d.id, amount: d.amount, amount_paid: d.amount_paid, date: d.date, note: d.note, paid: d.paid }] : [{ id: d.id, amount: d.amount, amount_paid: d.amount_paid, date: d.date, note: d.note, paid: d.paid }],
+        debts: existing ? [...existing.debts, { id: d.id, amount: d.amount, amount_paid: d.amount_paid, payments: d.payments, date: d.date, note: d.note, paid: d.paid }] : [{ id: d.id, amount: d.amount, amount_paid: d.amount_paid, payments: d.payments, date: d.date, note: d.note, paid: d.paid }],
       };
       map.set(d.phone, rec);
     });
@@ -218,7 +220,10 @@ export default function DebtsPage() {
       if (!response.data) {
         throw new Error("Failed to update debt");
       }
-      setDebts((s) => s.map((d) => (d.id === debtId ? { ...d, paid: true, amount_paid: d.amount } : d)));
+      const updatedDebt = response.data;
+      setDebts((s) => s.map((d) => (d.id === debtId
+        ? { ...d, paid: true, amount_paid: updatedDebt.amount_paid, payments: updatedDebt.payments }
+        : d)));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to mark debt as paid");
     }
