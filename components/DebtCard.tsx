@@ -3,7 +3,7 @@
 import React, { useState, useMemo } from "react";
 import Card from "./Card";
 import Button from "./Button";
-import { Plus, Trash, Check, ChevronDown, ChevronUp, MessageCircle } from "lucide-react";
+import { Plus, Trash, ChevronDown, ChevronUp, MessageCircle } from "lucide-react";
 
 export interface DebtRecord {
   id: string;
@@ -26,11 +26,14 @@ interface DebtCardProps {
   businessName?: string;
   onAdd: (phone: string, name?: string) => void;
   onDeleteDebt: (customerPhone: string, debtId: string) => void;
-  onMarkPaid: (customerPhone: string, debtId: string) => void;
+  onRecordPayment: (customerPhone: string, debtId: string, amount: number) => Promise<void>;
 }
 
-export default function DebtCard({ customer, businessName, onAdd, onDeleteDebt, onMarkPaid }: DebtCardProps) {
+export default function DebtCard({ customer, businessName, onAdd, onDeleteDebt, onRecordPayment }: DebtCardProps) {
   const [open, setOpen] = useState(false);
+  const [paymentAmounts, setPaymentAmounts] = useState<Record<string, string>>({});
+  const [recordingDebtId, setRecordingDebtId] = useState<string | null>(null);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
   const business = businessName?.trim() || "Business";
 
   const whatsappUrl = (() => {
@@ -86,6 +89,34 @@ export default function DebtCard({ customer, businessName, onAdd, onDeleteDebt, 
   ]
     .filter(Boolean)
     .join(" ");
+
+  const handleRecordPayment = async (debt: DebtRecord) => {
+    const rawAmount = paymentAmounts[debt.id]?.trim() ?? "";
+    const amount = Number(rawAmount);
+    const amountPaid = debt.amount_paid ?? (debt.paid ? debt.amount : 0);
+    const remainingCents = Math.max(0, Math.round((debt.amount - amountPaid) * 100));
+    const amountCents = Math.round(amount * 100);
+
+    if (!/^(?:\d+(?:\.\d{1,2})?|\.\d{1,2})$/.test(rawAmount) || !Number.isFinite(amount) || amount <= 0) {
+      setPaymentError("Enter a payment amount greater than zero with up to two decimal places.");
+      return;
+    }
+    if (amountCents > remainingCents) {
+      setPaymentError(`Payment cannot exceed the remaining balance of $${(remainingCents / 100).toFixed(2)}.`);
+      return;
+    }
+
+    setRecordingDebtId(debt.id);
+    setPaymentError(null);
+    try {
+      await onRecordPayment(customer.phone, debt.id, amountCents / 100);
+      setPaymentAmounts((current) => ({ ...current, [debt.id]: "" }));
+    } catch (error) {
+      setPaymentError(error instanceof Error ? error.message : "Unable to record debt payment.");
+    } finally {
+      setRecordingDebtId(null);
+    }
+  };
 
   return (
     <Card
@@ -157,36 +188,27 @@ export default function DebtCard({ customer, businessName, onAdd, onDeleteDebt, 
 
       {open && (
         <div className="mt-4 mb-1 divide-y divide-theme overflow-hidden rounded-b-xl">
+          {paymentError && (
+            <div role="alert" className="mb-3 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-700">
+              {paymentError}
+            </div>
+          )}
           {customer.debts.map((d) => (
-            <div key={d.id} className="py-3 flex items-start justify-between gap-4">
-              <div>
-                <div className="font-medium">{d.amount.toFixed(2)}</div>
-                <div className="text-xs text-theme-secondary">{d.date}</div>
-                <div className="text-xs text-theme-secondary">
-                  Paid ${(d.amount_paid ?? (d.paid ? d.amount : 0)).toFixed(2)} · Remaining ${Math.max(0, d.amount - (d.amount_paid ?? (d.paid ? d.amount : 0))).toFixed(2)}
-                </div>
-                {d.payments?.map((payment) => (
-                  <div key={payment.id} className="text-xs text-theme-secondary">
-                    Payment ${payment.amount.toFixed(2)} · {new Date(payment.paid_at).toLocaleString()}
+            <div key={d.id} className="space-y-3 py-3">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="font-medium">{d.amount.toFixed(2)}</div>
+                  <div className="text-xs text-theme-secondary">{d.date}</div>
+                  <div className="text-xs text-theme-secondary">
+                    Paid ${(d.amount_paid ?? (d.paid ? d.amount : 0)).toFixed(2)} · Remaining ${Math.max(0, d.amount - (d.amount_paid ?? (d.paid ? d.amount : 0))).toFixed(2)}
                   </div>
-                ))}
-                {d.note && <div className="text-xs mt-1">{d.note}</div>}
-              </div>
-
-              <div className="flex items-start gap-2">
-                {d.paid ? (
-                  <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-700">
-                    Paid
-                  </span>
-                ) : (
-                  <button
-                    onClick={() => onMarkPaid(customer.phone, d.id)}
-                    className="text-emerald-500 hover:text-emerald-600"
-                    aria-label="Mark debt as paid"
-                  >
-                    <Check />
-                  </button>
-                )}
+                  {d.payments?.map((payment) => (
+                    <div key={payment.id} className="text-xs text-theme-secondary">
+                      Payment ${payment.amount.toFixed(2)} · {new Date(payment.paid_at).toLocaleString()}
+                    </div>
+                  ))}
+                  {d.note && <div className="text-xs mt-1">{d.note}</div>}
+                </div>
 
                 <button
                   onClick={() => {
@@ -200,6 +222,37 @@ export default function DebtCard({ customer, businessName, onAdd, onDeleteDebt, 
                   <Trash />
                 </button>
               </div>
+              {!d.paid && (
+                <div className="w-full space-y-2">
+                  <label className="block text-xs text-theme-secondary" htmlFor={`payment-${d.id}`}>Payment amount</label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      id={`payment-${d.id}`}
+                      type="number"
+                      min="0.01"
+                      max={Math.max(0, d.amount - (d.amount_paid ?? 0)).toFixed(2)}
+                      step="0.01"
+                      inputMode="decimal"
+                      value={paymentAmounts[d.id] ?? ""}
+                      onChange={(event) => {
+                        setPaymentAmounts((current) => ({ ...current, [d.id]: event.target.value }));
+                        setPaymentError(null);
+                      }}
+                      disabled={recordingDebtId !== null}
+                      placeholder="0.00"
+                      className="min-w-0 flex-1 rounded-xl border border-theme-stroke bg-theme-surface px-3 py-2 text-sm"
+                    />
+                    <Button
+                      size="sm"
+                      loading={recordingDebtId === d.id}
+                      disabled={recordingDebtId !== null}
+                      onClick={() => void handleRecordPayment(d)}
+                    >
+                      Record payment
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>

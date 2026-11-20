@@ -214,19 +214,22 @@ export default function DebtsPage() {
     }
   };
 
-  const handleMarkPaid = async (phone: string, debtId: string) => {
-    try {
-      const response = await apiPatch<StoredDebt>("/api/debts", { id: debtId, paid: true });
-      if (!response.data) {
-        throw new Error("Failed to update debt");
-      }
-      const updatedDebt = response.data;
-      setDebts((s) => s.map((d) => (d.id === debtId
-        ? { ...d, paid: true, amount_paid: updatedDebt.amount_paid, payments: updatedDebt.payments }
-        : d)));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to mark debt as paid");
+  const handleRecordPayment = async (_phone: string, debtId: string, amount: number) => {
+    const response = await apiPatch<Pick<DebtApiRecord, "amount_paid" | "paid"> & {
+      payments: DebtApiRecord["payments"];
+    }>("/api/debts", { id: debtId, payment_amount: amount });
+    if (!response.data) {
+      throw new Error("Failed to record debt payment");
     }
+    const updatedDebt = response.data;
+    setDebts((s) => s.map((d) => (d.id === debtId
+      ? {
+          ...d,
+          paid: updatedDebt.paid,
+          amount_paid: updatedDebt.amount_paid,
+          payments: updatedDebt.payments,
+        }
+      : d)));
   };
 
   if (authLoading || roleLoading || subscriptionLoading || loading) {
@@ -422,7 +425,7 @@ export default function DebtsPage() {
                 businessName={businessName}
                 onAdd={openAddModal}
                 onDeleteDebt={handleDeleteDebt}
-                onMarkPaid={handleMarkPaid}
+                onRecordPayment={handleRecordPayment}
               />
             ))}
           </section>
